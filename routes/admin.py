@@ -23,6 +23,12 @@ from utils.storage import load_json_data, save_json_data
 
 admin_bp = Blueprint('admin', __name__)
 
+# ============================================================
+# DETECT VERCEL ENVIRONMENT
+# ============================================================
+IS_VERCEL = os.environ.get('VERCEL') == '1' or os.environ.get('NOW_REGION') is not None
+print(f"🚀 Running on: {'Vercel' if IS_VERCEL else 'Local'}")
+
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in Config.ALLOWED_EXTENSIONS
@@ -70,14 +76,19 @@ def login_required(f):
 # ============================================================
 
 def is_supabase_available():
-    """Check if Supabase is reachable - using GET with proper headers"""
+    """Check if Supabase is reachable - FIXED for Vercel"""
+    
+    # On Vercel, always assume Supabase is available
+    if IS_VERCEL:
+        print("🚀 Vercel mode: Supabase assumed available")
+        return True
+    
     try:
         response = requests.get(
             f"{Config.SUPABASE_URL}/rest/v1/products?limit=1",
             headers=Config.SUPABASE_HEADERS,
             timeout=5
         )
-        # Also check for 401/403 (auth errors) - Supabase is reachable but auth may fail
         if response.status_code in [200, 401, 403]:
             print(f"✅ Supabase reachable (status: {response.status_code})")
             return True
@@ -984,6 +995,7 @@ def admin_pos_place_order():
         # ============================================================
         supabase_success = False
         
+        # Force check Supabase availability
         if is_supabase_available():
             try:
                 # Load products for cost price
@@ -1029,6 +1041,8 @@ def admin_pos_place_order():
                     
                     import utils.data
                     utils.data.orders_cache = []
+                else:
+                    print(f"⚠️ Supabase returned {response.status_code}: {response.text}")
             except Exception as e:
                 print(f"⚠️ Supabase sync failed: {e}")
                 traceback.print_exc()
@@ -1617,7 +1631,6 @@ def calculate_analytics_from_orders(orders):
         monthly_data[month_key]['cost'] += order_cost
         monthly_data[month_key]['profit'] += (order_total - order_cost)
     
-    # Calculate margins for all levels
     for product in product_sales.values():
         if product['revenue'] > 0:
             product['margin'] = round((product['profit'] / product['revenue']) * 100, 1)
