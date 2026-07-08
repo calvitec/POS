@@ -91,7 +91,7 @@ def is_supabase_available():
 
 
 def seed_demo_products():
-    """Create demo products if none exist in JSON"""
+    """Create demo products if none exist"""
     demo_products = [
         {'id': 'PROD_1', 'name': 'Wireless Headphones', 'price': 2999, 'stock': 45, 'category': 'Electronics', 'image': '', 'description': 'Premium wireless headphones'},
         {'id': 'PROD_2', 'name': 'USB-C Cable', 'price': 499, 'stock': 120, 'category': 'Accessories', 'image': ''},
@@ -147,7 +147,6 @@ def user_login():
                         'name': user.full_name,
                         'role': user.role
                     }
-                    # Also set legacy session for compatibility
                     session['admin_logged_in'] = True
                     
                     if user.role == 'admin':
@@ -276,20 +275,50 @@ def admin_logout():
 
 
 # ============================================================
-# ADMIN DASHBOARD
+# ADMIN DASHBOARD - FAST LOADING (CACHED)
 # ============================================================
+
+# Simple cache for orders
+_orders_cache = []
+_cache_time = None
+_CACHE_DURATION = 30  # seconds
 
 @admin_bp.route('/admin')
 @admin_required
 def admin_dashboard():
-    """Admin dashboard"""
+    """Admin dashboard - FAST loading with caching"""
     if not session.get('admin_logged_in'):
         flash('Please login first', 'danger')
         return redirect(url_for('admin.user_login'))
 
     try:
+        global _orders_cache, _cache_time
+        
+        # ============================================================
+        # LOAD DATA WITH CACHING (FAST)
+        # ============================================================
+        current_time = datetime.utcnow()
+        
+        # Check if cache is still valid
+        cache_valid = _cache_time and (current_time - _cache_time).total_seconds() < _CACHE_DURATION
+        
+        if cache_valid and _orders_cache:
+            all_orders = _orders_cache
+            print(f"📦 Using cached orders: {len(all_orders)}")
+        else:
+            # Load fresh from Supabase
+            all_orders = load_orders()
+            _orders_cache = all_orders
+            _cache_time = current_time
+            print(f"🔄 Fresh load: {len(all_orders)} orders from Supabase")
+        
+        # Load products (also cache these)
         all_products = load_products()
-        all_orders = load_orders()
+        
+        # If no products, seed demo
+        if not all_products:
+            all_products = seed_demo_products()
+        
         bundles = load_bundles()
         cart = get_cart()
         analytics = get_sales_analytics()
@@ -305,8 +334,6 @@ def admin_dashboard():
         customer_dict = {}
         pos_count = 0
         web_count = 0
-        
-        print(f"🔍 Processing {len(all_orders)} orders for customer data...")
         
         for order in all_orders:
             name = None
@@ -371,7 +398,6 @@ def admin_dashboard():
         
         customers = list(customer_dict.values())
         customers.sort(key=lambda x: x['orders'], reverse=True)
-        
         total_customers = len(customers)
         
         # ===== REAL STATS FROM ORDERS =====
@@ -588,7 +614,21 @@ def admin_dashboard():
 
 
 # ============================================================
-# POS ROUTE - SIMPLE AND CLEAN
+# CLEAR CACHE ENDPOINT (For after placing orders)
+# ============================================================
+
+@admin_bp.route('/admin/api/clear-cache', methods=['POST'])
+@login_required
+def clear_cache():
+    """Clear the orders cache so new orders appear"""
+    global _orders_cache, _cache_time
+    _orders_cache = []
+    _cache_time = None
+    return jsonify({'success': True, 'message': 'Cache cleared'})
+
+
+# ============================================================
+# POS ROUTE
 # ============================================================
 
 @admin_bp.route('/admin/pos')
@@ -621,7 +661,6 @@ def admin_pos():
         )
         if response.status_code == 200:
             customers_from_db = response.json()
-            print(f"✅ Loaded {len(customers_from_db)} customers for POS")
             for c in customers_from_db:
                 customers.append({
                     'name': c.get('name', ''),
@@ -643,7 +682,7 @@ def admin_pos():
 
 
 # ============================================================
-# POS ORDER ROUTE - SIMPLE AND CLEAN
+# POS ORDER ROUTE - FAST + CLEARS CACHE
 # ============================================================
 
 @admin_bp.route('/admin/pos/place-order', methods=['POST'])
@@ -729,9 +768,9 @@ def admin_pos_place_order():
             }
         }
 
-        print(f"🔥 SAVING ORDER WITH CUSTOMER NAME: {customer_name}")
-        print(f"📦 Order ID: {order_id}")
+        print(f"🔥 SAVING ORDER: {order_id}")
 
+        # Save to Supabase
         response = requests.post(
             f"{Config.SUPABASE_URL}/rest/v1/orders",
             headers=Config.SUPABASE_HEADERS,
@@ -740,62 +779,20 @@ def admin_pos_place_order():
         )
 
         if response.status_code in [200, 201]:
-            print(f"✅ Order saved successfully: {order_id}")
+            print(f"✅ Order saved: {order_id}")
+            
+            # Clear cache so new order appears immediately
+            global _orders_cache, _cache_time
+            _orders_cache = []
+            _cache_time = None
             
             import utils.data
             utils.data.orders_cache = []
             
-            all_orders = load_orders()
-            
-            total_revenue = sum(order.get('total', 0) for order in all_orders)
-            
-            total_profit = 0
-            total_items_sold = 0
-            pos_orders_count = 0
-            web_orders_count = 0
-            
-            for order in all_orders:
-                if order.get('source') == 'pos':
-                    pos_orders_count += 1
-                else:
-                    web_orders_count += 1
-                
-                for item in order.get('items', []):
-                    quantity = item.get('quantity', 1)
-                    total_items_sold += quantity
-                    
-                    price = item.get('price', 0)
-                    cost_price = item.get('cost_price', 0)
-                    if cost_price > 0:
-                        total_profit += (price - cost_price) * quantity
-                    elif price > 0:
-                        total_profit += price * quantity * 0.3
-            
-            analytics = {
-                'total_revenue': total_revenue,
-                'total_profit': total_profit,
-                'total_orders': len(all_orders),
-                'total_items_sold': total_items_sold,
-                'pos_orders_count': pos_orders_count,
-                'web_orders_count': web_orders_count,
-                'product_sales': {},
-                'category_sales': {}
-            }
-            
             return jsonify({
                 'success': True, 
                 'order_id': order_id, 
-                'message': 'Order placed successfully!', 
-                'analytics': analytics, 
-                'stats': {
-                    'total_revenue': total_revenue,
-                    'total_profit': total_profit,
-                    'total_orders': len(all_orders),
-                    'total_items_sold': total_items_sold,
-                    'pos_orders_count': pos_orders_count,
-                    'web_orders_count': web_orders_count,
-                }, 
-                'queued': False, 
+                'message': f'Order #{order_id} placed successfully!',
                 'synced': True
             })
         else:
@@ -1265,11 +1262,6 @@ def admin_products():
         if not product_id:
             return jsonify({'success': False, 'message': 'Product ID is required'}), 400
         
-        print("=" * 60)
-        print("📦 SAVING PRODUCT")
-        print(f"📋 Data received: {json.dumps(data, indent=2)}")
-        print("=" * 60)
-        
         existing_products = load_products()
         product_exists = False
         for p in existing_products:
@@ -1278,7 +1270,6 @@ def admin_products():
                 break
         
         if product_exists:
-            print(f"🔄 Updating product: {product_id}")
             response = requests.patch(
                 f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
                 headers=Config.SUPABASE_HEADERS,
@@ -1286,15 +1277,12 @@ def admin_products():
                 timeout=10,
             )
             if response.status_code in [200, 204]:
-                print(f"✅ Product updated: {product_id}")
                 import utils.data
                 utils.data.products_cache = []
                 return jsonify({'success': True, 'message': 'Product updated successfully!', 'product': data})
             else:
-                print(f"❌ Update error: {response.status_code} - {response.text}")
                 return jsonify({'success': False, 'message': f'Error updating product: {response.status_code}'}), 500
         
-        print(f"🆕 Creating product: {product_id}")
         response = requests.post(
             f"{Config.SUPABASE_URL}/rest/v1/products",
             headers=Config.SUPABASE_HEADERS,
@@ -1303,13 +1291,11 @@ def admin_products():
         )
         
         if response.status_code in [200, 201]:
-            print(f"✅ Product created: {product_id}")
             import utils.data
             utils.data.products_cache = []
             return jsonify({'success': True, 'message': 'Product saved successfully!', 'product': data})
         else:
-            print(f"❌ Create error: {response.status_code} - {response.text}")
-            return jsonify({'success': False, 'message': f'Error saving product: {response.status_code} - {response.text}'}), 500
+            return jsonify({'success': False, 'message': f'Error saving product: {response.status_code}'}), 500
         
     except Exception as exc:
         print(f'Product save error: {exc}')
@@ -1359,6 +1345,10 @@ def admin_update_order_status(order_id):
             timeout=5,
         )
         if response.status_code in [200, 204]:
+            # Clear cache
+            global _orders_cache, _cache_time
+            _orders_cache = []
+            _cache_time = None
             return jsonify({'success': True})
         return jsonify({'success': False, 'message': 'Failed to update status'})
     except Exception as exc:
@@ -1540,11 +1530,6 @@ def api_process_return():
     try:
         data = request.get_json()
         
-        print("=" * 60)
-        print("🔍 RETURN REQUEST RECEIVED")
-        print(f"📋 Data: {data}")
-        print("=" * 60)
-        
         if not data:
             return jsonify({'success': False, 'message': 'No data provided'}), 400
         
@@ -1594,9 +1579,6 @@ def api_process_return():
             'return_amount': refund_total
         }
         
-        print(f"📦 Saving return order: {return_order_id}")
-        print(f"📦 Total: -KSh {refund_total} (negative = revenue deduction)")
-        
         # Restock products
         for item in items_to_return:
             product_id = str(item.get('id', ''))
@@ -1608,7 +1590,6 @@ def api_process_return():
                         if str(p.get('id')) == product_id:
                             current_stock = int(p.get('stock', 0))
                             new_stock = current_stock + quantity
-                            print(f"🔄 Restocking {p.get('name')}: {current_stock} → {new_stock}")
                             update_product_stock(product_id, new_stock)
                             break
                 except Exception as e:
@@ -1622,10 +1603,12 @@ def api_process_return():
         )
         
         if response.status_code in [200, 201]:
-            print(f"✅ Return order saved: {return_order_id}")
-            
             import utils.data
             utils.data.orders_cache = []
+            # Clear cache
+            global _orders_cache, _cache_time
+            _orders_cache = []
+            _cache_time = None
             
             return jsonify({
                 'success': True,
@@ -1635,7 +1618,6 @@ def api_process_return():
                 'revenue_deducted': refund_total
             })
         else:
-            print(f"❌ Failed to save return: {response.status_code} - {response.text}")
             return jsonify({
                 'success': False,
                 'message': f'Failed to process return: {response.status_code}'
