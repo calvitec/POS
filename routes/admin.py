@@ -118,57 +118,7 @@ def get_default_users():
 
 
 # ============================================================
-# UPDATE PRODUCT STOCK - SUPABASE ONLY
-# ============================================================
-
-def update_product_stock_supabase(product_id, quantity_to_subtract):
-    """Update product stock directly in Supabase"""
-    try:
-        if not product_id:
-            return False
-        
-        # Get current stock
-        response = requests.get(
-            f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
-            headers=Config.SUPABASE_HEADERS,
-            timeout=10
-        )
-        
-        if response.status_code != 200:
-            print(f"⚠️ Could not fetch product {product_id}: {response.status_code}")
-            return False
-        
-        products = response.json()
-        if not products:
-            print(f"⚠️ Product {product_id} not found")
-            return False
-        
-        product = products[0]
-        current_stock = int(product.get('stock', 0))
-        new_stock = max(0, current_stock - quantity_to_subtract)
-        
-        # Update stock
-        update_response = requests.patch(
-            f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
-            headers=Config.SUPABASE_HEADERS,
-            json={'stock': new_stock},
-            timeout=10
-        )
-        
-        if update_response.status_code in [200, 204]:
-            print(f"✅ Stock updated: {current_stock} → {new_stock}")
-            return True
-        else:
-            print(f"❌ Stock update failed: {update_response.status_code}")
-            return False
-            
-    except Exception as e:
-        print(f"❌ Stock update error: {e}")
-        return False
-
-
-# ============================================================
-# UNIFIED AUTHENTICATION ROUTES (With Offline Support)
+# UNIFIED AUTHENTICATION ROUTES
 # ============================================================
 
 @admin_bp.route('/login', methods=['GET', 'POST'])
@@ -197,6 +147,8 @@ def user_login():
                         'name': user.full_name,
                         'role': user.role
                     }
+                    # Also set legacy session for compatibility
+                    session['admin_logged_in'] = True
                     
                     if user.role == 'admin':
                         flash('Welcome back, ' + user.full_name + '!', 'success')
@@ -231,7 +183,8 @@ def user_login():
                             'name': user.get('name', 'User'),
                             'role': user.get('role', 'user')
                         }
-                        flash('Welcome back, ' + user.get('name', 'User') + '! (Offline Mode)', 'success')
+                        session['admin_logged_in'] = True
+                        flash('Welcome back, ' + user.get('name', 'User') + '!', 'success')
                         if user.get('role') == 'admin':
                             return redirect('/admin')
                         else:
@@ -289,6 +242,7 @@ def user_login():
                 'role': users_legacy[email]['role'],
                 'id': 'legacy_' + email
             }
+            session['admin_logged_in'] = True
             flash('Welcome, ' + users_legacy[email]['name'] + '!', 'success')
             return redirect(users_legacy[email]['redirect'])
         else:
@@ -307,10 +261,6 @@ def user_logout():
     return redirect(url_for('admin.user_login'))
 
 
-# ============================================================
-# LEGACY REDIRECTS
-# ============================================================
-
 @admin_bp.route('/admin/login')
 def admin_login_redirect():
     """Redirect old /admin/login to new /login"""
@@ -326,65 +276,20 @@ def admin_logout():
 
 
 # ============================================================
-# ADMIN DASHBOARD - ADMIN ONLY (SUPABASE FIRST, JSON FALLBACK FOR LOCAL)
+# ADMIN DASHBOARD
 # ============================================================
 
 @admin_bp.route('/admin')
 @admin_required
 def admin_dashboard():
-    """Admin dashboard - Supabase first, JSON fallback for local only"""
-    if not is_admin():
-        flash('Admin access required', 'danger')
+    """Admin dashboard"""
+    if not session.get('admin_logged_in'):
+        flash('Please login first', 'danger')
         return redirect(url_for('admin.user_login'))
 
     try:
-        # ============================================================
-        # STEP 1: LOAD DATA FROM SUPABASE (Primary)
-        # ============================================================
-        supabase_available = is_supabase_available()
-        
-        all_products = []
-        all_orders = []
-        
-        if supabase_available:
-            try:
-                all_products = load_products() or []
-                all_orders = load_orders() or []
-                print(f"📡 Loaded {len(all_products)} products, {len(all_orders)} orders from Supabase")
-            except Exception as e:
-                print(f"⚠️ Supabase load error: {e}")
-        
-        # ============================================================
-        # STEP 2: LOCAL JSON FALLBACK (Only for local development)
-        # ============================================================
-        if not all_products and not IS_VERCEL:
-            try:
-                from utils.storage import load_json_data
-                json_data = load_json_data()
-                json_products = json_data.get('products', [])
-                json_orders = json_data.get('orders', [])
-                print(f"📁 Loaded {len(json_products)} products, {len(json_orders)} orders from JSON (local)")
-                
-                # Merge with Supabase data
-                if json_orders:
-                    order_dict = {}
-                    for order in all_orders:
-                        order_dict[order.get('order_id')] = order
-                    for order in json_orders:
-                        order_dict[order.get('order_id')] = order
-                    all_orders = list(order_dict.values())
-                
-                if not all_products:
-                    all_products = json_products
-            except:
-                pass
-        
-        # ============================================================
-        # STEP 3: SEED DEMO PRODUCTS IF STILL EMPTY
-        # ============================================================
-        if not all_products:
-            all_products = seed_demo_products()
-        
+        all_products = load_products()
+        all_orders = load_orders()
         bundles = load_bundles()
         cart = get_cart()
         analytics = get_sales_analytics()
@@ -403,17 +308,14 @@ def admin_dashboard():
         
         print(f"🔍 Processing {len(all_orders)} orders for customer data...")
         
-        # Process orders to get customer names and update stats
         for order in all_orders:
             name = None
             email = None
             phone = None
             
-            # Try customer_name field
             if order.get('customer_name'):
                 name = order.get('customer_name')
             
-            # Try customer object
             if not name:
                 customer = order.get('customer', {})
                 if isinstance(customer, dict):
@@ -433,35 +335,29 @@ def admin_dashboard():
                     except:
                         pass
             
-            # Try customer_email as fallback
             if not name:
                 email = order.get('customer_email', '')
                 if email and '@' in email:
                     name = email.split('@')[0].replace('.', ' ').title()
             
-            # Skip generic customers
             if not name or name in ['Walk-in Customer', 'Web Customer', 'Customer', 'Unknown', '']:
                 continue
             
-            # Get email if not set
             if not email or email == 'N/A':
                 email = order.get('customer_email', 'N/A')
                 if (not email or email == 'N/A') and isinstance(order.get('customer'), dict):
                     email = order.get('customer', {}).get('email', 'N/A')
             
-            # Get phone if not set
             if not phone or phone == 'N/A':
                 phone = order.get('customer_phone', 'N/A')
                 if (not phone or phone == 'N/A') and isinstance(order.get('customer'), dict):
                     phone = order.get('customer', {}).get('phone', 'N/A')
             
-            # Count orders by source
             if order.get('source') == 'pos':
                 pos_count += 1
             else:
                 web_count += 1
             
-            # Add or update customer
             if name not in customer_dict:
                 customer_dict[name] = {
                     'name': name,
@@ -473,11 +369,9 @@ def admin_dashboard():
             customer_dict[name]['orders'] += 1
             customer_dict[name]['total_spent'] += order.get('total', 0)
         
-        # Convert to list and sort
         customers = list(customer_dict.values())
         customers.sort(key=lambda x: x['orders'], reverse=True)
         
-        print(f"✅ Found {len(customers)} unique customers from orders")
         total_customers = len(customers)
         
         # ===== REAL STATS FROM ORDERS =====
@@ -486,7 +380,7 @@ def admin_dashboard():
         pending_orders = len([o for o in all_orders if o.get('status') == 'pending'])
         low_stock_items = len([p for p in all_products if p.get('stock', 0) < 10])
         
-        # Calculate today's revenue and orders
+        # Calculate today's revenue
         now = datetime.utcnow()
         today = now.date()
         first_day_this_month = today.replace(day=1)
@@ -498,7 +392,6 @@ def admin_dashboard():
         month_orders = 0
         last_month_revenue = 0
         
-        # Calculate last month
         if today.month == 1:
             last_month_year = today.year - 1
             last_month_month = 12
@@ -562,7 +455,6 @@ def admin_dashboard():
             if first_day_last_month <= order_date <= last_day_last_month:
                 last_month_revenue += total
         
-        # Calculate growth
         if yesterday_revenue > 0:
             today_growth = round(((today_revenue - yesterday_revenue) / yesterday_revenue) * 100, 1)
         else:
@@ -573,20 +465,7 @@ def admin_dashboard():
         else:
             month_growth = 100.0 if month_revenue > 0 else 0
         
-        # Log stats for debugging
-        print(f"📊 REAL STATS:")
-        print(f"  Total Orders: {total_orders}")
-        print(f"  Total Revenue: KSh {total_revenue}")
-        print(f"  Pending Orders: {pending_orders}")
-        print(f"  Low Stock: {low_stock_items}")
-        print(f"  Today Revenue: KSh {today_revenue}")
-        print(f"  Today Orders: {today_orders}")
-        print(f"  Month Revenue: KSh {month_revenue}")
-        print(f"  Today Growth: {today_growth}%")
-        print(f"  Month Growth: {month_growth}%")
-        print(f"  📡 Mode: {'Online' if supabase_available else 'Offline'}")
-        
-        # ===== CUSTOMERS PAGINATION =====
+        # ===== PAGINATION =====
         total_customer_pages = (total_customers + per_page - 1) // per_page if total_customers > 0 else 1
         if customers_page < 1:
             customers_page = 1
@@ -597,7 +476,6 @@ def admin_dashboard():
         customers_end = customers_start + per_page
         paginated_customers = customers[customers_start:customers_end] if customers else []
 
-        # ===== PRODUCTS PAGINATION =====
         total_products = len(all_products)
         total_product_pages = (total_products + per_page - 1) // per_page if total_products > 0 else 1
         if products_page < 1:
@@ -609,7 +487,6 @@ def admin_dashboard():
         products_end = products_start + per_page
         paginated_products = all_products[products_start:products_end] if all_products else []
 
-        # ===== ORDERS PAGINATION =====
         sorted_orders = sorted(all_orders, key=lambda x: x.get('created_at', ''), reverse=True)
         total_order_pages = (total_orders + per_page - 1) // per_page if total_orders > 0 else 1
         if orders_page < 1:
@@ -621,7 +498,6 @@ def admin_dashboard():
         orders_end = orders_start + per_page
         paginated_orders = sorted_orders[orders_start:orders_end] if sorted_orders else []
         
-        # Recent orders for activity section (always show 3 most recent)
         recent_orders = sorted_orders[:3] if sorted_orders else []
 
         stats = {
@@ -646,10 +522,8 @@ def admin_dashboard():
             'last_month_revenue': last_month_revenue,
             'today_growth_pct': today_growth,
             'month_growth_pct': month_growth,
-            'db_mode': 'online' if supabase_available else 'offline',
+            'db_mode': 'online',
         }
-
-        print(f"📤 Passing to template: {len(paginated_orders)} orders, {len(paginated_products)} products, {len(paginated_customers)} customers")
 
         return render_template('admin.html',
             products=paginated_products,
@@ -671,14 +545,13 @@ def admin_dashboard():
             stats=stats,
             pos_count=pos_count,
             analytics=analytics,
-            DB_CONNECTED=supabase_available
+            DB_CONNECTED=True
         )
         
     except Exception as exc:
         print(f'Admin dashboard error: {exc}')
         traceback.print_exc()
-        flash('Error loading admin dashboard', 'warning')
-        
+        flash('Error loading admin dashboard', 'danger')
         return render_template('admin.html', 
             products=[], 
             bundles=[], 
@@ -715,13 +588,12 @@ def admin_dashboard():
 
 
 # ============================================================
-# POS ROUTE - ACCESSIBLE BY ALL LOGGED-IN USERS
+# POS ROUTE - SIMPLE AND CLEAN
 # ============================================================
 
 @admin_bp.route('/admin/pos')
-@login_required
 def admin_pos():
-    """POS dashboard - with offline support"""
+    """POS dashboard"""
     if not session.get('admin_logged_in'):
         flash('Please login first', 'danger')
         return redirect(url_for('admin.user_login'))
@@ -771,11 +643,10 @@ def admin_pos():
 
 
 # ============================================================
-# POS ORDER ROUTE - SUPABASE ONLY
+# POS ORDER ROUTE - SIMPLE AND CLEAN
 # ============================================================
 
 @admin_bp.route('/admin/pos/place-order', methods=['POST'])
-@login_required
 def admin_pos_place_order():
     if not session.get('admin_logged_in'):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
@@ -793,7 +664,6 @@ def admin_pos_place_order():
         calculated_subtotal = 0
         items_with_cost = []
 
-        # Check stock and prepare items
         for item in items:
             product_id = str(item.get('product_id'))
             quantity = item.get('quantity', 1)
@@ -815,6 +685,8 @@ def admin_pos_place_order():
                         'success': False, 
                         'message': f'Not enough stock for {product.get("name")}. Available: {current_stock}'
                     }), 400
+                new_stock = max(0, current_stock - quantity)
+                update_product_stock(product_id, new_stock)
 
         subtotal = calculated_subtotal if calculated_subtotal > 0 else data.get('subtotal', 0)
         shipping = data.get('shipping', 0)
@@ -860,21 +732,6 @@ def admin_pos_place_order():
         print(f"🔥 SAVING ORDER WITH CUSTOMER NAME: {customer_name}")
         print(f"📦 Order ID: {order_id}")
 
-        # ============================================================
-        # UPDATE STOCK FIRST
-        # ============================================================
-        for item in items:
-            product_id = str(item.get('product_id'))
-            quantity = item.get('quantity', 1)
-            product = product_lookup.get(product_id)
-            if product:
-                current_stock = product.get('stock', 0)
-                new_stock = max(0, current_stock - quantity)
-                update_product_stock(product_id, new_stock)
-
-        # ============================================================
-        # SAVE ORDER TO SUPABASE
-        # ============================================================
         response = requests.post(
             f"{Config.SUPABASE_URL}/rest/v1/orders",
             headers=Config.SUPABASE_HEADERS,
@@ -959,7 +816,6 @@ def admin_pos_place_order():
 # ============================================================
 
 @admin_bp.route('/admin/api/analytics')
-@login_required
 def admin_api_analytics():
     if not session.get('admin_logged_in'):
         return jsonify({'error': 'Unauthorized'}), 401
@@ -970,7 +826,6 @@ def admin_api_analytics():
 
 
 @admin_bp.route('/admin/api/revenue')
-@login_required
 def admin_api_revenue():
     if not session.get('admin_logged_in'):
         return jsonify({'error': 'Unauthorized'}), 401
@@ -1237,7 +1092,6 @@ def calculate_analytics_from_orders(orders):
         monthly_data[month_key]['cost'] += order_cost
         monthly_data[month_key]['profit'] += (order_total - order_cost)
     
-    # Calculate margins
     for product in product_sales.values():
         if product['revenue'] > 0:
             product['margin'] = round((product['profit'] / product['revenue']) * 100, 1)
@@ -1272,12 +1126,14 @@ def calculate_analytics_from_orders(orders):
 
 
 # ============================================================
-# PRODUCT API ROUTES
+# PRODUCT API
 # ============================================================
 
 @admin_bp.route('/api/products/<product_id>', methods=['GET'])
-@login_required
 def api_get_product(product_id):
+    if not session.get('admin_logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
     try:
         products = load_products()
         for product in products:
@@ -1289,20 +1145,19 @@ def api_get_product(product_id):
 
 
 # ============================================================
-# ORDER API ROUTES
+# ORDER API
 # ============================================================
 
 @admin_bp.route('/api/orders/<order_id>', methods=['GET'])
-@login_required
 def api_get_order(order_id):
+    if not session.get('admin_logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
     try:
         orders = load_orders()
-        print(f"🔍 Looking for order: {order_id}")
         
         for order in orders:
             if str(order.get('order_id')) == str(order_id):
-                print(f"✅ Found order: {order}")
-                
                 customer = order.get('customer', {})
                 if isinstance(customer, str):
                     try:
@@ -1359,7 +1214,6 @@ def api_get_order(order_id):
 # ============================================================
 
 @admin_bp.route('/admin/upload-image', methods=['POST'])
-@login_required
 def upload_image():
     if not session.get('admin_logged_in'):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
@@ -1383,7 +1237,6 @@ def upload_image():
 # ============================================================
 
 @admin_bp.route('/admin/products', methods=['POST'])
-@admin_required
 def admin_products():
     if not session.get('admin_logged_in'):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
@@ -1469,7 +1322,6 @@ def admin_products():
 # ============================================================
 
 @admin_bp.route('/admin/products/<product_id>', methods=['DELETE'])
-@admin_required
 def admin_delete_product(product_id):
     if not session.get('admin_logged_in'):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
@@ -1493,7 +1345,6 @@ def admin_delete_product(product_id):
 # ============================================================
 
 @admin_bp.route('/admin/orders/<order_id>/status', methods=['POST'])
-@admin_required
 def admin_update_order_status(order_id):
     if not session.get('admin_logged_in'):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
@@ -1519,13 +1370,11 @@ def admin_update_order_status(order_id):
 # ============================================================
 
 @admin_bp.route('/api/customers', methods=['GET'])
-@login_required
 def api_customers():
     if not session.get('admin_logged_in'):
         return jsonify({'error': 'Unauthorized'}), 401
     
     try:
-        # Get from customers table
         response = requests.get(
             f"{Config.SUPABASE_URL}/rest/v1/customers",
             headers=Config.SUPABASE_HEADERS,
@@ -1546,7 +1395,6 @@ def api_customers():
                     })
                 return jsonify(result)
         
-        # Fallback: Build from orders
         orders = load_orders()
         customer_dict = {}
         
@@ -1595,7 +1443,6 @@ def api_customers():
 # ============================================================
 
 @admin_bp.route('/admin/api/sales-stats', methods=['GET'])
-@login_required
 def api_sales_stats():
     if not session.get('admin_logged_in'):
         return jsonify({'error': 'Unauthorized'}), 401
@@ -1686,7 +1533,6 @@ def api_sales_stats():
 # ============================================================
 
 @admin_bp.route('/admin/api/process-return', methods=['POST'])
-@login_required
 def api_process_return():
     if not session.get('admin_logged_in'):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
@@ -1751,15 +1597,13 @@ def api_process_return():
         print(f"📦 Saving return order: {return_order_id}")
         print(f"📦 Total: -KSh {refund_total} (negative = revenue deduction)")
         
-        # ============================================================
-        # RESTOCK PRODUCTS
-        # ============================================================
-        products = load_products()
+        # Restock products
         for item in items_to_return:
             product_id = str(item.get('id', ''))
             quantity = int(item.get('quantity', 1))
             if product_id:
                 try:
+                    products = load_products()
                     for p in products:
                         if str(p.get('id')) == product_id:
                             current_stock = int(p.get('stock', 0))
@@ -1770,9 +1614,6 @@ def api_process_return():
                 except Exception as e:
                     print(f"⚠️ Error restocking product {product_id}: {e}")
         
-        # ============================================================
-        # SAVE RETURN TO SUPABASE
-        # ============================================================
         response = requests.post(
             f"{Config.SUPABASE_URL}/rest/v1/orders",
             headers=Config.SUPABASE_HEADERS,
@@ -1858,42 +1699,3 @@ def static_files(filename):
     except Exception as e:
         print(f"❌ Error serving static file: {e}")
         return "File not found", 404
-
-
-# ============================================================
-# DEBUG ROUTES
-# ============================================================
-
-@admin_bp.route('/admin/debug-orders', methods=['GET'])
-@login_required
-def debug_orders():
-    if not session.get('admin_logged_in'):
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    try:
-        response = requests.get(
-            f"{Config.SUPABASE_URL}/rest/v1/orders?select=*&order=created_at.desc&limit=20",
-            headers=Config.SUPABASE_HEADERS,
-            timeout=10,
-        )
-        
-        if response.status_code == 200:
-            orders = response.json()
-            return jsonify({
-                'success': True,
-                'count': len(orders),
-                'orders': orders,
-                'sample': orders[0] if orders else None
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'status_code': response.status_code,
-                'error': response.text
-            }), 500
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e),
-            'traceback': traceback.format_exc()
-        }), 500
