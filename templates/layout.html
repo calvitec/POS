@@ -1707,6 +1707,164 @@
             if (modal) modal.classList.add('hidden');
         }
     </script>
+    <!-- ===== SIDEBAR & SECTION TOGGLE - COMPLETE JAVASCRIPT ===== -->
+<script>
+    // ============================================================
+    // SIDEBAR TOGGLE
+    // ============================================================
+    function toggleSidebar() {
+        var sidebar = document.getElementById('sidebar');
+        var backdrop = document.getElementById('backdrop');
+        
+        if (!sidebar) {
+            console.warn('Sidebar element not found');
+            return;
+        }
+        
+        var isOpen = sidebar.classList.contains('open');
+        
+        if (isOpen) {
+            sidebar.classList.remove('open');
+            if (backdrop) backdrop.classList.remove('active');
+        } else {
+            sidebar.classList.add('open');
+            if (backdrop) backdrop.classList.add('active');
+        }
+    }
+
+    function closeSidebar() {
+        var sidebar = document.getElementById('sidebar');
+        var backdrop = document.getElementById('backdrop');
+        if (sidebar) sidebar.classList.remove('open');
+        if (backdrop) backdrop.classList.remove('active');
+    }
+
+    // ============================================================
+    // SECTION TOGGLES (Dashboard, Products, Orders, etc.)
+    // ============================================================
+    function showSection(sectionName) {
+        // Hide all sections
+        var sections = document.querySelectorAll('.section');
+        sections.forEach(function(section) {
+            section.classList.add('hidden');
+        });
+
+        // Show the selected section
+        var targetSection = document.getElementById(sectionName + '-section');
+        if (targetSection) {
+            targetSection.classList.remove('hidden');
+        }
+
+        // Update sidebar active state
+        var navItems = document.querySelectorAll('.sidebar .nav-item');
+        navItems.forEach(function(item) {
+            item.classList.remove('active');
+            // Check if this nav item has an onclick that matches
+            var onclick = item.getAttribute('onclick');
+            if (onclick && onclick.includes("showSection('" + sectionName + "')")) {
+                item.classList.add('active');
+            }
+        });
+
+        // Update page title
+        var pageTitle = document.getElementById('pageTitle');
+        var titles = {
+            'dashboard': 'Dashboard',
+            'orders': 'Orders',
+            'products': 'Products',
+            'customers': 'Customers',
+            'analytics': 'Analytics',
+            'add-product': 'Add Product',
+            'pos': 'Point of Sale'
+        };
+        if (pageTitle && titles[sectionName]) {
+            pageTitle.textContent = titles[sectionName];
+        }
+
+        // Close sidebar on mobile
+        if (window.innerWidth <= 768) {
+            closeSidebar();
+        }
+    }
+
+    // ============================================================
+    // CLOSE MODAL HELPER
+    // ============================================================
+    function closeModal(id) {
+        var modal = document.getElementById(id);
+        if (modal) modal.classList.add('hidden');
+    }
+
+    // ============================================================
+    // TOAST NOTIFICATION
+    // ============================================================
+    function showToast(message, type) {
+        var toast = document.getElementById('toast');
+        if (!toast) return;
+
+        var icon = toast.querySelector('.toast-icon');
+        var msgEl = toast.querySelector('.toast-message');
+
+        // Reset classes
+        icon.className = 'toast-icon';
+        if (type === 'success') {
+            icon.classList.add('success', 'fas', 'fa-check-circle');
+        } else if (type === 'error') {
+            icon.classList.add('error', 'fas', 'fa-times-circle');
+        } else if (type === 'warning') {
+            icon.classList.add('warning', 'fas', 'fa-exclamation-triangle');
+        } else {
+            icon.classList.add('info', 'fas', 'fa-info-circle');
+        }
+
+        msgEl.textContent = message;
+        toast.classList.remove('hidden');
+
+        // Auto hide after 4 seconds
+        clearTimeout(toast._timeout);
+        toast._timeout = setTimeout(function() {
+            toast.classList.add('hidden');
+        }, 4000);
+    }
+
+    // ============================================================
+    // DOM READY - Setup sidebar click outside to close
+    // ============================================================
+    document.addEventListener('DOMContentLoaded', function() {
+        var backdrop = document.getElementById('backdrop');
+        var hamburger = document.getElementById('hamburgerBtn');
+
+        // Close sidebar when clicking backdrop
+        if (backdrop) {
+            backdrop.addEventListener('click', function() {
+                closeSidebar();
+            });
+        }
+
+        // Close sidebar on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeSidebar();
+            }
+        });
+
+        // Close sidebar on resize to desktop
+        window.addEventListener('resize', function() {
+            if (window.innerWidth > 768) {
+                closeSidebar();
+            }
+        });
+
+        // If there's a hash in URL, show that section
+        var hash = window.location.hash.replace('#', '');
+        if (hash) {
+            showSection(hash);
+        }
+
+        console.log('✅ Admin JS loaded successfully');
+    });
+</script>
+    
 
     <!-- ===== EXTRA SCRIPTS ===== -->
     {% block scripts %}{% endblock %}
