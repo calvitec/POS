@@ -118,6 +118,14 @@ def get_default_users():
 
 
 # ============================================================
+# CACHE SETUP
+# ============================================================
+_orders_cache = []
+_cache_time = None
+_CACHE_DURATION = 30  # seconds
+
+
+# ============================================================
 # UNIFIED AUTHENTICATION ROUTES
 # ============================================================
 
@@ -275,47 +283,71 @@ def admin_logout():
 
 
 # ============================================================
-# ADMIN DASHBOARD - FAST LOADING (CACHED)
+# ADMIN DASHBOARD - USER-SPECIFIC STATS
 # ============================================================
-
-# Simple cache for orders
-_orders_cache = []
-_cache_time = None
-_CACHE_DURATION = 30  # seconds
 
 @admin_bp.route('/admin')
 @admin_required
 def admin_dashboard():
-    """Admin dashboard - FAST loading with caching"""
+    """Admin dashboard - shows stats for the logged-in user"""
     if not session.get('admin_logged_in'):
         flash('Please login first', 'danger')
         return redirect(url_for('admin.user_login'))
 
     try:
+        # ============================================================
+        # GET CURRENT USER
+        # ============================================================
+        user = session.get('user', {})
+        user_id = user.get('id', 'unknown')
+        user_name = user.get('name', 'Unknown User')
+        user_role = user.get('role', 'user')
+        
+        print(f"👤 LOGGED IN USER: {user_name} (ID: {user_id}, Role: {user_role})")
+        
+        # ============================================================
+        # LOAD ALL ORDERS FROM SUPABASE
+        # ============================================================
         global _orders_cache, _cache_time
         
-        # ============================================================
-        # LOAD DATA WITH CACHING (FAST)
-        # ============================================================
         current_time = datetime.utcnow()
-        
-        # Check if cache is still valid
         cache_valid = _cache_time and (current_time - _cache_time).total_seconds() < _CACHE_DURATION
         
         if cache_valid and _orders_cache:
             all_orders = _orders_cache
             print(f"📦 Using cached orders: {len(all_orders)}")
         else:
-            # Load fresh from Supabase
             all_orders = load_orders()
             _orders_cache = all_orders
             _cache_time = current_time
             print(f"🔄 Fresh load: {len(all_orders)} orders from Supabase")
         
-        # Load products (also cache these)
-        all_products = load_products()
+        # ============================================================
+        # FILTER ORDERS FOR THE CURRENT USER
+        # ============================================================
+        user_orders = []
         
-        # If no products, seed demo
+        if user_role == 'admin':
+            # Admin sees ALL orders
+            user_orders = all_orders
+            print(f"👑 Admin sees all {len(user_orders)} orders")
+        else:
+            # Regular user sees only their orders
+            for order in all_orders:
+                # Check if order belongs to this user
+                order_user_id = order.get('user_id', '')
+                order_user_name = order.get('user_name', '')
+                order_staff_name = order.get('staff_name', '')
+                
+                if (str(order_user_id) == str(user_id) or 
+                    order_user_name == user_name or 
+                    order_staff_name == user_name):
+                    user_orders.append(order)
+            
+            print(f"👤 User {user_name} sees {len(user_orders)} of {len(all_orders)} orders")
+        
+        # Load products
+        all_products = load_products()
         if not all_products:
             all_products = seed_demo_products()
         
@@ -330,12 +362,12 @@ def admin_dashboard():
         orders_page = request.args.get('orders_page', 1, type=int)
         customers_page = request.args.get('customers_page', 1, type=int)
 
-        # ===== CUSTOMER LIST =====
+        # ===== CUSTOMER LIST (from user's orders) =====
         customer_dict = {}
         pos_count = 0
         web_count = 0
         
-        for order in all_orders:
+        for order in user_orders:
             name = None
             email = None
             phone = None
@@ -400,13 +432,13 @@ def admin_dashboard():
         customers.sort(key=lambda x: x['orders'], reverse=True)
         total_customers = len(customers)
         
-        # ===== REAL STATS FROM ORDERS =====
-        total_orders = len([o for o in all_orders if o.get('status') != 'cancelled'])
-        total_revenue = sum(o.get('total', 0) for o in all_orders if o.get('status') != 'cancelled')
-        pending_orders = len([o for o in all_orders if o.get('status') == 'pending'])
+        # ===== STATS FROM USER'S ORDERS =====
+        total_orders = len([o for o in user_orders if o.get('status') != 'cancelled'])
+        total_revenue = sum(o.get('total', 0) for o in user_orders if o.get('status') != 'cancelled')
+        pending_orders = len([o for o in user_orders if o.get('status') == 'pending'])
         low_stock_items = len([p for p in all_products if p.get('stock', 0) < 10])
         
-        # Calculate today's revenue
+        # Calculate today's revenue from user's orders
         now = datetime.utcnow()
         today = now.date()
         first_day_this_month = today.replace(day=1)
@@ -431,7 +463,7 @@ def admin_dashboard():
         else:
             last_day_last_month = datetime(today.year, today.month, 1).date() - timedelta(days=1)
         
-        for order in all_orders:
+        for order in user_orders:
             total = order.get('total', 0)
             if isinstance(total, str):
                 try:
@@ -513,7 +545,7 @@ def admin_dashboard():
         products_end = products_start + per_page
         paginated_products = all_products[products_start:products_end] if all_products else []
 
-        sorted_orders = sorted(all_orders, key=lambda x: x.get('created_at', ''), reverse=True)
+        sorted_orders = sorted(user_orders, key=lambda x: x.get('created_at', ''), reverse=True)
         total_order_pages = (total_orders + per_page - 1) // per_page if total_orders > 0 else 1
         if orders_page < 1:
             orders_page = 1
@@ -526,6 +558,7 @@ def admin_dashboard():
         
         recent_orders = sorted_orders[:3] if sorted_orders else []
 
+        # ===== STATS FOR DISPLAY =====
         stats = {
             'total_products': total_products,
             'total_bundles': len(bundles),
@@ -549,7 +582,11 @@ def admin_dashboard():
             'today_growth_pct': today_growth,
             'month_growth_pct': month_growth,
             'db_mode': 'online',
+            'user_name': user_name,
+            'user_role': user_role,
         }
+
+        print(f"📊 USER STATS: {user_name} - Orders: {total_orders}, Revenue: KSh {total_revenue}")
 
         return render_template('admin.html',
             products=paginated_products,
@@ -571,7 +608,9 @@ def admin_dashboard():
             stats=stats,
             pos_count=pos_count,
             analytics=analytics,
-            DB_CONNECTED=True
+            DB_CONNECTED=True,
+            user_name=user_name,
+            user_role=user_role
         )
         
     except Exception as exc:
@@ -608,13 +647,17 @@ def admin_dashboard():
                 'today_growth_pct': 0,
                 'month_growth_pct': 0,
                 'db_mode': 'offline',
+                'user_name': user_name if 'user_name' in locals() else 'User',
+                'user_role': user_role if 'user_role' in locals() else 'user',
             }, 
-            DB_CONNECTED=False
+            DB_CONNECTED=False,
+            user_name=user_name if 'user_name' in locals() else 'User',
+            user_role=user_role if 'user_role' in locals() else 'user'
         )
 
 
 # ============================================================
-# CLEAR CACHE ENDPOINT (For after placing orders)
+# CLEAR CACHE ENDPOINT
 # ============================================================
 
 @admin_bp.route('/admin/api/clear-cache', methods=['POST'])
@@ -682,7 +725,7 @@ def admin_pos():
 
 
 # ============================================================
-# POS ORDER ROUTE - FAST + CLEARS CACHE
+# POS ORDER ROUTE - WITH USER INFO
 # ============================================================
 
 @admin_bp.route('/admin/pos/place-order', methods=['POST'])
@@ -694,6 +737,16 @@ def admin_pos_place_order():
         data = request.get_json()
         if not data or not data.get('items'):
             return jsonify({'success': False, 'message': 'No items in order'}), 400
+
+        # ============================================================
+        # GET CURRENT USER INFO
+        # ============================================================
+        user = session.get('user', {})
+        user_id = user.get('id', 'unknown')
+        user_name = user.get('name', 'Unknown User')
+        user_role = user.get('role', 'user')
+        
+        print(f"👤 ORDER BY: {user_name} (ID: {user_id}, Role: {user_role})")
 
         order_id = f'POS-{uuid.uuid4().hex[:8].upper()}'
         products = load_products()
@@ -747,6 +800,9 @@ def admin_pos_place_order():
         customer_phone = data.get('customer_phone', '') or data.get('customerPhone', '') or 'N/A'
         customer_address = data.get('customer_address', '') or data.get('customerAddress', '') or 'In-store purchase'
 
+        # ============================================================
+        # BUILD ORDER DATA WITH USER INFO
+        # ============================================================
         order_data = {
             'order_id': order_id,
             'items': items_with_cost,
@@ -765,10 +821,16 @@ def admin_pos_place_order():
                 'email': customer_email,
                 'phone': customer_phone,
                 'address': customer_address,
-            }
+            },
+            # ===== USER INFO =====
+            'user_id': user_id,
+            'user_name': user_name,
+            'user_role': user_role,
+            'staff_name': user_name,
         }
 
         print(f"🔥 SAVING ORDER: {order_id}")
+        print(f"👤 USER: {user_name} (Role: {user_role})")
 
         # Save to Supabase
         response = requests.post(
@@ -793,7 +855,8 @@ def admin_pos_place_order():
                 'success': True, 
                 'order_id': order_id, 
                 'message': f'Order #{order_id} placed successfully!',
-                'synced': True
+                'synced': True,
+                'user': user_name
             })
         else:
             print(f"❌ Supabase error: {response.status_code} - {response.text}")
