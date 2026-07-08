@@ -72,11 +72,6 @@ def login_required(f):
 def is_supabase_available():
     """Check if Supabase is reachable - using GET with proper headers"""
     try:
-        # Check if Supabase URL and headers are configured
-        if not Config.SUPABASE_URL or not Config.SUPABASE_HEADERS:
-            print("❌ Supabase not configured")
-            return False
-            
         response = requests.get(
             f"{Config.SUPABASE_URL}/rest/v1/products?limit=1",
             headers=Config.SUPABASE_HEADERS,
@@ -153,6 +148,56 @@ def get_default_users():
         {'id': 'pos_1', 'email': 'pos@pricepoint.com', 'password': 'electronics2026', 'name': 'POS Operator', 'role': 'pos'},
         {'id': 'user_1', 'email': 'user@pricepoint.com', 'password': 'electronics2026', 'name': 'Regular User', 'role': 'user'}
     ]
+
+
+# ============================================================
+# UPDATE PRODUCT STOCK - SAFE VERSION
+# ============================================================
+
+def update_product_stock_safe(product_id, quantity_to_subtract):
+    """Safely update product stock in Supabase"""
+    try:
+        if not product_id:
+            return False
+        
+        # First, get current stock from Supabase
+        response = requests.get(
+            f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
+            headers=Config.SUPABASE_HEADERS,
+            timeout=10
+        )
+        
+        if response.status_code != 200:
+            print(f"⚠️ Could not fetch product {product_id}: {response.status_code}")
+            return False
+        
+        products = response.json()
+        if not products:
+            print(f"⚠️ Product {product_id} not found")
+            return False
+        
+        product = products[0]
+        current_stock = int(product.get('stock', 0))
+        new_stock = max(0, current_stock - quantity_to_subtract)
+        
+        # Update stock in Supabase
+        update_response = requests.patch(
+            f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
+            headers=Config.SUPABASE_HEADERS,
+            json={'stock': new_stock},
+            timeout=10
+        )
+        
+        if update_response.status_code in [200, 204]:
+            print(f"✅ Stock updated for {product_id}: {current_stock} → {new_stock}")
+            return True
+        else:
+            print(f"❌ Failed to update stock: {update_response.status_code}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Stock update error: {e}")
+        return False
 
 
 # ============================================================
@@ -824,7 +869,7 @@ def admin_pos():
 
 
 # ============================================================
-# POS ORDER ROUTE - ACCESSIBLE BY ALL LOGGED-IN USERS (With Offline Support)
+# POS ORDER ROUTE - FIXED WITH SAFE STOCK UPDATE
 # ============================================================
 
 @admin_bp.route('/admin/pos/place-order', methods=['POST'])
@@ -890,6 +935,29 @@ def admin_pos_place_order():
         print(f"📦 Order ID: {order_id}")
 
         # ============================================================
+        # CHECK STOCK BEFORE SAVING
+        # ============================================================
+        if is_supabase_available():
+            try:
+                products_supabase = load_products()
+                product_lookup = {str(p.get('id')): p for p in products_supabase}
+                
+                for item in items:
+                    product_id = str(item.get('product_id'))
+                    quantity = item.get('quantity', 1)
+                    product = product_lookup.get(product_id)
+                    
+                    if product:
+                        current_stock = product.get('stock', 0)
+                        if current_stock < quantity:
+                            return jsonify({
+                                'success': False, 
+                                'message': f'Not enough stock for {product.get("name", "Product")}. Available: {current_stock}'
+                            }), 400
+            except Exception as e:
+                print(f"⚠️ Stock check error: {e}")
+
+        # ============================================================
         # SAVE TO OFFLINE JSON FIRST (ALWAYS)
         # ============================================================
         json_data = load_json_data()
@@ -912,7 +980,7 @@ def admin_pos_place_order():
         print(f"✅ Order saved to JSON: {order_id}")
 
         # ============================================================
-        # TRY SUPABASE (If online) - DIRECTLY TO SUPABASE
+        # TRY SUPABASE (If online) - USING SAFE STOCK UPDATE
         # ============================================================
         supabase_success = False
         
@@ -931,15 +999,14 @@ def admin_pos_place_order():
                     item_with_cost['cost_price'] = cost_price
                     items_with_cost.append(item_with_cost)
                     
-                    # Update stock in Supabase
+                    # Update stock in Supabase using safe function
                     if product:
-                        current_stock = product.get('stock', 0)
-                        new_stock = max(0, current_stock - quantity)
-                        update_product_stock(product_id, new_stock)
+                        quantity = item.get('quantity', 1)
+                        update_product_stock_safe(product_id, quantity)
                 
                 order_data['items'] = items_with_cost
                 
-                # DIRECTLY SAVE TO SUPABASE (not via Vercel)
+                # Save to Supabase
                 response = requests.post(
                     f"{Config.SUPABASE_URL}/rest/v1/orders",
                     headers=Config.SUPABASE_HEADERS,
@@ -964,6 +1031,7 @@ def admin_pos_place_order():
                     utils.data.orders_cache = []
             except Exception as e:
                 print(f"⚠️ Supabase sync failed: {e}")
+                traceback.print_exc()
 
         # ============================================================
         # RETURN RESPONSE
@@ -1065,15 +1133,14 @@ def api_user_stats():
 
 
 # ============================================================
-# SYNC QUEUED ORDERS - FIXED: Direct to Supabase
+# SYNC QUEUED ORDERS (Sync JSON to Supabase) - FIXED
 # ============================================================
 
 @admin_bp.route('/admin/api/sync-queue', methods=['POST'])
 @login_required
 def api_sync_queue():
-    """Sync unsynced orders from JSON to Supabase - Direct connection"""
+    """Sync unsynced orders from JSON to Supabase"""
     try:
-        # Check Supabase connectivity
         if not is_supabase_available():
             return jsonify({
                 'success': True,
@@ -1095,10 +1162,11 @@ def api_sync_queue():
                 'message': 'No orders to sync'
             })
         
-        print(f"🔄 Syncing {len(unsynced_orders)} offline orders to Supabase...")
+        print(f"🔄 Syncing {len(unsynced_orders)} offline orders...")
         
         synced = 0
         failed = 0
+        failed_orders = []
         
         for order in unsynced_orders:
             try:
@@ -1106,10 +1174,11 @@ def api_sync_queue():
                 if 'order_id' not in order:
                     order['order_id'] = f'OFF-{uuid.uuid4().hex[:8].upper()}'
                 
+                # Ensure created_at is in correct format
                 if 'created_at' not in order or not order['created_at']:
                     order['created_at'] = datetime.utcnow().isoformat()
                 
-                # Handle items
+                # Handle items format - ensure it's a list of dicts
                 items = order.get('items', [])
                 if isinstance(items, str):
                     try:
@@ -1118,7 +1187,7 @@ def api_sync_queue():
                         items = []
                 order['items'] = items
                 
-                # Handle customer
+                # Handle customer format
                 customer = order.get('customer', {})
                 if isinstance(customer, str):
                     try:
@@ -1129,7 +1198,7 @@ def api_sync_queue():
                     customer = {}
                 order['customer'] = customer
                 
-                # Ensure items have required fields
+                # Ensure all items have required fields
                 for item in order.get('items', []):
                     if 'product_id' not in item:
                         item['product_id'] = str(uuid.uuid4())
@@ -1140,7 +1209,7 @@ def api_sync_queue():
                     if 'name' not in item:
                         item['name'] = 'Unknown Product'
                 
-                # DIRECTLY SYNC TO SUPABASE
+                # Try to save to Supabase
                 response = requests.post(
                     f"{Config.SUPABASE_URL}/rest/v1/orders",
                     headers=Config.SUPABASE_HEADERS,
@@ -1159,19 +1228,20 @@ def api_sync_queue():
                     print(f"✅ Synced: {order.get('order_id')}")
                 else:
                     failed += 1
-                    print(f"❌ Failed to sync: {order.get('order_id')} - {response.status_code}")
-                    print(f"   Response: {response.text[:200]}")
+                    failed_orders.append(order.get('order_id'))
+                    print(f"❌ Failed to sync: {order.get('order_id')} - {response.status_code} - {response.text[:200]}")
                     
             except Exception as e:
                 failed += 1
+                failed_orders.append(order.get('order_id'))
                 print(f"❌ Sync error for {order.get('order_id')}: {e}")
                 traceback.print_exc()
         
-        # Save updated orders
+        # Save updated orders back to JSON
         json_data['orders'] = orders
         save_json_data(json_data)
         
-        # Clear cache
+        # Clear cache to force refresh
         import utils.data
         utils.data.orders_cache = []
         
@@ -1179,7 +1249,8 @@ def api_sync_queue():
             'success': True,
             'synced': synced,
             'failed': failed,
-            'message': f"Synced {synced} orders to Supabase, {failed} failed"
+            'failed_orders': failed_orders,
+            'message': f"Synced {synced} orders, {failed} failed"
         })
         
     except Exception as e:
@@ -1264,7 +1335,7 @@ def api_unsynced_count():
 
 
 # ============================================================
-# REMAINING ROUTES (Keep your existing routes below)
+# REMAINING ROUTES (With Offline Support)
 # ============================================================
 
 @admin_bp.route('/admin/api/analytics')
@@ -1395,95 +1466,698 @@ def admin_api_revenue():
 
 
 # ============================================================
-# IMPORTANT: Add your existing routes below
-# Keep: calculate_analytics_from_orders, api_get_product, 
-# api_get_order, upload_image, admin_products, admin_delete_product,
-# admin_update_order_status, api_customers, api_sales_stats,
-# api_process_return
+# REST OF ROUTES
 # ============================================================
 
 def calculate_analytics_from_orders(orders):
-    # ... (keep your existing function)
-    pass
+    if not orders:
+        return {
+            'total_revenue': 0,
+            'total_cost': 0,
+            'total_profit': 0,
+            'total_orders': 0,
+            'total_items_sold': 0,
+            'pos_orders_count': 0,
+            'web_orders_count': 0,
+            'product_sales': {},
+            'category_sales': {},
+            'monthly_data': {}
+        }
+    
+    json_data = load_json_data()
+    products = json_data.get('products', [])
+    product_lookup = {str(p.get('id')): p for p in products if p and p.get('id')}
+    
+    total_revenue = 0
+    total_cost = 0
+    total_profit = 0
+    total_items_sold = 0
+    pos_orders_count = 0
+    web_orders_count = 0
+    product_sales = {}
+    category_sales = {}
+    monthly_data = {}
+    
+    for order in orders:
+        if order.get('status') == 'cancelled':
+            continue
+            
+        if order.get('source') == 'pos':
+            pos_orders_count += 1
+        else:
+            web_orders_count += 1
+        
+        created_at = order.get('created_at', '')
+        month_key = 'Unknown'
+        if created_at:
+            try:
+                if isinstance(created_at, str):
+                    if 'T' in created_at:
+                        clean = created_at.replace('Z', '').replace('+00:00', '')
+                        if '.' in clean:
+                            dt = datetime.fromisoformat(clean)
+                        else:
+                            dt = datetime.strptime(clean[:10], '%Y-%m-%d')
+                    elif ' ' in created_at:
+                        dt = datetime.strptime(created_at[:10], '%Y-%m-%d')
+                    else:
+                        dt = datetime.strptime(created_at[:10], '%Y-%m-%d')
+                elif isinstance(created_at, datetime):
+                    dt = created_at
+                else:
+                    dt = datetime.utcnow()
+                month_key = dt.strftime('%b %Y')
+            except:
+                month_key = 'Unknown'
+        
+        if month_key not in monthly_data:
+            monthly_data[month_key] = {
+                'orders': 0,
+                'items': 0,
+                'revenue': 0,
+                'cost': 0,
+                'profit': 0,
+                'margin': 0
+            }
+        monthly_data[month_key]['orders'] += 1
+        
+        order_total = 0
+        order_cost = 0
+        order_items = 0
+        
+        for item in order.get('items', []):
+            quantity = item.get('quantity', 1)
+            price = float(item.get('price', 0) or 0)
+            total_items_sold += quantity
+            order_items += quantity
+            
+            item_total = price * quantity
+            order_total += item_total
+            total_revenue += item_total
+            
+            cost_price = 0
+            
+            if 'cost_price' in item:
+                try:
+                    cost_price = float(item.get('cost_price', 0) or 0)
+                except (ValueError, TypeError):
+                    cost_price = 0
+            
+            if cost_price == 0:
+                product_id = item.get('product_id', '')
+                if product_id:
+                    product = product_lookup.get(product_id, {})
+                    if product:
+                        cost_price = float(product.get('cost_price', 0) or 0)
+            
+            if cost_price == 0 and price > 0:
+                cost_price = price * 0.7
+            
+            item_cost = cost_price * quantity
+            order_cost += item_cost
+            total_cost += item_cost
+            total_profit += (item_total - item_cost)
+            
+            product_id = item.get('product_id', '')
+            category = 'Uncategorized'
+            if product_id:
+                product = product_lookup.get(product_id, {})
+                if product and product.get('category'):
+                    category = product.get('category')
+            
+            product_name = item.get('name', 'Unknown Product')
+            if product_name not in product_sales:
+                product_sales[product_name] = {
+                    'quantity': 0,
+                    'revenue': 0,
+                    'cost': 0,
+                    'profit': 0,
+                    'margin': 0
+                }
+            product_sales[product_name]['quantity'] += quantity
+            product_sales[product_name]['revenue'] += item_total
+            product_sales[product_name]['cost'] += item_cost
+            product_sales[product_name]['profit'] += (item_total - item_cost)
+            
+            if category not in category_sales:
+                category_sales[category] = {
+                    'quantity': 0,
+                    'revenue': 0,
+                    'cost': 0,
+                    'profit': 0,
+                    'margin': 0
+                }
+            category_sales[category]['quantity'] += quantity
+            category_sales[category]['revenue'] += item_total
+            category_sales[category]['cost'] += item_cost
+            category_sales[category]['profit'] += (item_total - item_cost)
+        
+        monthly_data[month_key]['items'] += order_items
+        monthly_data[month_key]['revenue'] += order_total
+        monthly_data[month_key]['cost'] += order_cost
+        monthly_data[month_key]['profit'] += (order_total - order_cost)
+    
+    # Calculate margins for all levels
+    for product in product_sales.values():
+        if product['revenue'] > 0:
+            product['margin'] = round((product['profit'] / product['revenue']) * 100, 1)
+    
+    for category in category_sales.values():
+        if category['revenue'] > 0:
+            category['margin'] = round((category['profit'] / category['revenue']) * 100, 1)
+    
+    for month in monthly_data.values():
+        if month['revenue'] > 0:
+            month['margin'] = round((month['profit'] / month['revenue']) * 100, 1)
+    
+    sorted_products = sorted(
+        product_sales.items(),
+        key=lambda x: x[1]['profit'],
+        reverse=True
+    )
+    product_sales = dict(sorted_products)
+    
+    return {
+        'total_revenue': total_revenue,
+        'total_cost': total_cost,
+        'total_profit': total_profit,
+        'total_orders': len(orders),
+        'total_items_sold': total_items_sold,
+        'pos_orders_count': pos_orders_count,
+        'web_orders_count': web_orders_count,
+        'product_sales': product_sales,
+        'category_sales': category_sales,
+        'monthly_data': monthly_data
+    }
 
 
 @admin_bp.route('/api/products/<product_id>', methods=['GET'])
 @login_required
 def api_get_product(product_id):
-    # ... (keep your existing route)
-    pass
+    try:
+        json_data = load_json_data()
+        products = json_data.get('products', [])
+        for product in products:
+            if str(product.get('id')) == str(product_id):
+                return jsonify(product)
+        return jsonify({'error': 'Product not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @admin_bp.route('/api/orders/<order_id>', methods=['GET'])
 @login_required
 def api_get_order(order_id):
-    # ... (keep your existing route)
-    pass
+    try:
+        json_data = load_json_data()
+        orders = json_data.get('orders', [])
+        for order in orders:
+            if str(order.get('order_id')) == str(order_id):
+                customer = order.get('customer', {})
+                if isinstance(customer, str):
+                    try:
+                        customer = json.loads(customer) if customer else {}
+                    except:
+                        customer = {}
+                if isinstance(customer, list):
+                    customer = customer[0] if customer else {}
+                if not isinstance(customer, dict):
+                    customer = {}
+                
+                items = order.get('items', [])
+                if isinstance(items, str):
+                    try:
+                        items = json.loads(items)
+                    except:
+                        items = []
+                if not isinstance(items, list):
+                    items = []
+                
+                formatted_items = []
+                for item in items:
+                    if isinstance(item, dict):
+                        formatted_items.append({
+                            'name': item.get('name', 'Product'),
+                            'quantity': item.get('quantity', 1),
+                            'price': item.get('price', 0),
+                            'total': item.get('total', item.get('price', 0) * item.get('quantity', 1))
+                        })
+                
+                return jsonify({
+                    'order_id': order.get('order_id', 'N/A'),
+                    'customer': {
+                        'name': customer.get('name', order.get('customer_name', 'Customer')),
+                        'email': customer.get('email', order.get('customer_email', 'N/A')),
+                        'phone': customer.get('phone', order.get('customer_phone', 'N/A')),
+                        'address': customer.get('address', order.get('customer_address', 'N/A')),
+                    },
+                    'items': formatted_items,
+                    'subtotal': order.get('subtotal', 0),
+                    'shipping': order.get('shipping', 0),
+                    'total': order.get('total', 0),
+                    'status': order.get('status', 'pending'),
+                    'created_at': order.get('created_at', ''),
+                    'source': order.get('source', 'web'),
+                })
+        return jsonify({'error': 'Order not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @admin_bp.route('/admin/upload-image', methods=['POST'])
 @login_required
 def upload_image():
-    # ... (keep your existing route)
-    pass
+    if 'image' not in request.files:
+        return jsonify({'success': False, 'message': 'No file uploaded'}), 400
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({'success': False, 'message': 'No file selected'}), 400
+    if file and allowed_file(file.filename):
+        filename = f"{uuid.uuid4().hex[:8]}_{secure_filename(file.filename)}"
+        os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
+        filepath = os.path.join(Config.UPLOAD_FOLDER, filename)
+        file.save(filepath)
+        image_url = f"/static/uploads/{filename}"
+        return jsonify({'success': True, 'url': image_url, 'message': 'Image uploaded successfully!'})
+    return jsonify({'success': False, 'message': 'Invalid file type'}), 400
 
 
 @admin_bp.route('/admin/products', methods=['POST'])
 @admin_required
 def admin_products():
-    # ... (keep your existing route)
-    pass
+    try:
+        if request.is_json:
+            data = request.get_json()
+        else:
+            data = {
+                'id': request.form.get('id', '').strip(),
+                'name': request.form.get('name', '').strip(),
+                'price': float(request.form.get('price', 0) or 0),
+                'cost_price': float(request.form.get('cost_price', 0) or 0),
+                'image': request.form.get('image', '').strip(),
+                'category': request.form.get('category', '').strip(),
+                'description': request.form.get('description', '').strip(),
+                'rating': float(request.form.get('rating', 4.0) or 4.0),
+                'reviews': int(request.form.get('reviews', 0) or 0),
+                'badge': request.form.get('badge', '').strip(),
+                'stock': int(request.form.get('stock', 0) or 0),
+                'original_price': float(request.form.get('original_price', 0) or 0) or None,
+                'specs': [s.strip() for s in request.form.get('specs', '').split(',') if s.strip()]
+            }
+        
+        product_id = data.get('id', '').strip()
+        if not product_id:
+            return jsonify({'success': False, 'message': 'Product ID is required'}), 400
+        
+        # ===== SAVE TO JSON FIRST =====
+        json_data = load_json_data()
+        products = json_data.get('products', [])
+        product_exists = False
+        
+        for i, p in enumerate(products):
+            if p.get('id') == product_id:
+                products[i] = data
+                product_exists = True
+                break
+        
+        if not product_exists:
+            products.append(data)
+        
+        json_data['products'] = products
+        save_json_data(json_data)
+        
+        # ===== TRY SUPABASE (if online) =====
+        supabase_success = False
+        if is_supabase_available():
+            try:
+                if product_exists:
+                    response = requests.patch(
+                        f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
+                        headers=Config.SUPABASE_HEADERS,
+                        json=data,
+                        timeout=10,
+                    )
+                else:
+                    response = requests.post(
+                        f"{Config.SUPABASE_URL}/rest/v1/products",
+                        headers=Config.SUPABASE_HEADERS,
+                        json=data,
+                        timeout=10,
+                    )
+                
+                if response.status_code in [200, 201, 204]:
+                    supabase_success = True
+                    import utils.data
+                    utils.data.products_cache = []
+            except Exception as e:
+                print(f"⚠️ Supabase sync failed: {e}")
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Product saved successfully!' + (' (Synced to cloud)' if supabase_success else ' (Saved offline)'),
+            'product': data,
+            'offline': not supabase_success
+        })
+        
+    except Exception as exc:
+        print(f'Product save error: {exc}')
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(exc)}), 500
 
 
 @admin_bp.route('/admin/products/<product_id>', methods=['DELETE'])
 @admin_required
 def admin_delete_product(product_id):
-    # ... (keep your existing route)
-    pass
+    try:
+        # Delete from JSON
+        json_data = load_json_data()
+        products = json_data.get('products', [])
+        json_data['products'] = [p for p in products if p.get('id') != product_id]
+        save_json_data(json_data)
+        
+        # Delete from Supabase (if online)
+        if is_supabase_available():
+            try:
+                response = requests.delete(
+                    f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
+                    headers=Config.SUPABASE_HEADERS,
+                    timeout=5,
+                )
+                if response.status_code in [200, 204]:
+                    import utils.data
+                    utils.data.products_cache = []
+            except Exception as e:
+                print(f"⚠️ Supabase delete failed: {e}")
+        
+        return jsonify({'success': True})
+    except Exception as exc:
+        return jsonify({'success': False, 'message': str(exc)})
 
 
 @admin_bp.route('/admin/orders/<order_id>/status', methods=['POST'])
 @admin_required
 def admin_update_order_status(order_id):
-    # ... (keep your existing route)
-    pass
+    try:
+        new_status = request.json.get('status')
+        if not new_status:
+            return jsonify({'success': False, 'message': 'Status required'}), 400
+        
+        # Update in JSON
+        json_data = load_json_data()
+        orders = json_data.get('orders', [])
+        for order in orders:
+            if order.get('order_id') == order_id:
+                order['status'] = new_status
+                break
+        json_data['orders'] = orders
+        save_json_data(json_data)
+        
+        # Update in Supabase (if online)
+        if is_supabase_available():
+            try:
+                response = requests.patch(
+                    f"{Config.SUPABASE_URL}/rest/v1/orders?order_id=eq.{order_id}",
+                    headers=Config.SUPABASE_HEADERS,
+                    json={'status': new_status},
+                    timeout=5,
+                )
+                if response.status_code in [200, 204]:
+                    import utils.data
+                    utils.data.orders_cache = []
+            except Exception as e:
+                print(f"⚠️ Supabase update failed: {e}")
+        
+        return jsonify({'success': True})
+    except Exception as exc:
+        return jsonify({'success': False, 'message': str(exc)}), 500
 
+
+# ============================================================
+# API CUSTOMERS ENDPOINT (With Offline Support)
+# ============================================================
 
 @admin_bp.route('/api/customers', methods=['GET'])
 @login_required
 def api_customers():
-    # ... (keep your existing route)
-    pass
+    try:
+        # Try Supabase first
+        if is_supabase_available():
+            response = requests.get(
+                f"{Config.SUPABASE_URL}/rest/v1/customers",
+                headers=Config.SUPABASE_HEADERS,
+                timeout=5,
+            )
+            
+            if response.status_code == 200:
+                customers_from_db = response.json()
+                if customers_from_db:
+                    result = []
+                    for c in customers_from_db:
+                        result.append({
+                            'name': c.get('name', ''),
+                            'email': c.get('email', 'N/A'),
+                            'phone': c.get('phone', 'N/A'),
+                            'orders': 0,
+                            'total_spent': 0
+                        })
+                    return jsonify(result)
+        
+        # Fallback: Build from JSON orders
+        json_data = load_json_data()
+        orders = json_data.get('orders', [])
+        customer_dict = {}
+        
+        for order in orders:
+            name = None
+            
+            if order.get('customer_name'):
+                name = order.get('customer_name')
+            
+            if not name:
+                customer = order.get('customer', {})
+                if isinstance(customer, dict):
+                    name = customer.get('name')
+                elif isinstance(customer, str):
+                    try:
+                        customer_obj = json.loads(customer)
+                        name = customer_obj.get('name')
+                    except:
+                        pass
+            
+            if not name or name in ['Walk-in Customer', 'Web Customer', 'Customer', '']:
+                continue
+            
+            email = order.get('customer_email', 'N/A')
+            phone = order.get('customer_phone', 'N/A')
+            
+            if name not in customer_dict:
+                customer_dict[name] = {
+                    'name': name,
+                    'email': email,
+                    'phone': phone,
+                    'orders': 0,
+                    'total_spent': 0
+                }
+            customer_dict[name]['orders'] += 1
+            customer_dict[name]['total_spent'] += order.get('total', 0)
+        
+        return jsonify(list(customer_dict.values()))
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
+
+# ============================================================
+# SALES STATS ENDPOINT (With Offline Support)
+# ============================================================
 
 @admin_bp.route('/admin/api/sales-stats', methods=['GET'])
 @login_required
 def api_sales_stats():
-    # ... (keep your existing route)
-    pass
+    try:
+        json_data = load_json_data()
+        orders = json_data.get('orders', [])
+        products = json_data.get('products', [])
+        
+        today = datetime.utcnow().date()
+        today_revenue = 0
+        today_orders = 0
+        today_returns = 0
+        today_return_amount = 0
+        all_customers = set()
+        
+        for order in orders:
+            created_at = order.get('created_at', '')
+            if not created_at:
+                continue
+                
+            try:
+                if isinstance(created_at, str):
+                    if 'T' in created_at:
+                        clean = created_at.replace('Z', '').replace('+00:00', '')
+                        if '.' in clean:
+                            order_date = datetime.fromisoformat(clean).date()
+                        else:
+                            order_date = datetime.strptime(clean[:10], '%Y-%m-%d').date()
+                    elif ' ' in created_at:
+                        order_date = datetime.strptime(created_at[:10], '%Y-%m-%d').date()
+                    else:
+                        order_date = datetime.strptime(created_at[:10], '%Y-%m-%d').date()
+                elif isinstance(created_at, datetime):
+                    order_date = created_at.date()
+                else:
+                    continue
+                
+                customer_name = order.get('customer_name', '')
+                if customer_name and customer_name not in ['Walk-in Customer', 'Web Customer', '']:
+                    all_customers.add(customer_name)
+                
+                if order_date == today:
+                    status = order.get('status', '')
+                    total = float(order.get('total', 0))
+                    
+                    if status == 'returned':
+                        today_returns += 1
+                        today_return_amount += abs(total)
+                        today_revenue += total
+                    elif status != 'cancelled':
+                        today_revenue += total
+                        today_orders += 1
+                        
+            except Exception as e:
+                print(f"Error processing order: {e}")
+                continue
+        
+        total_products = len(products)
+        
+        return jsonify({
+            'success': True,
+            'today_revenue': today_revenue,
+            'today_orders': today_orders,
+            'today_returns': today_returns,
+            'today_return_amount': today_return_amount,
+            'total_customers': len(all_customers),
+            'total_products': total_products
+        })
+    except Exception as e:
+        print(f"❌ Sales stats error: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
+
+# ============================================================
+# PROCESS RETURN ENDPOINT (With Offline Support)
+# ============================================================
 
 @admin_bp.route('/admin/api/process-return', methods=['POST'])
 @login_required
 def api_process_return():
-    # ... (keep your existing route)
-    pass
-
-
-# ============================================================
-# NEW: Supabase Status Endpoint
-# ============================================================
-
-@admin_bp.route('/api/supabase-status', methods=['GET'])
-@login_required
-def api_supabase_status():
-    """Check Supabase connection status"""
     try:
-        available = is_supabase_available()
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'success': False, 'message': 'No data provided'}), 400
+        
+        items_to_return = data.get('items', [])
+        refund_total = data.get('refund_total', 0)
+        customer_name = data.get('customer_name', 'Customer')
+        reason = data.get('reason', 'Customer return')
+        
+        if not items_to_return:
+            return jsonify({'success': False, 'message': 'No items to return'}), 400
+        
+        return_items = []
+        for item in items_to_return:
+            item_price = float(item.get('price', 0))
+            item_qty = int(item.get('quantity', 1))
+            return_items.append({
+                'product_id': str(item.get('id', '')),
+                'name': item.get('name', 'Product'),
+                'price': item_price,
+                'quantity': item_qty,
+                'total': item_price * item_qty,
+                'type': 'return'
+            })
+        
+        return_order_id = f'RET-{uuid.uuid4().hex[:8].upper()}'
+        
+        return_order_data = {
+            'order_id': return_order_id,
+            'items': return_items,
+            'subtotal': refund_total,
+            'shipping': 0,
+            'total': -refund_total,
+            'status': 'returned',
+            'source': 'pos',
+            'created_at': datetime.utcnow().isoformat(),
+            'customer': {
+                'name': customer_name,
+                'email': 'return@example.com',
+                'phone': 'N/A',
+                'address': 'Return'
+            },
+            'customer_name': customer_name,
+            'customer_email': 'return@example.com',
+            'customer_phone': 'N/A',
+            'customer_address': 'Return',
+            'return_reason': reason,
+            'return_amount': refund_total
+        }
+        
+        # ===== SAVE TO JSON FIRST =====
+        json_data = load_json_data()
+        orders = json_data.get('orders', [])
+        orders.append(return_order_data)
+        json_data['orders'] = orders
+        
+        # Restock products in JSON
+        products = json_data.get('products', [])
+        for item in items_to_return:
+            product_id = str(item.get('id', ''))
+            quantity = int(item.get('quantity', 1))
+            for p in products:
+                if str(p.get('id')) == product_id:
+                    p['stock'] = p.get('stock', 0) + quantity
+                    break
+        json_data['products'] = products
+        save_json_data(json_data)
+        
+        # ===== TRY SUPABASE (if online) =====
+        supabase_success = False
+        if is_supabase_available():
+            try:
+                # Restock in Supabase using safe function
+                for item in items_to_return:
+                    product_id = str(item.get('id', ''))
+                    quantity = int(item.get('quantity', 1))
+                    if product_id:
+                        update_product_stock_safe(product_id, -quantity)  # Negative to add stock
+                
+                # Save return to Supabase
+                response = requests.post(
+                    f"{Config.SUPABASE_URL}/rest/v1/orders",
+                    headers=Config.SUPABASE_HEADERS,
+                    json=return_order_data,
+                    timeout=10,
+                )
+                
+                if response.status_code in [200, 201]:
+                    supabase_success = True
+                    import utils.data
+                    utils.data.orders_cache = []
+            except Exception as e:
+                print(f"⚠️ Supabase sync failed: {e}")
+        
         return jsonify({
             'success': True,
-            'available': available,
-            'message': 'Supabase is connected' if available else 'Supabase is not reachable'
+            'order_id': return_order_id,
+            'message': f'Return processed! Refund: KSh {refund_total:,.2f}' + (' (Synced to cloud)' if supabase_success else ' (Saved offline)'),
+            'refund_total': refund_total,
+            'revenue_deducted': refund_total,
+            'offline': not supabase_success
         })
+            
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        print(f'❌ Return error: {e}')
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(e)}), 500
