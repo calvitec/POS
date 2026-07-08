@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes" />
+    <title>{% block title %}PricePoint · Admin{% endblock %}</title>
+    
+    <!-- ===== CSS ===== -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}" />
+    
+    <!-- ===== FONTS & ICONS ===== -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        /* ============================================================
+           SIDEBAR TOGGLE - CLEAN FIX
+           ============================================================ */
+        
+        /* Base style - hidden by default on desktop */
+        .sidebar-toggle {
+            display: none;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 1rem;
+            cursor: pointer;
+            color: #0f172a;
+            transition: all 0.2s;
+            align-items: center;
+            gap: 6px;
+        }
+        .sidebar-toggle:hover {
+            background: #f0f4f8;
+            border-color: #94a3b8;
+        }
+
+        /* Mobile: show hamburger */
+        @media (max-width: 768px) {
+            .sidebar-toggle {
+                display: inline-flex !important;
+            }
+            
+            /* Sidebar slides in from left */
+            .sidebar {
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                bottom: 0 !important;
+                width: 280px !important;
+                max-width: 80vw !important;
+                height: 100vh !important;
+                transform: translateX(-105%) !important;
+                transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
+                z-index: 1000 !important;
+                border: none !important;
+                box-shadow: 4px 0 30px rgba(0, 0, 0, 0.25) !important;
+                border-radius: 0 !important;
+                overflow-y: auto !important;
+                background: #0f172a !important;
+            }
+
+            .sidebar.open {
+                transform: translateX(0) !important;
+            }
+
+            /* Backdrop */
+            .sidebar-backdrop {
+                display: none !important;
+                position: fixed !important;
+                inset: 0 !important;
+                background: rgba(0, 0, 0, 0.4) !important;
+                backdrop-filter: blur(4px) !important;
+                z-index: 999 !important;
+            }
+            .sidebar-backdrop.active {
+                display: block !important;
+            }
+
+            /* Main content full width */
+            .main-content {
+                width: 100% !important;
+                margin-left: 0 !important;
+            }
+
+            .content-area {
+                padding: 10px 12px 20px !important;
+            }
+
+            .header {
+                padding: 0 12px !important;
+                height: 50px !important;
+            }
+
+            .header .page-subtitle {
+                display: none !important;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .sidebar {
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app">
+
+        <!-- ===== SIDEBAR ===== -->
+        <aside class="sidebar" id="sidebar">
+            <!-- Brand -->
+            <div class="brand">
+                <div class="brand-icon"><i class="fas fa-bolt"></i></div>
+                <div>
+                    <div class="brand-text">Price<span>Point</span></div>
+                    <div class="brand-sub">Administration</div>
+                </div>
+            </div>
+
+            <!-- Navigation -->
+            <div class="nav-label">Main</div>
+            <a href="#dashboard" class="nav-item active" onclick="showSection('dashboard')">
+                <i class="fas fa-th-large"></i><span>Dashboard</span>
+            </a>
+
+            <div class="nav-label">Management</div>
+            <a href="#orders" class="nav-item" onclick="showSection('orders')">
+                <i class="fas fa-shopping-cart"></i><span>Orders</span>
+                <span class="dot" id="orderDot"></span>
+                <span class="badge" id="orderCount">{{ stats.total_orders|default(0) }}</span>
+            </a>
+            <a href="#products" class="nav-item" onclick="showSection('products')">
+                <i class="fas fa-box"></i><span>Products</span>
+                <span class="badge" id="productCount">{{ stats.total_products|default(0) }}</span>
+            </a>
+            <a href="#customers" class="nav-item" onclick="showSection('customers')">
+                <i class="fas fa-users"></i><span>Customers</span>
+                <span class="badge" id="customerCount">{{ stats.total_customers|default(0) }}</span>
+            </a>
+
+            <div class="nav-label">Sales</div>
+            <a href="/admin/pos" target="_blank" class="nav-item pos-link">
+                <i class="fas fa-cash-register"></i><span>Point of Sale</span>
+                <span class="pos-badge">LAUNCH</span>
+                <span class="dot" id="posDot"></span>
+            </a>
+
+            <div class="nav-label">Analytics</div>
+            <a href="#analytics" class="nav-item" onclick="showSection('analytics')">
+                <i class="fas fa-chart-pie"></i><span>Analytics</span>
+                <span class="dot"></span>
+            </a>
+            <a href="#add-product" class="nav-item" onclick="showSection('add-product')">
+                <i class="fas fa-plus-circle"></i><span>Add Product</span>
+            </a>
+
+            <div class="spacer"></div>
+
+            <div class="footer">
+                <a href="/" class="nav-item"><i class="fas fa-store"></i><span>View Shop</span></a>
+            </div>
+        </aside>
+
+        <!-- ===== BACKDROP (mobile) ===== -->
+        <div class="sidebar-backdrop" id="backdrop"></div>
+
+        <!-- ===== MAIN CONTENT ===== -->
+        <main class="main-content">
+
+           <!-- ===== HEADER ===== -->
+<header class="header" id="header">
+    <div class="flex items-center gap-3">
+        <!-- ===== HAMBURGER MENU - ALWAYS VISIBLE ON MOBILE ===== -->
+        <button class="sidebar-toggle" id="hamburgerBtn" onclick="toggleSidebar()" aria-label="Toggle sidebar">
+            <i class="fas fa-bars"></i>
+        </button>
+        <div>
+            <div class="page-title" id="pageTitle">{% block page_title %}Dashboard{% endblock %}</div>
+            <div class="page-subtitle">Here's your store overview</div>
+        </div>
+    </div>
+
+    <div class="header-actions">
+        <div class="live-indicator">
+            <span class="dot"></span>
+            <span>Live</span>
+        </div>
+        <a href="{{ url_for('admin.admin_logout') }}" class="logout-btn">
+            <i class="fas fa-sign-out-alt"></i>
+            <span>Logout</span>
+        </a>
+    </div>
+</header>
+
+            <!-- ===== CONTENT ===== -->
+            <div class="content-area">
+                {% block content %}{% endblock %}
+            </div>
+
+        </main>
+    </div>
+
+    <!-- ===== MODALS ===== -->
+    <div id="orderModal" class="modal-overlay hidden" onclick="closeModal('orderModal')">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <button class="close-btn" onclick="closeModal('orderModal')">&times;</button>
+            <h3 class="text-lg font-bold text-[#0f172a] mb-4">
+                <i class="fas fa-receipt text-blue-500 mr-2"></i>Order Details
+            </h3>
+            <div id="orderDetails"><p class="text-gray-400 text-center py-4">Loading...</p></div>
+        </div>
+    </div>
+
+    <div id="editProductModal" class="modal-overlay hidden" onclick="closeModal('editProductModal')">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:700px;">
+            <button class="close-btn" onclick="closeModal('editProductModal')">&times;</button>
+            <h3 class="text-lg font-bold text-[#0f172a] mb-4">
+                <i class="fas fa-edit text-blue-500 mr-2"></i>Edit Product
+            </h3>
+            <form id="editProductForm" onsubmit="saveEditedProduct(event)">
+                <input type="hidden" id="editProdId" />
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div><label class="form-label">Product ID</label><input type="text" id="editProdIdDisplay" class="form-input" disabled style="background:#f1f5f9;" /></div>
+                    <div><label class="form-label">Product Name</label><input type="text" id="editProdName" class="form-input" required /></div>
+                    <div><label class="form-label">Category</label><select id="editProdCategory" class="form-input" required>
+                        <option value="Phones">📱 Phones</option>
+                        <option value="Laptops">💻 Laptops</option>
+                        <option value="Accessories">🎧 Accessories</option>
+                        <option value="Wearables">⌚ Wearables</option>
+                        <option value="Audio">🎵 Audio</option>
+                        <option value="Televisions">📺 Televisions</option>
+                        <option value="Gaming">🎮 Gaming</option>
+                        <option value="Tablets">📱 Tablets</option>
+                    </select></div>
+                    <div><label class="form-label">Selling Price (KES)</label><input type="number" id="editProdPrice" class="form-input" required /></div>
+                    <div><label class="form-label">Cost Price (KES)</label><input type="number" id="editProdCost" class="form-input" required /></div>
+                    <div><label class="form-label">Original Price (KES)</label><input type="number" id="editProdOriginal" class="form-input" /></div>
+                    <div><label class="form-label">Stock</label><input type="number" id="editProdStock" class="form-input" required /></div>
+                    <div><label class="form-label">Rating</label><input type="number" id="editProdRating" class="form-input" step="0.1" /></div>
+                    <div><label class="form-label">Badge</label><select id="editProdBadge" class="form-input">
+                        <option value="">None</option>
+                        <option value="Best Seller">⭐ Best Seller</option>
+                        <option value="New">🌟 New</option>
+                        <option value="Trending">🔥 Trending</option>
+                        <option value="Editor's Pick">✏️ Editor's Pick</option>
+                    </select></div>
+                    <div class="md:col-span-2"><label class="form-label">Image URL</label><input type="url" id="editProdImage" class="form-input" /></div>
+                    <div class="md:col-span-2"><label class="form-label">Description</label><textarea id="editProdDesc" class="form-input" rows="2"></textarea></div>
+                    <div class="md:col-span-2"><label class="form-label">Specifications</label><input type="text" id="editProdSpecs" class="form-input" /></div>
+                </div>
+                <div class="flex gap-3 mt-4 pt-4 border-t border-gray-100">
+                    <button type="submit" class="btn-gradient" id="editSaveBtn"><i class="fas fa-save"></i> Update</button>
+                    <button type="button" onclick="closeModal('editProductModal')" class="btn-outline">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="customerModal" class="modal-overlay hidden" onclick="closeModal('customerModal')">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:450px;">
+            <button class="close-btn" onclick="closeModal('customerModal')">&times;</button>
+            <h3 class="text-lg font-bold text-[#0f172a] mb-4">
+                <i class="fas fa-user-plus text-green-500 mr-2"></i>Add Customer
+            </h3>
+            <form id="customerForm" onsubmit="addCustomer(event)">
+                <div class="space-y-3">
+                    <div><label class="form-label"><i class="fas fa-user"></i> Full Name <span class="required">*</span></label>
+                        <input type="text" id="custName" class="form-input" placeholder="John Doe" required /></div>
+                    <div><label class="form-label"><i class="fas fa-envelope"></i> Email</label>
+                        <input type="email" id="custEmail" class="form-input" placeholder="john@example.com" /></div>
+                    <div><label class="form-label"><i class="fas fa-phone"></i> Phone</label>
+                        <input type="tel" id="custPhone" class="form-input" placeholder="+254 700 000 000" /></div>
+                </div>
+                <div class="flex gap-3 mt-4 pt-4 border-t border-gray-100">
+                    <button type="submit" class="btn-gradient flex-1"><i class="fas fa-save"></i> Add</button>
+                    <button type="button" onclick="closeModal('customerModal')" class="btn-outline flex-1">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ===== TOAST ===== -->
+    <div id="toast" class="toast hidden">
+        <div class="flex items-center gap-3">
+            <i class="toast-icon success fas fa-check-circle"></i>
+            <span class="toast-message"></span>
+        </div>
+    </div>
+
+    <!-- ===== JAVASCRIPT ===== -->
+    <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+
+    <!-- ============================================================
+         SIDEBAR TOGGLE - PURE JAVASCRIPT (NO CONFLICT)
+         ============================================================ -->
+    <script>
+        (function() {
+            'use strict';
+
+            // ============================================================
+            // SIDEBAR TOGGLE - SINGLE SOURCE OF TRUTH
+            // ============================================================
+            window.toggleSidebar = function() {
+                var sidebar = document.getElementById('sidebar');
+                var backdrop = document.getElementById('backdrop');
+                
+                if (!sidebar) {
+                    console.warn('Sidebar element not found');
+                    return;
+                }
+                
+                var isOpen = sidebar.classList.contains('open');
+                
+                if (isOpen) {
+                    sidebar.classList.remove('open');
+                    if (backdrop) backdrop.classList.remove('active');
+                } else {
+                    sidebar.classList.add('open');
+                    if (backdrop) backdrop.classList.add('active');
+                }
+            };
+
+            // ============================================================
+            // CLOSE SIDEBAR - For backdrop and nav clicks
+            // ============================================================
+            function closeSidebar() {
+                var sidebar = document.getElementById('sidebar');
+                var backdrop = document.getElementById('backdrop');
+                if (sidebar) sidebar.classList.remove('open');
+                if (backdrop) backdrop.classList.remove('active');
+            }
+
+            // ============================================================
+            // DOM READY - Setup event listeners
+            // ============================================================
+            document.addEventListener('DOMContentLoaded', function() {
+                var backdrop = document.getElementById('backdrop');
+                var hamburger = document.getElementById('hamburgerBtn');
+
+                // Debug
+                console.log('🔍 Hamburger button:', hamburger ? '✅ Found' : '❌ Missing');
+                console.log('🔍 Sidebar:', document.getElementById('sidebar') ? '✅ Found' : '❌ Missing');
+                console.log('🔍 Backdrop:', backdrop ? '✅ Found' : '❌ Missing');
+
+                // Close sidebar when clicking backdrop
+                if (backdrop) {
+                    backdrop.addEventListener('click', function() {
+                        closeSidebar();
+                    });
+                }
+
+                // Close sidebar when clicking nav items on mobile
+                document.querySelectorAll('.sidebar .nav-item').forEach(function(item) {
+                    item.addEventListener('click', function() {
+                        if (window.innerWidth <= 768) {
+                            closeSidebar();
+                        }
+                    });
+                });
+
+                // Close sidebar on resize to desktop
+                window.addEventListener('resize', function() {
+                    if (window.innerWidth > 768) {
+                        closeSidebar();
+                    }
+                });
+
+                // Close sidebar on Escape key
+                document.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape') {
+                        closeSidebar();
+                    }
+                });
+
+                console.log('✅ Sidebar toggle system ready');
+            });
+
+        })();
+
+        // ============================================================
+        // CLOSE MODAL HELPER
+        // ============================================================
+        function closeModal(id) {
+            var modal = document.getElementById(id);
+            if (modal) modal.classList.add('hidden');
+        }
+    </script>
+
+    <!-- ===== EXTRA SCRIPTS ===== -->
+    {% block scripts %}{% endblock %}
+
+</body>
+</html>
