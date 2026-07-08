@@ -883,7 +883,7 @@ def admin_pos():
 
 
 # ============================================================
-# POS ORDER ROUTE - FIXED FOR VERCEL (DIRECT SUPABASE)
+# POS ORDER ROUTE - HARDENED FOR VERCEL
 # ============================================================
 
 @admin_bp.route('/admin/pos/place-order', methods=['POST'])
@@ -915,7 +915,7 @@ def admin_pos_place_order():
         customer_address = data.get('customer_address', 'In-store purchase')
 
         # ============================================================
-        # BUILD ORDER DATA
+        # BUILD ORDER DATA - ALL FIELDS MATCH YOUR TABLE
         # ============================================================
         order_data = {
             'order_id': order_id,
@@ -936,22 +936,25 @@ def admin_pos_place_order():
                 'phone': customer_phone,
                 'address': customer_address,
             },
-            'user_id': user_id,
+            # user_id is character varying (text) - use as string
+            'user_id': str(user_id),
             'user_name': user_name,
             'user_role': user_role,
             'staff_name': user_name,
+            'synced': False,
+            'synced_at': None
         }
 
         print(f"👤 ORDER BY: {user_name} (ID: {user_id})")
         print(f"📦 Order ID: {order_id}")
 
         # ============================================================
-        # ON VERCEL: ONLY USE SUPABASE (skip JSON)
+        # ON VERCEL: Skip JSON, save directly to Supabase
         # ============================================================
         if IS_VERCEL:
             print("🚀 Vercel: Saving directly to Supabase")
             
-            # Check stock
+            # ---- Stock check ----
             try:
                 products_supabase = load_products()
                 product_lookup = {str(p.get('id')): p for p in products_supabase}
@@ -971,7 +974,7 @@ def admin_pos_place_order():
             except Exception as e:
                 print(f"⚠️ Stock check error: {e}")
 
-            # Update stock in Supabase
+            # ---- Update stock ----
             try:
                 products_supabase = load_products()
                 product_lookup = {str(p.get('id')): p for p in products_supabase}
@@ -984,7 +987,6 @@ def admin_pos_place_order():
                     if product:
                         current_stock = product.get('stock', 0)
                         new_stock = max(0, current_stock - quantity)
-                        # Direct update
                         update_response = requests.patch(
                             f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
                             headers=Config.SUPABASE_HEADERS,
@@ -993,10 +995,12 @@ def admin_pos_place_order():
                         )
                         if update_response.status_code in [200, 204]:
                             print(f"✅ Stock updated: {current_stock} → {new_stock}")
+                        else:
+                            print(f"⚠️ Stock update failed for {product_id}: {update_response.status_code} - {update_response.text}")
             except Exception as e:
                 print(f"⚠️ Stock update error: {e}")
 
-            # Add cost price to items
+            # ---- Attach cost price ----
             try:
                 products_supabase = load_products()
                 product_lookup = {str(p.get('id')): p for p in products_supabase}
@@ -1012,7 +1016,7 @@ def admin_pos_place_order():
             except Exception as e:
                 print(f"⚠️ Cost price error: {e}")
 
-            # Save to Supabase
+            # ---- Save order to Supabase ----
             response = requests.post(
                 f"{Config.SUPABASE_URL}/rest/v1/orders",
                 headers=Config.SUPABASE_HEADERS,
@@ -1024,10 +1028,10 @@ def admin_pos_place_order():
                 print(f"✅ Order saved to Supabase: {order_id}")
                 import utils.data
                 utils.data.orders_cache = []
-                
+
                 return jsonify({
-                    'success': True, 
-                    'order_id': order_id, 
+                    'success': True,
+                    'order_id': order_id,
                     'message': f'✅ Order #{order_id} placed! Total: KSh {total:,.0f}',
                     'synced': True,
                     'queued': False,
@@ -1035,10 +1039,12 @@ def admin_pos_place_order():
                     'total': total
                 })
             else:
+                # Surface the REAL Supabase error
                 print(f"❌ Supabase error: {response.status_code} - {response.text}")
                 return jsonify({
-                    'success': False, 
-                    'message': f'Database error: {response.status_code}'
+                    'success': False,
+                    'message': f'Database error: {response.status_code}',
+                    'supabase_error': response.text
                 }), 500
 
         # ============================================================
@@ -1090,7 +1096,7 @@ def admin_pos_place_order():
                             quantity = item.get('quantity', 1)
                             current_stock = product.get('stock', 0)
                             new_stock = max(0, current_stock - quantity)
-                            update_response = requests.patch(
+                            requests.patch(
                                 f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
                                 headers=Config.SUPABASE_HEADERS,
                                 json={'stock': new_stock},
@@ -1120,6 +1126,8 @@ def admin_pos_place_order():
                         
                         import utils.data
                         utils.data.orders_cache = []
+                    else:
+                        print(f"⚠️ Supabase insert failed: {response.status_code} - {response.text}")
                 except Exception as e:
                     print(f"⚠️ Supabase sync failed: {e}")
 
