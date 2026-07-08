@@ -177,66 +177,34 @@ def admin_logout():
 
 
 # ============================================================
-# ADMIN DASHBOARD - MERGES SUPABASE + OFFLINE ORDERS
+# ADMIN DASHBOARD - FIXED FOR VERCEL
 # ============================================================
 
 @admin_bp.route('/admin')
 @admin_required
 def admin_dashboard():
-    """Admin dashboard - reads from BOTH Supabase AND IndexedDB (via frontend)"""
+    """Admin dashboard - ALWAYS reads fresh from Supabase"""
     if not is_admin():
         flash('Admin access required', 'danger')
         return redirect(url_for('admin.user_login'))
 
     try:
         # ============================================================
-        # GET USER INFO
+        # FORCE CLEAR CACHE
         # ============================================================
-        user = session.get('user', {})
-        user_name = user.get('name', 'Admin User')
-        user_role = user.get('role', 'admin')
+        import utils.data
+        utils.data.orders_cache = []
+        utils.data.products_cache = []
         
         # ============================================================
-        # LOAD FROM SUPABASE (Primary)
+        # LOAD FRESH FROM SUPABASE
         # ============================================================
         all_products = load_products()
         all_orders = load_orders()
         
-        # ============================================================
-        # ALSO GET OFFLINE ORDERS FROM INDEXEDDB (via API)
-        # ============================================================
-        offline_orders = []
-        try:
-            # Get offline orders from the frontend via a special endpoint
-            # We'll use session to store offline orders temporarily
-            offline_orders_json = session.get('offline_orders', '[]')
-            offline_orders = json.loads(offline_orders_json) if offline_orders_json else []
-            print(f"📁 Loaded {len(offline_orders)} offline orders from session")
-        except Exception as e:
-            print(f"⚠️ Could not load offline orders: {e}")
+        print(f"📡 FRESH LOAD: {len(all_products)} products, {len(all_orders)} orders from Supabase")
         
-        # ============================================================
-        # MERGE ORDERS (Supabase + Offline)
-        # ============================================================
-        # Create a dict to merge orders by order_id
-        order_dict = {}
-        
-        # Add Supabase orders
-        for order in all_orders:
-            order_id = order.get('order_id')
-            if order_id:
-                order_dict[order_id] = order
-        
-        # Add/update with offline orders (they take precedence)
-        for order in offline_orders:
-            order_id = order.get('order_id')
-            if order_id:
-                order_dict[order_id] = order
-        
-        # Convert back to list
-        all_orders = list(order_dict.values())
-        print(f"🔄 Merged {len(all_orders)} total orders (Supabase + Offline)")
-        
+        # If no products, seed demo
         if not all_products:
             all_products = seed_demo_products()
             try:
@@ -255,12 +223,14 @@ def admin_dashboard():
         cart = get_cart()
         analytics = get_sales_analytics()
 
+        # ===== PAGINATION SETTINGS =====
         per_page = 10
         
         products_page = request.args.get('products_page', 1, type=int)
         orders_page = request.args.get('orders_page', 1, type=int)
         customers_page = request.args.get('customers_page', 1, type=int)
 
+        # ===== CUSTOMER LIST =====
         customer_dict = {}
         pos_count = 0
         web_count = 0
@@ -330,6 +300,7 @@ def admin_dashboard():
         customers.sort(key=lambda x: x['orders'], reverse=True)
         total_customers = len(customers)
         
+        # ===== REAL STATS =====
         total_orders = len([o for o in all_orders if o.get('status') != 'cancelled'])
         total_revenue = sum(o.get('total', 0) for o in all_orders if o.get('status') != 'cancelled')
         pending_orders = len([o for o in all_orders if o.get('status') == 'pending'])
@@ -419,6 +390,7 @@ def admin_dashboard():
         else:
             month_growth = 100.0 if month_revenue > 0 else 0
         
+        # ===== PAGINATION =====
         total_customer_pages = (total_customers + per_page - 1) // per_page if total_customers > 0 else 1
         if customers_page < 1:
             customers_page = 1
@@ -476,8 +448,9 @@ def admin_dashboard():
             'today_growth_pct': today_growth,
             'month_growth_pct': month_growth,
             'db_mode': 'online',
-            'offline_orders_count': len(offline_orders),
         }
+
+        print(f"📊 DASHBOARD STATS - Orders: {total_orders}, Revenue: KSh {total_revenue}")
 
         return render_template('admin.html',
             products=paginated_products,
@@ -536,7 +509,6 @@ def admin_dashboard():
                 'today_growth_pct': 0,
                 'month_growth_pct': 0,
                 'db_mode': 'offline',
-                'offline_orders_count': 0,
             }, 
             DB_CONNECTED=False
         )
@@ -736,6 +708,23 @@ def admin_pos_place_order():
 
 
 # ============================================================
+# CLEAR CACHE ENDPOINT
+# ============================================================
+
+@admin_bp.route('/admin/api/clear-cache', methods=['POST'])
+def clear_cache():
+    """Clear cache"""
+    try:
+        import utils.data
+        utils.data.orders_cache = []
+        utils.data.products_cache = []
+        session.pop('offline_orders', None)
+        return jsonify({'success': True, 'message': 'Cache cleared'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================
 # SYNC ORDER FROM INDEXEDDB TO SUPABASE
 # ============================================================
 
@@ -880,7 +869,6 @@ def api_sync_queue():
         is_dashboard = data.get('dashboard', False)
         
         if is_dashboard:
-            # For dashboard, just return the orders to merge
             print(f"📊 Dashboard merging {len(orders_to_sync)} offline orders")
             # Store in session for dashboard to merge
             session['offline_orders'] = json.dumps(orders_to_sync)
@@ -1891,7 +1879,10 @@ def offline_page():
         return render_template('offline.html')
     except Exception as e:
         print(f"❌ Error serving offline.html: {e}")
-        return "Offline page not found", 404@admin_bp.route('/sw.js')
+        return "Offline page not found", 404
+
+
+@admin_bp.route('/sw.js')
 def service_worker():
     try:
         return send_from_directory('static', 'sw.js', mimetype='application/javascript')
