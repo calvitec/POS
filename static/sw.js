@@ -1,8 +1,8 @@
 // ============================================================
-// SERVICE WORKER - PricePoint POS (With Offline Support)
+// SERVICE WORKER - PricePoint POS (Complete Offline Solution)
 // ============================================================
 
-const CACHE_NAME = 'pricepoint-v3';
+const CACHE_NAME = 'pricepoint-v4';
 const OFFLINE_URL = '/offline.html';
 
 // ===== PAGES TO CACHE =====
@@ -64,7 +64,7 @@ self.addEventListener('activate', event => {
 });
 
 // ============================================================
-// FETCH - With Offline Support
+// FETCH - Smart offline strategy
 // ============================================================
 
 self.addEventListener('fetch', event => {
@@ -77,12 +77,27 @@ self.addEventListener('fetch', event => {
         return;
     }
     
+    // Skip Supabase requests - handled by IndexedDB
+    if (url.hostname.includes('supabase.co')) {
+        event.respondWith(
+            fetch(request).catch(() => {
+                return new Response(JSON.stringify({
+                    offline: true,
+                    message: 'You are offline. Using cached data.'
+                }), {
+                    status: 503,
+                    headers: { 'Content-Type': 'application/json' }
+                });
+            })
+        );
+        return;
+    }
+    
     // API requests - try network, fallback to cache
     if (url.pathname.startsWith('/admin/api/') || url.pathname.startsWith('/api/')) {
         event.respondWith(
             fetch(request)
                 .then(response => {
-                    // Cache successful API responses
                     if (response && response.status === 200) {
                         const cloned = response.clone();
                         caches.open(CACHE_NAME)
@@ -92,17 +107,15 @@ self.addEventListener('fetch', event => {
                     return response;
                 })
                 .catch(() => {
-                    // Offline - return cached response if available
                     return caches.match(request)
                         .then(cached => {
                             if (cached) {
-                                console.log('[SW] Serving cached API response:', url.pathname);
+                                console.log('[SW] Serving cached API:', url.pathname);
                                 return cached;
                             }
-                            // Return offline response
                             return new Response(JSON.stringify({
                                 offline: true,
-                                message: 'You are offline. Please connect to the internet.'
+                                message: 'You are offline.'
                             }), {
                                 status: 503,
                                 headers: { 'Content-Type': 'application/json' }
@@ -113,13 +126,7 @@ self.addEventListener('fetch', event => {
         return;
     }
     
-    // Supabase requests - skip caching
-    if (url.hostname.includes('supabase.co')) {
-        event.respondWith(fetch(request));
-        return;
-    }
-    
-    // HTML pages - Network first, fallback to cache
+    // HTML pages - Network first
     const isHTML = request.headers.get('Accept')?.includes('text/html');
     
     if (isHTML) {
@@ -136,10 +143,7 @@ self.addEventListener('fetch', event => {
                 .catch(() => {
                     return caches.match(request)
                         .then(cached => {
-                            if (cached) {
-                                console.log('[SW] Serving cached HTML:', url.pathname);
-                                return cached;
-                            }
+                            if (cached) return cached;
                             return caches.match(OFFLINE_URL);
                         });
                 })
@@ -168,10 +172,6 @@ self.addEventListener('fetch', event => {
             })
     );
 });
-
-// ============================================================
-// MESSAGE HANDLING
-// ============================================================
 
 self.addEventListener('message', event => {
     console.log('[SW] Message received:', event.data);
