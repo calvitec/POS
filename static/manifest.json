@@ -7,6 +7,7 @@
   "orientation": "portrait",
   "background_color": "#0f172a",
   "theme_color": "#059669",
+  "scope": "/",
   "icons": [
     {
       "src": "https://placehold.co/72x72/059669/white?text=PP",
@@ -50,7 +51,5 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ],
-  "scope": "/",
-  "start_url": "/admin"
+  ]
 }
