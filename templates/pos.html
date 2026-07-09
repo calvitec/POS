@@ -5,363 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes" />
     <title>POS Pro · Point of Sale</title>
     
-    <!-- ============================================================
-         FALLBACK STYLES - WORKS WITHOUT INTERNET
-         ============================================================ -->
-    <style>
-        /* ============================================================
-           FALLBACK STYLES - WORKS WITHOUT INTERNET
-           ============================================================ */
-        
-        /* Base styles that work offline */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: #f0f2f5;
-            color: #0f172a;
-            min-height: 100vh;
-            font-size: 14px;
-            line-height: 1.5;
-        }
-        
-        /* Grid system fallback */
-        .grid {
-            display: grid;
-        }
-        .grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
-        .grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
-        .grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
-        .gap-2 { gap: 8px; }
-        .gap-3 { gap: 12px; }
-        .gap-4 { gap: 16px; }
-        .gap-1\.5 { gap: 6px; }
-        
-        /* Flexbox fallback */
-        .flex { display: flex; }
-        .flex-col { flex-direction: column; }
-        .flex-wrap { flex-wrap: wrap; }
-        .items-center { align-items: center; }
-        .items-start { align-items: flex-start; }
-        .justify-between { justify-content: space-between; }
-        .justify-center { justify-content: center; }
-        .flex-1 { flex: 1; }
-        .flex-shrink-0 { flex-shrink: 0; }
-        .flex-shrink { flex-shrink: 1; }
-        .min-w-0 { min-width: 0; }
-        
-        /* Spacing */
-        .p-1 { padding: 4px; }
-        .p-1\.5 { padding: 6px; }
-        .p-2 { padding: 8px; }
-        .p-3 { padding: 12px; }
-        .p-4 { padding: 16px; }
-        .px-2 { padding-left: 8px; padding-right: 8px; }
-        .px-3 { padding-left: 12px; padding-right: 12px; }
-        .px-4 { padding-left: 16px; padding-right: 16px; }
-        .py-1 { padding-top: 4px; padding-bottom: 4px; }
-        .py-2 { padding-top: 8px; padding-bottom: 8px; }
-        .py-3 { padding-top: 12px; padding-bottom: 12px; }
-        .mx-auto { margin-left: auto; margin-right: auto; }
-        .mt-2 { margin-top: 8px; }
-        .mt-3 { margin-top: 12px; }
-        .mt-4 { margin-top: 16px; }
-        .mb-1 { margin-bottom: 4px; }
-        .mb-2 { margin-bottom: 8px; }
-        .mb-3 { margin-bottom: 12px; }
-        .mb-4 { margin-bottom: 16px; }
-        .ml-auto { margin-left: auto; }
-        .mr-2 { margin-right: 8px; }
-        
-        /* Width / Height */
-        .w-full { width: 100%; }
-        .w-5 { width: 20px; }
-        .w-8 { width: 32px; }
-        .w-10 { width: 40px; }
-        .h-5 { height: 20px; }
-        .h-8 { height: 32px; }
-        .h-10 { height: 40px; }
-        .h-14 { height: 56px; }
-        .max-w-7xl { max-width: 80rem; }
-        .max-w-full { max-width: 100%; }
-        .max-h-40 { max-height: 160px; }
-        .max-h-48 { max-height: 192px; }
-        .max-h-60 { max-height: 240px; }
-        .max-h-64 { max-height: 256px; }
-        .max-h-\[420px\] { max-height: 420px; }
-        .overflow-hidden { overflow: hidden; }
-        .overflow-y-auto { overflow-y: auto; }
-        .sticky { position: sticky; }
-        .top-0 { top: 0; }
-        .top-4 { top: 16px; }
-        .bottom-0 { bottom: 0; }
-        .end-0 { right: 0; }
-        .relative { position: relative; }
-        .absolute { position: absolute; }
-        .fixed { position: fixed; }
-        .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
-        .z-10 { z-index: 10; }
-        .z-50 { z-index: 50; }
-        .z-100 { z-index: 100; }
-        .z-9999 { z-index: 9999; }
-        
-        /* Text */
-        .text-xs { font-size: 0.75rem; }
-        .text-sm { font-size: 0.875rem; }
-        .text-base { font-size: 1rem; }
-        .text-lg { font-size: 1.125rem; }
-        .text-xl { font-size: 1.25rem; }
-        .text-2xl { font-size: 1.5rem; }
-        .text-5xl { font-size: 3rem; }
-        .text-7xl { font-size: 4.5rem; }
-        .font-bold { font-weight: 700; }
-        .font-semibold { font-weight: 600; }
-        .font-medium { font-weight: 500; }
-        .font-extrabold { font-weight: 800; }
-        .text-gray-300 { color: #d1d5db; }
-        .text-gray-400 { color: #9ca3af; }
-        .text-gray-500 { color: #6b7280; }
-        .text-gray-600 { color: #4b5563; }
-        .text-gray-700 { color: #374151; }
-        .text-green-600 { color: #059669; }
-        .text-green-500 { color: #10b981; }
-        .text-green-400 { color: #34d399; }
-        .text-blue-500 { color: #3b82f6; }
-        .text-blue-600 { color: #2563eb; }
-        .text-blue-700 { color: #1d4ed8; }
-        .text-purple-500 { color: #8b5cf6; }
-        .text-purple-600 { color: #7c3aed; }
-        .text-amber-500 { color: #f59e0b; }
-        .text-amber-600 { color: #d97706; }
-        .text-amber-700 { color: #b45309; }
-        .text-red-500 { color: #ef4444; }
-        .text-red-600 { color: #dc2626; }
-        .text-rose-500 { color: #f43f5e; }
-        .text-rose-600 { color: #e11d48; }
-        .text-white { color: #ffffff; }
-        .text-[#0f172a] { color: #0f172a; }
-        .text-center { text-align: center; }
-        .text-right { text-align: right; }
-        .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .capitalize { text-transform: capitalize; }
-        .uppercase { text-transform: uppercase; }
-        
-        /* Backgrounds */
-        .bg-white { background: #ffffff; }
-        .bg-gray-50 { background: #f9fafb; }
-        .bg-gray-100 { background: #f3f4f6; }
-        .bg-gray-200 { background: #e5e7eb; }
-        .bg-blue-50 { background: #eff6ff; }
-        .bg-blue-100 { background: #dbeafe; }
-        .bg-green-50 { background: #ecfdf5; }
-        .bg-green-500 { background: #10b981; }
-        .bg-amber-50 { background: #fffbeb; }
-        .bg-amber-100 { background: #fef3c7; }
-        .bg-amber-500 { background: #f59e0b; }
-        .bg-red-50 { background: #fef2f2; }
-        .bg-red-500 { background: #ef4444; }
-        .bg-purple-50 { background: #faf5ff; }
-        .bg-purple-100 { background: #f3e8ff; }
-        .bg-teal-50 { background: #f0fdfa; }
-        .bg-rose-50 { background: #fff1f2; }
-        
-        /* Borders */
-        .border { border: 1px solid #e5e7eb; }
-        .border-0 { border: 0; }
-        .border-2 { border-width: 2px; }
-        .border-gray-100 { border-color: #f3f4f6; }
-        .border-gray-200 { border-color: #e5e7eb; }
-        .border-gray-300 { border-color: #d1d5db; }
-        .border-blue-200 { border-color: #bfdbfe; }
-        .border-blue-500 { border-color: #3b82f6; }
-        .border-green-500 { border-color: #10b981; }
-        .border-amber-400 { border-color: #fbbf24; }
-        .border-yellow-300 { border-color: #fcd34d; }
-        .border-purple-300 { border-color: #d8b4fe; }
-        .border-transparent { border-color: transparent; }
-        .border-t { border-top: 1px solid #e5e7eb; }
-        .border-t-2 { border-top-width: 2px; }
-        .border-l { border-left: 1px solid #e5e7eb; }
-        .border-r { border-right: 1px solid #e5e7eb; }
-        .border-b { border-bottom: 1px solid #e5e7eb; }
-        .rounded { border-radius: 4px; }
-        .rounded-lg { border-radius: 8px; }
-        .rounded-xl { border-radius: 12px; }
-        .rounded-full { border-radius: 9999px; }
-        .rounded-none { border-radius: 0; }
-        
-        /* Shadows */
-        .shadow { box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); }
-        .shadow-xl { box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); }
-        
-        /* Hide/Show */
-        .hidden { display: none !important; }
-        .block { display: block; }
-        .inline { display: inline; }
-        .inline-flex { display: inline-flex; }
-        .inline-block { display: inline-block; }
-        
-        /* Misc */
-        .cursor-pointer { cursor: pointer; }
-        .cursor-not-allowed { cursor: not-allowed; }
-        .outline-none { outline: none; }
-        .transition { transition: all 0.2s ease; }
-        .transition-all { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-        .opacity-50 { opacity: 0.5; }
-        .opacity-70 { opacity: 0.7; }
-        .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-        .animate-float { animation: float 3s ease-in-out infinite; }
-        
-        /* Animations */
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        @keyframes float {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-4px); }
-        }
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes cardPop {
-            0% { opacity: 0; transform: scale(0.95) translateY(10px); }
-            100% { opacity: 1; transform: scale(1) translateY(0); }
-        }
-        
-        /* Media Queries */
-        @media (min-width: 640px) {
-            .sm\:flex-row { flex-direction: row; }
-            .sm\:items-center { align-items: center; }
-            .sm\:table-cell { display: table-cell; }
-            .sm\:inline { display: inline; }
-            .sm\:grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
-            .sm\:max-h-64 { max-height: 256px; }
-            .sm\:max-h-80 { max-height: 320px; }
-            .sm\:max-h-\[500px\] { max-height: 500px; }
-            .sm\:max-w-md { max-width: 448px; }
-            .sm\:p-3 { padding: 12px; }
-            .sm\:p-4 { padding: 16px; }
-            .sm\:text-xs { font-size: 0.75rem; }
-            .sm\:text-sm { font-size: 0.875rem; }
-            .sm\:text-base { font-size: 1rem; }
-            .sm\:text-lg { font-size: 1.125rem; }
-            .sm\:text-xl { font-size: 1.25rem; }
-            .sm\:text-2xl { font-size: 1.5rem; }
-            .sm\:text-7xl { font-size: 4.5rem; }
-            .sm\:w-10 { width: 40px; }
-            .sm\:h-10 { height: 40px; }
-            .sm\:w-auto { width: auto; }
-            .sm\:flex-none { flex: none; }
-            .sm\:pl-9 { padding-left: 36px; }
-            .sm\:pr-4 { padding-right: 16px; }
-        }
-        
-        @media (max-width: 640px) {
-            .xs\:grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
-            .sm\:hidden { display: none !important; }
-        }
-        
-        @media (min-width: 768px) {
-            .md\:grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
-            .md\:grid-cols-5 { grid-template-columns: repeat(5, 1fr); }
-            .md\:table-cell { display: table-cell; }
-            .md\:col-span-2 { grid-column: span 2 / span 2; }
-            .md\:max-w-none { max-width: none; }
-            .md\:text-sm { font-size: 0.875rem; }
-        }
-        
-        @media (min-width: 1024px) {
-            .lg\:grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
-            .lg\:grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
-            .lg\:table-cell { display: table-cell; }
-            .lg\:col-span-2 { grid-column: span 2 / span 2; }
-            .lg\:col-span-1 { grid-column: span 1 / span 1; }
-            .lg\:text-sm { font-size: 0.875rem; }
-            .lg\:text-base { font-size: 1rem; }
-            .lg\:text-lg { font-size: 1.125rem; }
-        }
-        
-        /* Simple Font Awesome fallback */
-        .fas, .far, .fab, .fa {
-            display: inline-block;
-            font-style: normal;
-            font-weight: 900;
-            font-size: 1em;
-            line-height: 1;
-            text-rendering: auto;
-            -webkit-font-smoothing: antialiased;
-        }
-        
-        /* Simple icon fallback */
-        .fa-check-circle:before { content: "✓"; color: #059669; }
-        .fa-times-circle:before { content: "✕"; color: #dc2626; }
-        .fa-exclamation-triangle:before { content: "⚠"; }
-        .fa-info-circle:before { content: "ℹ"; }
-        .fa-search:before { content: "🔍"; }
-        .fa-box:before { content: "📦"; }
-        .fa-user:before { content: "👤"; }
-        .fa-arrow-left:before { content: "←"; }
-        .fa-sign-out-alt:before { content: "🚪"; }
-        .fa-store:before { content: "🏪"; }
-        .fa-clock:before { content: "🕐"; }
-        .fa-cloud-upload-alt:before { content: "☁"; }
-        .fa-sync-alt:before { content: "🔄"; }
-        .fa-coins:before { content: "💰"; }
-        .fa-receipt:before { content: "🧾"; }
-        .fa-undo-alt:before { content: "↩"; }
-        .fa-users:before { content: "👥"; }
-        .fa-shopping-cart:before { content: "🛒"; }
-        .fa-cash-register:before { content: "🧮"; }
-        .fa-user-plus:before { content: "➕👤"; }
-        .fa-percent:before { content: "%"; }
-        .fa-trash-alt:before { content: "🗑"; }
-        .fa-barcode:before { content: "📷"; }
-        .fa-undo:before { content: "↩"; }
-        .fa-pause:before { content: "⏸"; }
-        .fa-plus:before { content: "+"; }
-        .fa-save:before { content: "💾"; }
-        .fa-upload:before { content: "☁↑"; }
-        .fa-eye:before { content: "👁"; }
-        .fa-pen:before { content: "✏"; }
-        .fa-trash:before { content: "🗑"; }
-        .fa-chart-line:before { content: "📈"; }
-        .fa-pie-chart:before { content: "📊"; }
-        .fa-trophy:before { content: "🏆"; }
-        .fa-calendar-day:before { content: "📅"; }
-        .fa-calendar-alt:before { content: "📆"; }
-        .fa-shopping-bag:before { content: "🛍"; }
-        .fa-boxes:before { content: "📦📦"; }
-        .fa-home:before { content: "🏠"; }
-        .fa-mobile-screen:before { content: "📱"; }
-        .fa-laptop:before { content: "💻"; }
-        .fa-headphones:before { content: "🎧"; }
-        .fa-watch:before { content: "⌚"; }
-        .fa-music:before { content: "🎵"; }
-        .fa-tv:before { content: "📺"; }
-        .fa-gamepad:before { content: "🎮"; }
-        .fa-tablet:before { content: "📱"; }
-        .fa-coin:before { content: "🪙"; }
-        .fa-check:before { content: "✅"; }
-        .fa-times:before { content: "❌"; }
-        .fa-plus-circle:before { content: "➕"; }
-        .fa-minus:before { content: "➖"; }
-        .fa-chevron-left:before { content: "◀"; }
-        .fa-chevron-right:before { content: "▶"; }
-        .fa-arrow-up:before { content: "↑"; }
-        .fa-arrow-down:before { content: "↓"; }
-        .fa-spinner:before { content: "⟳"; }
-        .fa-circle:before { content: "●"; }
-        .fa-dot-circle:before { content: "◉"; }
-        .fa-circle-notch:before { content: "⟳"; }
-    </style>
-    
     <!-- ===== PWA META TAGS ===== -->
     <link rel="manifest" href="/manifest.json" crossorigin="use-credentials">
     <meta name="theme-color" content="#059669">
@@ -372,53 +15,125 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
-    
-    <!-- ===== CDN FALLBACK ===== -->
-    <script>
-    // ============================================================
-    // CDN FALLBACK - When offline, use built-in styles
-    // ============================================================
-    document.addEventListener('DOMContentLoaded', function() {
-        if (!navigator.onLine) {
-            console.log('📡 Offline - using fallback styles');
-            document.body.classList.add('offline-mode');
-        }
-        
-        // When coming online, reload to get CDN assets
-        window.addEventListener('online', function() {
-            console.log('🌐 Online - reloading CDN assets');
-            setTimeout(function() {
-                location.reload();
-            }, 1000);
-        });
-    });
-    </script>
+    <!-- Barcode Scanner Library -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     
     <!-- ===== SERVICE WORKER REGISTRATION ===== -->
     <script>
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-            .then(reg => {
-                console.log('✅ Service Worker registered successfully!', reg);
-                reg.addEventListener('updatefound', () => {
-                    const newWorker = reg.installing;
-                    newWorker.addEventListener('statechange', () => {
-                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                            console.log('🔄 New update available!');
-                            if (confirm('New version available! Refresh to update?')) {
-                                window.location.reload();
-                            }
-                        }
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(reg => {
+                        console.log('✅ Service Worker registered successfully!', reg);
+                        
+                        reg.addEventListener('updatefound', () => {
+                            const newWorker = reg.installing;
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    console.log('🔄 New update available!');
+                                    if (confirm('New version available! Refresh to update?')) {
+                                        window.location.reload();
+                                    }
+                                }
+                            });
+                        });
+                    })
+                    .catch(err => {
+                        console.error('❌ Service Worker registration failed:', err);
                     });
-                });
-            })
-            .catch(err => {
-                console.error('❌ Service Worker registration failed:', err);
             });
-    });
-}
-</script>
+        }
+    </script>
+
+    <!-- ============================================================
+         OFFLINE ORDER SYNC - POS
+    ============================================================ -->
+    <script>
+        // Sync function
+        async function syncNow() {
+            console.log('🔍 Checking for offline orders...');
+            
+            const r = indexedDB.open('PricePointDB', 1);
+            r.onsuccess = function(e) {
+                const db = e.target.result;
+                const tx = db.transaction(['orders'], 'readonly');
+                const store = tx.objectStore('orders');
+                
+                store.getAll().onsuccess = function(r2) {
+                    const orders = r2.target.result;
+                    const unsynced = orders.filter(o => !o.synced);
+                    
+                    if (unsynced.length === 0) {
+                        console.log('✅ No offline orders to sync');
+                        db.close();
+                        return;
+                    }
+                    
+                    console.log(`📦 Found ${unsynced.length} offline order(s) to sync`);
+                    
+                    fetch('/admin/api/sync-queue', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ orders: unsynced })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('✅ Sync result:', data);
+                        if (data.synced > 0) {
+                            const wtx = db.transaction(['orders'], 'readwrite');
+                            const wstore = wtx.objectStore('orders');
+                            unsynced.forEach(order => {
+                                order.synced = true;
+                                order.syncedAt = new Date().toISOString();
+                                wstore.put(order);
+                            });
+                            console.log(`✅ Marked ${data.synced} orders as synced`);
+                            showNotification(`✅ ${data.synced} orders synced!`);
+                        }
+                        db.close();
+                    })
+                    .catch(err => {
+                        console.log('❌ Sync failed:', err);
+                        db.close();
+                    });
+                };
+            };
+        }
+
+        // Auto-sync when coming online
+        window.addEventListener('online', function() {
+            console.log('🌐 Back online - syncing offline orders...');
+            syncNow();
+        });
+
+        // Auto-sync when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                if (navigator.onLine) {
+                    syncNow();
+                }
+            }, 2000);
+        });
+
+        // After placing an order, check for pending sync
+        function afterOrderPlaced() {
+            if (navigator.onLine) {
+                setTimeout(syncNow, 2000);
+            }
+        }
+
+        // Notification helper
+        function showNotification(message) {
+            const toast = document.createElement('div');
+            toast.className = 'alert alert-success position-fixed top-0 end-0 m-3';
+            toast.style.zIndex = '9999';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        console.log('✅ POS sync functions loaded');
+    </script>
     
     <style>
         * { font-family: 'Inter', sans-serif; margin: 0; padding: 0; box-sizing: border-box; }
@@ -496,6 +211,7 @@ if ('serviceWorker' in navigator) {
         .pos-header .header-btn.logout-btn { color: #f87171; }
         .pos-header .header-btn.logout-btn:hover { background: rgba(239,68,68,0.15); color: #fca5a5; }
 
+        /* ===== SYNC STATUS ===== */
         #syncStatus {
             background: #dc2626;
             color: white;
@@ -940,6 +656,7 @@ if ('serviceWorker' in navigator) {
         </div>
         <div class="header-actions">
             <span class="time"><i class="far fa-clock"></i> <span id="clockDisplay"></span></span>
+            <!-- Sync Status -->
             <span id="syncStatus" onclick="manualSync()">
                 <i class="fas fa-cloud-upload-alt"></i>
                 <span id="unsyncedCount">0</span> offline order(s)
@@ -1034,15 +751,14 @@ if ('serviceWorker' in navigator) {
             <div class="quick-action-btn" onclick="document.getElementById('posSearch').focus();">
                 <i class="fas fa-search"></i> Search
             </div>
-            <div class="quick-action-btn" onclick="scanBarcode()">
+            <div class="quick-action-btn" onclick="openBarcodeScanner()">
                 <i class="fas fa-barcode"></i> Scan
             </div>
             <div class="quick-action-btn" onclick="toggleDiscountModal()">
                 <i class="fas fa-percent"></i> Discount
             </div>
             <div class="quick-action-btn" onclick="voidLastItem()">
-                <i class="fas fa-undo"></i> Void Last
-            </div>
+                <i class="fas fa-undo"></i> Void Last            </div>
             <div class="quick-action-btn" onclick="toggleReturnModal()">
                 <i class="fas fa-undo-alt"></i> Return
             </div>
@@ -1051,6 +767,56 @@ if ('serviceWorker' in navigator) {
             </div>
             <div class="quick-action-btn sync-btn" onclick="manualSync()">
                 <i class="fas fa-cloud-upload-alt"></i> Sync
+            </div>
+        </div>
+
+        <!-- ===== BARCODE SCANNER MODAL ===== -->
+        <div id="barcodeModal" class="modal-overlay hidden" onclick="closeBarcodeScanner()">
+            <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 500px;">
+                <button class="close-btn" onclick="closeBarcodeScanner()">&times;</button>
+                <h3 class="text-lg font-bold text-[#0f172a] mb-4 flex items-center gap-2">
+                    <i class="fas fa-barcode text-blue-500"></i> Scan Barcode
+                </h3>
+                <p class="text-sm text-gray-500 mb-3">Position the barcode in front of your camera</p>
+                <div id="scanner-container" style="width: 100%; max-width: 400px; margin: 0 auto;">
+                    <div id="barcode-reader" style="width: 100%;"></div>
+                </div>
+                <div class="mt-3 flex flex-wrap gap-2">
+                    <button onclick="startScanner()" class="btn-primary flex-1" id="startScannerBtn" style="background: linear-gradient(135deg, #2563eb, #4f46e5);">
+                        <i class="fas fa-play"></i> Start Camera
+                    </button>
+                    <button onclick="closeBarcodeScanner()" class="btn-outline flex-1">Cancel</button>
+                </div>
+                <div id="scannerResult" class="mt-3 p-3 bg-gray-50 rounded-lg hidden">
+                    <p class="text-sm font-semibold text-green-600">✅ Scanned:</p>
+                    <p id="scannedValue" class="text-sm font-mono break-all"></p>
+                </div>
+                <div class="mt-3 text-center">
+                    <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="text-blue-500 hover:text-blue-700 text-sm">
+                        <i class="fas fa-keyboard"></i> Or enter barcode manually
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== BARCODE INPUT MODAL (Manual Entry) ===== -->
+        <div id="barcodeInputModal" class="modal-overlay hidden" onclick="closeBarcodeInputModal()">
+            <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 380px;">
+                <button class="close-btn" onclick="closeBarcodeInputModal()">&times;</button>
+                <h3 class="text-lg font-bold text-[#0f172a] mb-4 flex items-center gap-2">
+                    <i class="fas fa-keyboard text-amber-500"></i> Enter Barcode
+                </h3>
+                <p class="text-sm text-gray-500 mb-3">Type the product ID or barcode number</p>
+                <input type="text" id="manualBarcode" class="form-input" placeholder="Enter product ID or barcode..." autofocus>
+                <div class="mt-4 flex gap-3">
+                    <button onclick="submitManualBarcode()" class="btn-primary flex-1">
+                        <i class="fas fa-search"></i> Find Product
+                    </button>
+                    <button onclick="closeBarcodeInputModal()" class="btn-outline flex-1">Cancel</button>
+                </div>
+                <div class="mt-3 text-xs text-gray-400 text-center">
+                    💡 Tip: You can search by product ID, name, or barcode
+                </div>
             </div>
         </div>
 
@@ -1269,8 +1035,9 @@ if ('serviceWorker' in navigator) {
     <div id="toast" class="toast hidden">
         <span id="toastMessage">Added to cart!</span>
     </div>
+    
 
-<script>
+    <script>
         // ============================================================
         // DATA
         // ============================================================
@@ -1283,491 +1050,6 @@ if ('serviceWorker' in navigator) {
         let returnItems = [];
         let heldOrders = [];
         let totalDiscount = 0;
-
-        // ============================================================
-        // INDEXEDDB FUNCTIONS - SELF-HEALING VERSION
-        // ============================================================
-        function openDB() {
-            return new Promise((resolve, reject) => {
-                // First, check what version the database is on
-                const checkRequest = indexedDB.open('PricePointDB');
-                
-                checkRequest.onsuccess = function(e) {
-                    const db = e.target.result;
-                    const currentVersion = db.version;
-                    db.close();
-                    
-                    // Use the CURRENT version, not hardcoded
-                    const versionToUse = Math.max(currentVersion, 3);
-                    console.log('📁 Current DB version:', currentVersion, 'using version:', versionToUse);
-                    
-                    const request = indexedDB.open('PricePointDB', versionToUse);
-                    
-                    request.onupgradeneeded = function(event) {
-                        const database = event.target.result;
-                        
-                        if (!database.objectStoreNames.contains('orders')) {
-                            const store = database.createObjectStore('orders', { keyPath: 'order_id' });
-                            store.createIndex('synced', 'synced', { unique: false });
-                            store.createIndex('created_at', 'created_at', { unique: false });
-                            console.log('✅ Orders store created');
-                        }
-                        
-                        if (!database.objectStoreNames.contains('sync_data')) {
-                            database.createObjectStore('sync_data', { keyPath: 'id' });
-                            console.log('✅ Sync data store created');
-                        }
-                    };
-                    
-                    request.onsuccess = function(event) {
-                        console.log('✅ IndexedDB connected (version', versionToUse, ')');
-                        resolve(event.target.result);
-                    };
-                    
-                    request.onerror = function(event) {
-                        console.error('❌ IndexedDB error:', event.target.error);
-                        reject(event.target.error);
-                    };
-                };
-                
-                checkRequest.onerror = function(e) {
-                    // Database doesn't exist yet - open with version 3
-                    const request = indexedDB.open('PricePointDB', 3);
-                    
-                    request.onupgradeneeded = function(event) {
-                        const database = event.target.result;
-                        
-                        if (!database.objectStoreNames.contains('orders')) {
-                            const store = database.createObjectStore('orders', { keyPath: 'order_id' });
-                            store.createIndex('synced', 'synced', { unique: false });
-                            store.createIndex('created_at', 'created_at', { unique: false });
-                            console.log('✅ Orders store created');
-                        }
-                        
-                        if (!database.objectStoreNames.contains('sync_data')) {
-                            database.createObjectStore('sync_data', { keyPath: 'id' });
-                            console.log('✅ Sync data store created');
-                        }
-                    };
-                    
-                    request.onsuccess = function(event) {
-                        console.log('✅ IndexedDB connected (version 3)');
-                        resolve(event.target.result);
-                    };
-                    
-                    request.onerror = function(event) {
-                        console.error('❌ IndexedDB error:', event.target.error);
-                        reject(event.target.error);
-                    };
-                };
-            });
-        }
-
-        function saveOrderToIndexedDB(order) {
-            return new Promise((resolve, reject) => {
-                openDB().then(db => {
-                    try {
-                        const transaction = db.transaction(['orders'], 'readwrite');
-                        const store = transaction.objectStore('orders');
-                        
-                        if (!order.order_id) {
-                            order.order_id = 'POS-' + Date.now().toString(36).toUpperCase();
-                        }
-                        if (order.synced === undefined) {
-                            order.synced = false;
-                        }
-                        if (!order.synced_at) {
-                            order.synced_at = null;
-                        }
-                        
-                        const result = store.put(order);
-                        
-                        result.onsuccess = function() {
-                            console.log('✅ Order saved to IndexedDB:', order.order_id);
-                            db.close();
-                            resolve(order);
-                        };
-                        
-                        result.onerror = function() {
-                            console.error('❌ IndexedDB save error:', result.error);
-                            db.close();
-                            reject(result.error);
-                        };
-                    } catch (error) {
-                        console.error('❌ Transaction error:', error);
-                        db.close();
-                        reject(error);
-                    }
-                }).catch(err => {
-                    console.error('❌ openDB error:', err);
-                    reject(err);
-                });
-            });
-        }
-
-        function getUnsyncedOrdersFromIndexedDB() {
-            return new Promise((resolve) => {
-                openDB().then(db => {
-                    if (!db.objectStoreNames.contains('orders')) {
-                        db.close();
-                        resolve([]);
-                        return;
-                    }
-                    
-                    try {
-                        // Use cursor instead of index for better compatibility
-                        const allOrders = [];
-                        const tx = db.transaction(['orders'], 'readonly');
-                        const store = tx.objectStore('orders');
-                        const cursor = store.openCursor();
-                        
-                        cursor.onsuccess = function(event) {
-                            const c = event.target.result;
-                            if (c) {
-                                allOrders.push(c.value);
-                                c.continue();
-                            } else {
-                                const unsynced = allOrders.filter(o => o.synced === false);
-                                db.close();
-                                resolve(unsynced);
-                            }
-                        };
-                        
-                        cursor.onerror = function() {
-                            db.close();
-                            resolve([]);
-                        };
-                    } catch (error) {
-                        db.close();
-                        resolve([]);
-                    }
-                }).catch(() => resolve([]));
-            });
-        }
-
-        // ============================================================
-        // SYNC FUNCTIONS - AUTO-SYNC (CONSOLE COMPATIBLE)
-        // ============================================================
-        async function syncOfflineOrders() {
-            if (!navigator.onLine) {
-                showToast('📡 Offline - will sync when online', 'warning');
-                return;
-            }
-            
-            console.log('🔄 SYNCING OFFLINE ORDERS');
-            console.log('═══════════════════════════════════════════════');
-            showToast('🔄 Syncing offline orders...', 'info');
-            
-            try {
-                // 1. Open database
-                const db = await new Promise((resolve, reject) => {
-                    const r = indexedDB.open('PricePointDB', 3);
-                    r.onsuccess = e => resolve(e.target.result);
-                    r.onerror = e => reject(e.target.error);
-                });
-                
-                if (!db.objectStoreNames.contains('orders')) {
-                    console.log('⚠️ No orders store found');
-                    db.close();
-                    showToast('✅ No offline orders to sync', 'success');
-                    return;
-                }
-                
-                // 2. Get all orders using CURSOR (more compatible)
-                const allOrders = [];
-                const tx = db.transaction(['orders'], 'readonly');
-                const store = tx.objectStore('orders');
-                
-                await new Promise((resolve, reject) => {
-                    const cursor = store.openCursor();
-                    
-                    cursor.onsuccess = function(event) {
-                        const c = event.target.result;
-                        if (c) {
-                            allOrders.push(c.value);
-                            c.continue();
-                        } else {
-                            resolve();
-                        }
-                    };
-                    
-                    cursor.onerror = function(event) {
-                        reject(event.target.error);
-                    };
-                });
-                
-                db.close();
-                
-                if (allOrders.length === 0) {
-                    console.log('📭 No orders found in IndexedDB');
-                    showToast('✅ No offline orders to sync', 'success');
-                    return;
-                }
-                
-                console.log(`📦 Found ${allOrders.length} total orders`);
-                
-                // 3. Filter unsynced
-                const unsynced = allOrders.filter(o => o.synced === false);
-                
-                if (unsynced.length === 0) {
-                    console.log('✅ All orders are already synced!');
-                    showToast('✅ All orders are synced!', 'success');
-                    return;
-                }
-                
-                console.log(`⏳ Found ${unsynced.length} unsynced orders`);
-                console.log('─────────────────────────────────────────────');
-                
-                let synced = 0;
-                let failed = 0;
-                
-                // 4. Sync each order
-                for (const order of unsynced) {
-                    console.log(`🔄 Syncing: ${order.order_id}...`);
-                    
-                    try {
-                        const response = await fetch('/admin/api/sync-order', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(order)
-                        });
-                        
-                        const result = await response.json();
-                        
-                        if (result.success) {
-                            console.log(`   ✅ Synced: ${order.order_id}`);
-                            
-                            // Mark as synced in IndexedDB
-                            const writeDb = await new Promise((resolve) => {
-                                const r = indexedDB.open('PricePointDB', 3);
-                                r.onsuccess = e => resolve(e.target.result);
-                            });
-                            
-                            const writeTx = writeDb.transaction(['orders'], 'readwrite');
-                            const writeStore = writeTx.objectStore('orders');
-                            order.synced = true;
-                            order.synced_at = new Date().toISOString();
-                            
-                            await new Promise((resolve, reject) => {
-                                const result = writeStore.put(order);
-                                result.onsuccess = resolve;
-                                result.onerror = reject;
-                            });
-                            
-                            writeDb.close();
-                            synced++;
-                        } else {
-                            console.log(`   ❌ Failed: ${order.order_id} - ${result.message}`);
-                            failed++;
-                        }
-                    } catch (error) {
-                        console.log(`   ❌ Error: ${order.order_id} - ${error.message}`);
-                        failed++;
-                    }
-                }
-                
-                console.log('─────────────────────────────────────────────');
-                console.log(`📊 SYNC SUMMARY: ✅ ${synced} synced, ❌ ${failed} failed`);
-                console.log('📦 Total: ' + unsynced.length);
-                
-                if (synced > 0) {
-                    showToast(`✅ ${synced} orders synced to cloud!`, 'success');
-                    // Update dashboard stats
-                    loadSalesStats();
-                    loadUserStats();
-                    checkUnsyncedOrders();
-                    
-                    // Redirect to dashboard after 2 seconds
-                    setTimeout(() => {
-                        window.location.href = '/admin';
-                    }, 2000);
-                } else if (failed > 0 && synced === 0) {
-                    showToast(`⚠️ ${failed} orders failed to sync`, 'warning');
-                }
-                
-            } catch (error) {
-                console.error('❌ Sync error:', error);
-                showToast('❌ Sync error: ' + error.message, 'error');
-            }
-        }
-
-        function checkUnsyncedOrders() {
-            getUnsyncedOrdersFromIndexedDB().then(unsynced => {
-                const statusEl = document.getElementById('syncStatus');
-                const countEl = document.getElementById('unsyncedCount');
-                
-                if (statusEl) {
-                    if (unsynced.length > 0) {
-                        statusEl.style.display = 'inline-flex';
-                        statusEl.className = '';
-                        if (countEl) countEl.textContent = unsynced.length;
-                        statusEl.title = unsynced.map(o => o.order_id).join(', ');
-                    } else {
-                        statusEl.style.display = 'none';
-                    }
-                }
-            });
-        }
-
-        function manualSync() {
-            syncOfflineOrders();
-        }
-
-        // ============================================================
-        // AUTO-SYNC ON PAGE LOAD AND INTERVAL
-        // ============================================================
-        function checkAndSyncOfflineOrders() {
-            if (!navigator.onLine) {
-                console.log('📡 Offline - waiting for connection');
-                return;
-            }
-            
-            getUnsyncedOrdersFromIndexedDB().then(unsynced => {
-                if (unsynced.length > 0) {
-                    console.log(`⏳ Found ${unsynced.length} unsynced orders - syncing...`);
-                    syncOfflineOrders();
-                }
-            });
-        }
-
-        document.addEventListener('DOMContentLoaded', function() {
-            // Initial sync check after 3 seconds
-            setTimeout(function() {
-                if (navigator.onLine) {
-                    console.log('🌐 Auto-sync on page load...');
-                    checkAndSyncOfflineOrders();
-                }
-            }, 3000);
-            
-            // Check every 30 seconds
-            setInterval(function() {
-                if (navigator.onLine) {
-                    checkAndSyncOfflineOrders();
-                }
-            }, 30000);
-        });
-
-        // Auto-sync when coming online
-        window.addEventListener('online', function() {
-            console.log('🌐 Back online! Auto-syncing...');
-            showToast('🔄 Back online! Syncing orders...', 'info');
-            setTimeout(checkAndSyncOfflineOrders, 1000);
-            setTimeout(checkUnsyncedOrders, 500);
-        });
-
-        window.addEventListener('offline', function() {
-            updateOnlineStatusUI();
-            showToast('📡 You are offline. Orders will be saved locally.', 'warning');
-        });
-
-        // ============================================================
-        // PLACE ORDER - COMPLETE WORKING VERSION
-        // ============================================================
-        function placePOSOrder() {
-            if (posCart.length === 0) { 
-                showToast('⚠️ Add items first!', 'warning'); 
-                return; 
-            }
-            
-            const select = document.getElementById('posCustomer');
-            const selectedOption = select.options[select.selectedIndex];
-            const customerName = selectedOption ? selectedOption.value : 'Walk-in Customer';
-            const customerEmail = selectedOption ? selectedOption.dataset.email || 'walkin@example.com' : 'walkin@example.com';
-            const customerPhone = selectedOption ? selectedOption.dataset.phone || 'N/A' : 'N/A';
-            
-            const subtotal = posCart.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
-            const discountAmount = discountType === 'percentage' ? (subtotal * discountValue / 100) : discountValue;
-            const total = Math.max(0, subtotal - discountAmount);
-            
-            const orderItems = posCart.map(item => ({
-                product_id: item.id,
-                name: item.name || 'Product',
-                price: Number(item.price) || 0,
-                quantity: Number(item.quantity) || 1,
-                total: (Number(item.price) || 0) * (Number(item.quantity) || 1),
-                type: 'product'
-            }));
-            
-            const orderData = {
-                order_id: 'POS-' + Date.now().toString(36).toUpperCase(),
-                items: orderItems,
-                subtotal: subtotal,
-                shipping: 0,
-                total: total,
-                status: 'confirmed',
-                source: 'pos',
-                created_at: new Date().toISOString(),
-                customer_name: customerName,
-                customer_email: customerEmail,
-                customer_phone: customerPhone,
-                customer_address: 'In-store purchase',
-                customer: {
-                    name: customerName,
-                    email: customerEmail,
-                    phone: customerPhone,
-                    address: 'In-store purchase'
-                },
-                user_id: '{{ session.user.id if session.user else "unknown" }}',
-                user_name: '{{ session.user.name if session.user else "Unknown User" }}',
-                user_role: '{{ session.user.role if session.user else "user" }}',
-                staff_name: '{{ session.user.name if session.user else "Unknown User" }}',
-                synced: false,
-                synced_at: null
-            };
-            
-            const btn = document.getElementById('posPlaceOrderBtn');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
-            btn.disabled = true;
-            
-            // SAVE TO INDEXEDDB FIRST
-            saveOrderToIndexedDB(orderData)
-                .then(() => {
-                    showToast(`✅ Order #${orderData.order_id} saved!`, 'success');
-                    
-                    posCart = [];
-                    discountValue = 0;
-                    document.getElementById('discountDisplay').textContent = '0%';
-                    updatePOSUI();
-                    
-                    // Try to sync if online
-                    if (navigator.onLine) {
-                        fetch('/admin/pos/place-order', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(orderData)
-                        })
-                        .then(r => r.json())
-                        .then(data => {
-                            if (data.success) {
-                                orderData.synced = true;
-                                orderData.synced_at = new Date().toISOString();
-                                saveOrderToIndexedDB(orderData).catch(() => {});
-                                showToast(`✅ Order #${data.order_id} synced to cloud!`, 'success');
-                                loadSalesStats();
-                                loadUserStats();
-                                checkUnsyncedOrders();
-                            }
-                        })
-                        .catch(() => {
-                            showToast('📡 Order saved offline - will sync when online', 'warning');
-                            checkUnsyncedOrders();
-                        });
-                    } else {
-                        showToast('📡 Offline - Order saved locally', 'warning');
-                        checkUnsyncedOrders();
-                    }
-                    
-                    btn.innerHTML = originalText;
-                    btn.disabled = false;
-                })
-                .catch(err => {
-                    console.error('❌ Failed to save order:', err);
-                    showToast('❌ Failed to save order. Please try again.', 'error');
-                    btn.innerHTML = originalText;
-                    btn.disabled = false;
-                });
-        }
 
         // ============================================================
         // CLOCK
@@ -1798,6 +1080,19 @@ if ('serviceWorker' in navigator) {
             }
         }
 
+        // Update on status change
+        window.addEventListener('online', function() {
+            updateOnlineStatusUI();
+            showToast('🔄 Back online! Syncing orders...', 'info');
+            setTimeout(syncOfflineOrders, 1000);
+            setTimeout(checkUnsyncedOrders, 500);
+        });
+
+        window.addEventListener('offline', function() {
+            updateOnlineStatusUI();
+            showToast('📡 You are offline. Orders will be saved locally.', 'warning');
+        });
+
         updateOnlineStatusUI();
 
         // ============================================================
@@ -1808,8 +1103,11 @@ if ('serviceWorker' in navigator) {
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {
-                        document.getElementById('userTodaySales').textContent = 'KSh ' + (data.today_revenue || 0).toLocaleString();
-                        document.getElementById('userTodayOrders').textContent = data.today_orders || 0;
+                        const todaySales = 'KSh ' + (data.today_revenue || 0).toLocaleString();
+                        const todayOrders = data.today_orders || 0;
+                        
+                        document.getElementById('userTodaySales').textContent = todaySales;
+                        document.getElementById('userTodayOrders').textContent = todayOrders;
                     }
                 })
                 .catch(err => console.error('User stats error:', err));
@@ -1823,18 +1121,92 @@ if ('serviceWorker' in navigator) {
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {
-                        document.getElementById('todaySales').textContent = 'KSh ' + (data.today_revenue || 0).toLocaleString();
-                        document.getElementById('todayOrders').textContent = data.today_orders || 0;
-                        document.getElementById('todayReturns').textContent = data.today_returns || 0;
-                        document.getElementById('totalCustomers').textContent = data.total_customers || 0;
-                        document.getElementById('totalProducts').textContent = data.total_products || 0;
+                        const todaySales = 'KSh ' + (data.today_revenue || 0).toLocaleString();
+                        const todayOrders = data.today_orders || 0;
+                        const todayReturns = data.today_returns || 0;
+                        const totalCust = data.total_customers || 0;
+                        const totalProds = data.total_products || 0;
+                        
+                        document.getElementById('todaySales').textContent = todaySales;
+                        document.getElementById('todayOrders').textContent = todayOrders;
+                        document.getElementById('todayReturns').textContent = todayReturns;
+                        document.getElementById('totalCustomers').textContent = totalCust;
+                        document.getElementById('totalProducts').textContent = totalProds;
                     }
                 })
                 .catch(err => console.error('Stats error:', err));
         }
 
         // ============================================================
-        // SEARCH & FILTER
+        // SYNC FUNCTIONS
+        // ============================================================
+
+        function syncOfflineOrders() {
+            if (!navigator.onLine) {
+                showToast('📡 Offline - will sync when online', 'warning');
+                return;
+            }
+            
+            showToast('🔄 Syncing offline orders...', 'info');
+            
+            fetch('/admin/api/sync-queue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    if (data.synced > 0) {
+                        showToast(`✅ Synced ${data.synced} offline orders to cloud!`, 'success');
+                        loadUserStats();
+                        loadSalesStats();
+                        checkUnsyncedOrders();
+                    } else if (data.failed > 0) {
+                        showToast(`⚠️ ${data.failed} orders failed to sync. Check connection.`, 'warning');
+                    } else {
+                        showToast('✅ All orders are synced!', 'success');
+                    }
+                } else {
+                    showToast('❌ Sync failed: ' + (data.message || 'Unknown error'), 'error');
+                }
+            })
+            .catch(err => {
+                console.error('Sync error:', err);
+                showToast('❌ Sync error: ' + err.message, 'error');
+            });
+        }
+
+        function checkUnsyncedOrders() {
+            fetch('/admin/api/unsynced-count')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        const statusEl = document.getElementById('syncStatus');
+                        const countEl = document.getElementById('unsyncedCount');
+                        
+                        if (statusEl) {
+                            if (data.count > 0) {
+                                statusEl.style.display = 'inline-flex';
+                                statusEl.className = '';
+                                if (countEl) countEl.textContent = data.count;
+                                let orderIds = data.orders || [];
+                                let tooltip = orderIds.length > 0 ? 'Orders: ' + orderIds.join(', ') : '';
+                                statusEl.title = tooltip;
+                            } else {
+                                statusEl.style.display = 'none';
+                            }
+                        }
+                    }
+                })
+                .catch(err => console.error('Error checking sync status:', err));
+        }
+
+        function manualSync() {
+            syncOfflineOrders();
+        }
+
+        // ============================================================
+        // SEARCH & FILTER - UPDATED WITH BARCODE SUPPORT
         // ============================================================
         function searchProducts(query) {
             const searchTerm = query.toLowerCase().trim();
@@ -1853,7 +1225,14 @@ if ('serviceWorker' in navigator) {
                     const name = (p.name || '').toLowerCase();
                     const category = (p.category || '').toLowerCase();
                     const id = (p.id || '').toLowerCase();
-                    return name.includes(searchTerm) || category.includes(searchTerm) || id.includes(searchTerm);
+                    const barcode = (p.barcode || '').toLowerCase();
+                    const sku = (p.sku || '').toLowerCase();
+                    
+                    return name.includes(searchTerm) || 
+                           category.includes(searchTerm) || 
+                           id.includes(searchTerm) ||
+                           barcode.includes(searchTerm) ||
+                           sku.includes(searchTerm);
                 });
                 filteredProducts = results.slice(0, 100);
                 document.getElementById('resultCount').textContent = `${results.length} found${results.length > 100 ? ' (showing 100)' : ''}`;
@@ -1898,15 +1277,17 @@ if ('serviceWorker' in navigator) {
                 const stockLabel = stock <= 0 ? 'Out' : stock < 10 ? 'Low' : stock < 30 ? 'Med' : 'In Stock';
                 const stockNumberClass = stock <= 0 ? 'low' : stock < 10 ? 'low' : stock < 30 ? 'medium' : 'high';
                 const isOutOfStock = stock <= 0;
+                const barcodeDisplay = product.barcode ? `<span class="text-[6px] text-gray-400 font-mono">${product.barcode}</span>` : '';
                 
                 html += `
-                    <div class="product-pos-card group" data-id="${product.id || ''}" data-name="${product.name || ''}" data-price="${price}" data-stock="${stock}" data-image="${image}" onclick="${isOutOfStock ? '' : 'addToPOSCart(this)'}">
+                    <div class="product-pos-card group" data-id="${product.id || ''}" data-name="${product.name || ''}" data-price="${price}" data-stock="${stock}" data-image="${image}" data-barcode="${product.barcode || ''}" onclick="${isOutOfStock ? '' : 'addToPOSCart(this)'}">
                         <div class="relative">
                             <div class="h-14 w-full bg-gray-50 rounded-lg overflow-hidden mb-1">
                                 ${image ? `<img src="${image}" alt="${product.name}" class="w-full h-full object-contain p-1" onerror="this.style.display='none'">` : `<div class="w-full h-full flex items-center justify-center text-gray-300"><i class="fas fa-box text-2xl"></i></div>`}
                             </div>
                             <span class="stock-badge ${stockClass}">${stockLabel}</span>
                             ${isOutOfStock ? '<span class="absolute inset-0 bg-white/60 flex items-center justify-center text-xs font-bold text-red-500">OUT OF STOCK</span>' : ''}
+                            ${barcodeDisplay ? `<span class="absolute bottom-0 left-0 right-0 text-center text-[6px] text-gray-400 bg-white/80 py-0.5 font-mono">${product.barcode}</span>` : ''}
                         </div>
                         <p class="text-[9px] font-semibold text-[#0f172a] truncate">${product.name || 'Product'}</p>
                         <p class="price-tag">KSh ${price.toLocaleString()}</p>
@@ -1930,15 +1311,6 @@ if ('serviceWorker' in navigator) {
             searchProducts('');
         }
 
-        function scanBarcode() {
-            const scannerInput = prompt('📷 Scan barcode or enter product ID:');
-            if (scannerInput && scannerInput.trim()) {
-                document.getElementById('posSearch').value = scannerInput.trim();
-                searchProducts(scannerInput.trim());
-                showToast('🔍 Searching for: ' + scannerInput.trim(), 'info');
-            }
-        }
-
         // ============================================================
         // CART FUNCTIONS
         // ============================================================
@@ -1951,6 +1323,7 @@ if ('serviceWorker' in navigator) {
             const price = parseFloat(card.dataset.price) || 0;
             const stock = parseInt(card.dataset.stock) || 0;
             const image = String(card.dataset.image || '').trim();
+            const barcode = String(card.dataset.barcode || '').trim();
             
             if (!productId || price <= 0) { showToast('❌ Invalid product'); return; }
             if (stock <= 0) { showToast('⚠️ Out of stock!'); return; }
@@ -1960,7 +1333,7 @@ if ('serviceWorker' in navigator) {
                 if (existing.quantity < stock) { existing.quantity++; } 
                 else { showToast('⚠️ Not enough stock!'); return; }
             } else {
-                posCart.push({ id: productId, name, price, image, stock, quantity: 1 });
+                posCart.push({ id: productId, name, price, image, stock, barcode, quantity: 1 });
             }
             updatePOSUI();
             showToast('✅ Added: ' + name + ' (' + stock + ' left)');
@@ -2032,6 +1405,8 @@ if ('serviceWorker' in navigator) {
             posCart.forEach((item, index) => {
                 const price = Number(item.price) || 0;
                 const quantity = Number(item.quantity) || 1;
+                const barcodeDisplay = item.barcode ? `<span class="text-[6px] text-gray-400 font-mono">${item.barcode}</span>` : '';
+                
                 html += `
                     <div class="pos-cart-item flex items-center gap-2 bg-gray-50 rounded-lg p-1.5 border border-gray-100 hover:border-green-200 transition-all">
                         <div class="w-8 h-8 rounded-lg overflow-hidden bg-white flex-shrink-0 flex items-center justify-center">
@@ -2040,6 +1415,7 @@ if ('serviceWorker' in navigator) {
                         <div class="flex-1 min-w-0">
                             <p class="text-[10px] font-semibold truncate">${item.name || 'Product'}</p>
                             <p class="cart-item-price text-xs">KSh ${price.toLocaleString()}</p>
+                            ${barcodeDisplay}
                             <p class="text-[8px] text-gray-400">Stock: ${item.stock}</p>
                         </div>
                         <div class="flex items-center gap-0.5">
@@ -2141,6 +1517,7 @@ if ('serviceWorker' in navigator) {
                         <div class="flex-1 min-w-0">
                             <p class="text-sm font-semibold truncate">${item.name}</p>
                             <p class="text-xs text-gray-500">Qty: ${item.quantity} × KSh ${item.price.toLocaleString()}</p>
+                            ${item.barcode ? `<p class="text-[8px] text-gray-400 font-mono">${item.barcode}</p>` : ''}
                         </div>
                         <span class="font-bold text-rose-600 text-sm">KSh ${total.toLocaleString()}</span>
                     </div>
@@ -2173,7 +1550,8 @@ if ('serviceWorker' in navigator) {
                     id: item.id,
                     name: item.name,
                     price: item.price,
-                    quantity: item.quantity
+                    quantity: item.quantity,
+                    barcode: item.barcode || ''
                 })),
                 refund_total: refundTotal,
                 customer_name: customerName,
@@ -2209,6 +1587,326 @@ if ('serviceWorker' in navigator) {
                 showToast('❌ Error: ' + err.message, 'error');
                 btn.innerHTML = originalText;
                 btn.disabled = false;
+            });
+        }
+
+        // ============================================================
+        // INDEXEDDB FUNCTIONS
+        // ============================================================
+        const DB_NAME = 'PricePointDB';
+        const DB_VERSION = 1;
+        const STORE_NAME = 'orders';
+        let db = null;
+
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                if (db) {
+                    resolve(db);
+                    return;
+                }
+                
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                
+                request.onupgradeneeded = function(event) {
+                    const database = event.target.result;
+                    if (!database.objectStoreNames.contains(STORE_NAME)) {
+                        const store = database.createObjectStore(STORE_NAME, { keyPath: 'order_id' });
+                        store.createIndex('synced', 'synced', { unique: false });
+                        store.createIndex('created_at', 'created_at', { unique: false });
+                        console.log('✅ IndexedDB: Orders store created');
+                    }
+                };
+                
+                request.onsuccess = function(event) {
+                    db = event.target.result;
+                    console.log('✅ IndexedDB: Connected');
+                    resolve(db);
+                };
+                
+                request.onerror = function(event) {
+                    console.error('❌ IndexedDB error:', event.target.error);
+                    reject(event.target.error);
+                };
+            });
+        }
+
+        function saveOrderToIndexedDB(order) {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const database = await openDB();
+                    const transaction = database.transaction(STORE_NAME, 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME);
+                    
+                    if (!order.synced) {
+                        order.synced = false;
+                    }
+                    if (!order.synced_at) {
+                        order.synced_at = null;
+                    }
+                    
+                    const request = store.put(order);
+                    
+                    request.onsuccess = function() {
+                        console.log('✅ Order saved to IndexedDB:', order.order_id);
+                        resolve(order);
+                    };
+                    
+                    request.onerror = function(event) {
+                        console.error('❌ IndexedDB save error:', event.target.error);
+                        reject(event.target.error);
+                    };
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        function getOrdersFromIndexedDB() {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const database = await openDB();
+                    const transaction = database.transaction(STORE_NAME, 'readonly');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const request = store.getAll();
+                    
+                    request.onsuccess = function() {
+                        console.log('✅ IndexedDB: Retrieved', request.result.length, 'orders');
+                        resolve(request.result);
+                    };
+                    
+                    request.onerror = function(event) {
+                        console.error('❌ IndexedDB get error:', event.target.error);
+                        reject(event.target.error);
+                    };
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        function getUnsyncedOrdersFromIndexedDB() {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const database = await openDB();
+                    const transaction = database.transaction(STORE_NAME, 'readonly');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const index = store.index('synced');
+                    const request = index.getAll(false);
+                    
+                    request.onsuccess = function() {
+                        console.log('✅ IndexedDB: Found', request.result.length, 'unsynced orders');
+                        resolve(request.result);
+                    };
+                    
+                    request.onerror = function(event) {
+                        reject(event.target.error);
+                    };
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        function markOrderSyncedInIndexedDB(orderId) {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const database = await openDB();
+                    const transaction = database.transaction(STORE_NAME, 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME);
+                    
+                    const request = store.get(orderId);
+                    
+                    request.onsuccess = function() {
+                        const order = request.result;
+                        if (order) {
+                            order.synced = true;
+                            order.synced_at = new Date().toISOString();
+                            const updateRequest = store.put(order);
+                            
+                            updateRequest.onsuccess = function() {
+                                console.log('✅ Order marked synced in IndexedDB:', orderId);
+                                resolve(order);
+                            };
+                            
+                            updateRequest.onerror = function(event) {
+                                reject(event.target.error);
+                            };
+                        } else {
+                            resolve(null);
+                        }
+                    };
+                    
+                    request.onerror = function(event) {
+                        reject(event.target.error);
+                    };
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        // ============================================================
+        // PLACE ORDER - FIXED FOR OFFLINE
+        // ============================================================
+        function placePOSOrder() {
+            if (posCart.length === 0) { 
+                showToast('⚠️ Add items first!', 'warning'); 
+                return; 
+            }
+            
+            const select = document.getElementById('posCustomer');
+            const selectedOption = select.options[select.selectedIndex];
+            const customerName = selectedOption ? selectedOption.value : 'Walk-in Customer';
+            const customerEmail = selectedOption ? selectedOption.dataset.email || 'walkin@example.com' : 'walkin@example.com';
+            const customerPhone = selectedOption ? selectedOption.dataset.phone || 'N/A' : 'N/A';
+            
+            const subtotal = posCart.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
+            const discountAmount = discountType === 'percentage' ? (subtotal * discountValue / 100) : discountValue;
+            const total = Math.max(0, subtotal - discountAmount);
+            
+            const orderItems = posCart.map(item => ({
+                product_id: item.id,
+                name: item.name || 'Product',
+                price: Number(item.price) || 0,
+                quantity: Number(item.quantity) || 1,
+                total: (Number(item.price) || 0) * (Number(item.quantity) || 1),
+                type: 'product',
+                barcode: item.barcode || ''  // Include barcode in order items
+            }));
+            
+            const orderData = {
+                order_id: 'POS-' + Date.now().toString(36).toUpperCase(),
+                items: orderItems,
+                subtotal: subtotal,
+                shipping: 0,
+                total: total,
+                status: 'confirmed',
+                source: 'pos',
+                created_at: new Date().toISOString(),
+                customer_name: customerName,
+                customer_email: customerEmail,
+                customer_phone: customerPhone,
+                customer_address: 'In-store purchase',
+                customer: {
+                    name: customerName,
+                    email: customerEmail,
+                    phone: customerPhone,
+                    address: 'In-store purchase'
+                },
+                user_id: '{{ session.user.id if session.user else "unknown" }}',
+                user_name: '{{ session.user.name if session.user else "Unknown User" }}',
+                user_role: '{{ session.user.role if session.user else "user" }}',
+                staff_name: '{{ session.user.name if session.user else "Unknown User" }}',
+                synced: false,
+                synced_at: null,
+                barcodes: posCart.map(item => item.barcode).filter(b => b)  // Collect all barcodes
+            };
+            
+            const btn = document.getElementById('posPlaceOrderBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            btn.disabled = true;
+            
+            // ============================================================
+            // CHECK IF ONLINE
+            // ============================================================
+            if (!navigator.onLine) {
+                // ============================================================
+                // OFFLINE: Save to IndexedDB only
+                // ============================================================
+                console.log('📡 OFFLINE: Saving order to IndexedDB');
+                
+                const localOrderId = 'OFF-' + Date.now().toString(36).toUpperCase();
+                orderData.order_id = localOrderId;
+                orderData.synced = false;
+                orderData.synced_at = null;
+                
+                saveOrderToIndexedDB(orderData)
+                    .then(() => {
+                        showToast(`✅ Order #${localOrderId} saved offline! Will sync when online.`, 'warning');
+                        posCart = [];
+                        discountValue = 0;
+                        document.getElementById('discountDisplay').textContent = '0%';
+                        updatePOSUI();
+                        checkUnsyncedOrders();
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    })
+                    .catch(err => {
+                        console.error('❌ IndexedDB save error:', err);
+                        showToast('❌ Failed to save order offline', 'error');
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    });
+                return;
+            }
+            
+            // ============================================================
+            // ONLINE: Try Supabase first, fallback to IndexedDB
+            // ============================================================
+            console.log('📡 ONLINE: Saving order to Supabase');
+            
+            fetch('/admin/pos/place-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(orderData)
+            })
+            .then(r => {
+                if (!r.ok) throw new Error('Network error: ' + r.status);
+                return r.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    let message = '✅ Order placed! #' + data.order_id + ' | Total: KSh ' + total.toLocaleString();
+                    
+                    // Save to IndexedDB as backup
+                    if (data.order) {
+                        data.order.synced = true;
+                        data.order.synced_at = new Date().toISOString();
+                        saveOrderToIndexedDB(data.order).catch(err => console.warn('⚠️ Backup save failed:', err));
+                    }
+                    
+                    showToast(message, 'success');
+                    posCart = [];
+                    discountValue = 0;
+                    document.getElementById('discountDisplay').textContent = '0%';
+                    updatePOSUI();
+                    loadSalesStats();
+                    loadUserStats();
+                } else {
+                    showToast('❌ Error: ' + (data.message || 'Unknown error'), 'error');
+                }
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            })
+            .catch(err => {
+                // ============================================================
+                // ONLINE BUT FAILED: Save to IndexedDB as fallback
+                // ============================================================
+                console.warn('⚠️ Supabase failed, saving to IndexedDB:', err);
+                
+                const localOrderId = 'OFF-' + Date.now().toString(36).toUpperCase();
+                orderData.order_id = localOrderId;
+                orderData.synced = false;
+                orderData.synced_at = null;
+                
+                saveOrderToIndexedDB(orderData)
+                    .then(() => {
+                        showToast(`✅ Order #${localOrderId} saved offline! Will sync when online.`, 'warning');
+                        posCart = [];
+                        discountValue = 0;
+                        document.getElementById('discountDisplay').textContent = '0%';
+                        updatePOSUI();
+                        checkUnsyncedOrders();
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    })
+                    .catch(err2 => {
+                        console.error('❌ Both Supabase and IndexedDB failed:', err2);
+                        showToast('❌ Failed to save order. Please try again.', 'error');
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    });
             });
         }
 
@@ -2338,7 +2036,13 @@ if ('serviceWorker' in navigator) {
         // KEYBOARD SHORTCUTS
         // ============================================================
         document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') { closeCustomerModal(); closeDiscountModal(); closeReturnModal(); }
+            if (e.key === 'Escape') { 
+                closeCustomerModal(); 
+                closeDiscountModal(); 
+                closeReturnModal(); 
+                closeBarcodeScanner();
+                closeBarcodeInputModal();
+            }
             if (e.ctrlKey && e.key === 'Enter') { placePOSOrder(); e.preventDefault(); }
             if (e.key === 'F1') { document.getElementById('posSearch').focus(); e.preventDefault(); }
             if (e.key === 'F2') { toggleCustomerModal(); e.preventDefault(); }
@@ -2346,11 +2050,312 @@ if ('serviceWorker' in navigator) {
             if (e.key === 'F4') { toggleReturnModal(); e.preventDefault(); }
             if (e.key === 'F5') { holdOrder(); e.preventDefault(); }
             if (e.key === 'F6') { manualSync(); e.preventDefault(); }
+            if (e.key === 'F7') { 
+                e.preventDefault();
+                if (document.getElementById('barcodeModal').classList.contains('hidden')) {
+                    openBarcodeScanner();
+                } else {
+                    closeBarcodeScanner();
+                }
+            }
+            if (e.key === 'F8') { 
+                e.preventDefault();
+                if (document.getElementById('barcodeInputModal').classList.contains('hidden')) {
+                    openBarcodeInputModal();
+                } else {
+                    closeBarcodeInputModal();
+                }
+            }
             if ((e.key === 'Delete' || e.key === 'Backspace') && document.activeElement.id !== 'posSearch') {
                 voidLastItem();
                 e.preventDefault();
             }
         });
+
+        // ============================================================
+        // BARCODE SCANNER - Complete Implementation
+        // ============================================================
+
+        let html5QrCode = null;
+        let isScannerRunning = false;
+        let scannerStarted = false;
+
+        // ============================================================
+        // OPEN BARCODE SCANNER
+        // ============================================================
+        function openBarcodeScanner() {
+            const modal = document.getElementById('barcodeModal');
+            modal.classList.remove('hidden');
+            
+            // Reset scanner state
+            document.getElementById('scannerResult').classList.add('hidden');
+            document.getElementById('scannedValue').textContent = '';
+            
+            // Show start button
+            const btn = document.getElementById('startScannerBtn');
+            btn.style.display = 'block';
+            btn.innerHTML = '<i class="fas fa-play"></i> Start Camera';
+            btn.disabled = false;
+            
+            // Reset scanner
+            if (html5QrCode) {
+                try {
+                    html5QrCode.stop().then(() => {
+                        html5QrCode.clear();
+                        scannerStarted = false;
+                    }).catch(() => {});
+                } catch(e) {}
+            }
+            
+            // Check if camera is available
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showToast('⚠️ Camera not available on this device', 'warning');
+                btn.style.display = 'none';
+                document.getElementById('barcode-reader').innerHTML = `
+                    <div class="text-center py-8 text-gray-400">
+                        <i class="fas fa-camera-slash text-4xl block mb-3"></i>
+                        <p>Camera not available</p>
+                        <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="btn-primary mt-3" style="display:inline-block; padding: 8px 20px; width:auto; background: linear-gradient(135deg, #f59e0b, #d97706);">
+                            <i class="fas fa-keyboard"></i> Enter Manually
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        // ============================================================
+        // CLOSE BARCODE SCANNER
+        // ============================================================
+        function closeBarcodeScanner() {
+            const modal = document.getElementById('barcodeModal');
+            modal.classList.add('hidden');
+            
+            // Stop scanner
+            if (html5QrCode && scannerStarted) {
+                try {
+                    html5QrCode.stop().then(() => {
+                        html5QrCode.clear();
+                        scannerStarted = false;
+                    }).catch(() => {});
+                } catch(e) {}
+            }
+            isScannerRunning = false;
+        }
+
+        // ============================================================
+        // START SCANNER
+        // ============================================================
+        function startScanner() {
+            if (isScannerRunning) return;
+            
+            const btn = document.getElementById('startScannerBtn');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
+            btn.disabled = true;
+            
+            // Clear previous content
+            document.getElementById('barcode-reader').innerHTML = '';
+            
+            const config = {
+                fps: 10,
+                qrbox: { width: 250, height: 250 },
+                aspectRatio: 1.0,
+                formatsToSupport: [
+                    Html5QrcodeSupportedFormats.QR_CODE,
+                    Html5QrcodeSupportedFormats.CODE_128,
+                    Html5QrcodeSupportedFormats.CODE_39,
+                    Html5QrcodeSupportedFormats.EAN_13,
+                    Html5QrcodeSupportedFormats.EAN_8,
+                    Html5QrcodeSupportedFormats.UPC_A,
+                    Html5QrcodeSupportedFormats.UPC_E,
+                    Html5QrcodeSupportedFormats.DATA_MATRIX,
+                    Html5QrcodeSupportedFormats.AZTEC,
+                    Html5QrcodeSupportedFormats.CODE_93,
+                    Html5QrcodeSupportedFormats.CODABAR,
+                    Html5QrcodeSupportedFormats.MAXICODE,
+                    Html5QrcodeSupportedFormats.PDF417,
+                    Html5QrcodeSupportedFormats.RSS_14,
+                    Html5QrcodeSupportedFormats.RSS_EXPANDED
+                ]
+            };
+            
+            try {
+                html5QrCode = new Html5Qrcode("barcode-reader");
+                
+                html5QrCode.start(
+                    { facingMode: "environment" },
+                    config,
+                    onScanSuccess,
+                    onScanError
+                ).then(() => {
+                    console.log('✅ Scanner started successfully');
+                    scannerStarted = true;
+                    isScannerRunning = true;
+                    btn.innerHTML = '<i class="fas fa-pause"></i> Scanning...';
+                    btn.disabled = false;
+                }).catch(err => {
+                    console.error('❌ Scanner start error:', err);
+                    btn.innerHTML = '<i class="fas fa-camera"></i> Try Again';
+                    btn.disabled = false;
+                    showToast('⚠️ Could not access camera: ' + err.message, 'error');
+                    
+                    document.getElementById('barcode-reader').innerHTML = `
+                        <div class="text-center py-8 text-gray-400">
+                            <i class="fas fa-camera-slash text-4xl block mb-3"></i>
+                            <p>Camera not accessible</p>
+                            <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="btn-primary mt-3" style="display:inline-block; padding: 8px 20px; width:auto; background: linear-gradient(135deg, #f59e0b, #d97706);">
+                                <i class="fas fa-keyboard"></i> Enter Manually
+                            </button>
+                        </div>
+                    `;
+                    btn.style.display = 'none';
+                });
+            } catch(err) {
+                console.error('❌ Scanner init error:', err);
+                btn.innerHTML = '<i class="fas fa-camera"></i> Try Again';
+                btn.disabled = false;
+                showToast('⚠️ Scanner error: ' + err.message, 'error');
+            }
+        }
+
+        // ============================================================
+        // ON SCAN SUCCESS
+        // ============================================================
+        function onScanSuccess(decodedText, decodedResult) {
+            console.log('📷 Barcode scanned:', decodedText);
+            
+            // Vibrate if supported
+            try {
+                if (navigator.vibrate) navigator.vibrate(200);
+            } catch(e) {}
+            
+            // Show result
+            document.getElementById('scannerResult').classList.remove('hidden');
+            document.getElementById('scannedValue').textContent = decodedText;
+            
+            // Stop scanner
+            if (html5QrCode && scannerStarted) {
+                try {
+                    html5QrCode.pause();
+                    isScannerRunning = false;
+                    document.getElementById('startScannerBtn').innerHTML = '<i class="fas fa-play"></i> Resume';
+                } catch(e) {}
+            }
+            
+            // Search for product
+            searchProductByBarcode(decodedText);
+        }
+
+        function onScanError(error) {
+            // Ignore - called frequently
+        }
+
+        // ============================================================
+        // SEARCH PRODUCT BY BARCODE - UPDATED WITH FULL SUPPORT
+        // ============================================================
+        function searchProductByBarcode(barcode) {
+            console.log('🔍 Searching for product with barcode:', barcode);
+            
+            const searchTerm = barcode.toLowerCase().trim();
+            
+            // FIRST: Try exact barcode match
+            let product = allProducts.find(p => {
+                const barcodeField = (p.barcode || '').toLowerCase();
+                return barcodeField === searchTerm;
+            });
+            
+            // SECOND: Try exact ID match
+            if (!product) {
+                product = allProducts.find(p => {
+                    const id = (p.id || '').toLowerCase();
+                    return id === searchTerm;
+                });
+            }
+            
+            // THIRD: Try name contains match
+            if (!product) {
+                product = allProducts.find(p => {
+                    const name = (p.name || '').toLowerCase();
+                    return name.includes(searchTerm);
+                });
+            }
+            
+            // FOURTH: Try barcode contains match
+            if (!product) {
+                product = allProducts.find(p => {
+                    const barcodeField = (p.barcode || '').toLowerCase();
+                    return barcodeField.includes(searchTerm);
+                });
+            }
+            
+            if (product) {
+                showToast(`✅ Found: ${product.name}`, 'success');
+                addToPOSCartByProduct(product);
+                // Close scanner after a moment
+                setTimeout(closeBarcodeScanner, 1000);
+            } else {
+                showToast(`❌ Product not found for: ${barcode}`, 'error');
+                // Ask if user wants to search by name
+                setTimeout(() => {
+                    if (confirm(`Product not found for "${barcode}".\n\nSearch by name instead?`)) {
+                        closeBarcodeScanner();
+                        document.getElementById('posSearch').value = barcode;
+                        searchProducts(barcode);
+                    }
+                }, 500);
+            }
+        }
+
+        // ============================================================
+        // ADD PRODUCT TO CART FROM SCANNER
+        // ============================================================
+        function addToPOSCartByProduct(product) {
+            const existing = posCart.find(item => item.id === product.id);
+            if (existing) {
+                if (existing.quantity < product.stock) {
+                    existing.quantity++;
+                    showToast(`✅ Added another ${product.name} (${existing.quantity} total)`, 'success');
+                } else {
+                    showToast(`⚠️ Not enough stock for ${product.name}`, 'warning');
+                }
+            } else {
+                posCart.push({
+                    id: product.id,
+                    name: product.name,
+                    price: product.price,
+                    image: product.image,
+                    stock: product.stock,
+                    barcode: product.barcode || '',
+                    quantity: 1
+                });
+                showToast(`✅ Added: ${product.name}`, 'success');
+            }
+            updatePOSUI();
+        }
+
+        // ============================================================
+        // MANUAL BARCODE INPUT
+        // ============================================================
+        function openBarcodeInputModal() {
+            document.getElementById('barcodeInputModal').classList.remove('hidden');
+            setTimeout(() => {
+                document.getElementById('manualBarcode').focus();
+            }, 300);
+        }
+
+        function closeBarcodeInputModal() {
+            document.getElementById('barcodeInputModal').classList.add('hidden');
+            document.getElementById('manualBarcode').value = '';
+        }
+
+        function submitManualBarcode() {
+            const barcode = document.getElementById('manualBarcode').value.trim();
+            if (!barcode) {
+                showToast('⚠️ Please enter a barcode', 'warning');
+                return;
+            }
+            closeBarcodeInputModal();
+            searchProductByBarcode(barcode);
+        }
 
         // ============================================================
         // INIT
@@ -2361,7 +2366,7 @@ if ('serviceWorker' in navigator) {
                     <i class="fas fa-search"></i>
                     <p>Search for products</p>
                     <p class="text-xs text-gray-400">${allProducts.length} products available</p>
-                    <div class="shortcuts">⌨️ F1: Search | F2: Customer | F3: Discount | F4: Return | F5: Hold | F6: Sync | Ctrl+Enter: Checkout</div>
+                    <div class="shortcuts">⌨️ F1: Search | F2: Customer | F3: Discount | F4: Return | F5: Hold | F6: Sync | F7: Scan | F8: Manual Barcode | Ctrl+Enter: Checkout</div>
                 </div>
             `;
             document.getElementById('resultCount').textContent = `${allProducts.length} products available`;
@@ -2369,17 +2374,19 @@ if ('serviceWorker' in navigator) {
             loadSalesStats();
             loadUserStats();
             
-            // Auto-sync check on load
+            // Check for unsynced orders after 2 seconds
             setTimeout(function() {
                 if (navigator.onLine) {
                     checkUnsyncedOrders();
-                    setTimeout(checkAndSyncOfflineOrders, 2000);
+                    // Auto-sync after 3 seconds if online
+                    setTimeout(syncOfflineOrders, 3000);
                 }
             }, 2000);
             
             console.log('✅ POS Pro v3.0 initialized with ' + allProducts.length + ' products');
             console.log('📡 Status:', navigator.onLine ? 'Online' : 'Offline');
+            console.log('📋 Products with barcodes:', allProducts.filter(p => p.barcode).length);
         });
-</script>
+    </script>
 </body>
 </html>
