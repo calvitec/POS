@@ -1697,5 +1697,236 @@ if ('serviceWorker' in navigator) {
             console.log('📡 Status:', navigator.onLine ? 'Online' : 'Offline');
         });
     </script>
+    // ============================================================
+// DATA SYNC FOR OFFLINE USE
+// ============================================================
+
+// ============================================================
+// OPEN INDEXEDDB WITH SYNC_DATA STORE
+// ============================================================
+function openDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open('PricePointDB', 3);
+        
+        request.onupgradeneeded = function(e) {
+            const db = e.target.result;
+            
+            // Orders store (for offline orders)
+            if (!db.objectStoreNames.contains('orders')) {
+                db.createObjectStore('orders', { keyPath: 'order_id' });
+                console.log('✅ Orders store created');
+            }
+            
+            // Sync data store (for cached products)
+            if (!db.objectStoreNames.contains('sync_data')) {
+                const syncStore = db.createObjectStore('sync_data', { keyPath: 'id' });
+                console.log('✅ Sync data store created');
+            }
+        };
+        
+        request.onsuccess = function(e) {
+            resolve(e.target.result);
+        };
+        
+        request.onerror = function(e) {
+            reject(e.target.error);
+        };
+    });
+}
+
+// ============================================================
+// SYNC PRODUCTS TO INDEXEDDB
+// ============================================================
+async function syncProductsToIndexedDB() {
+    try {
+        console.log('🔄 Syncing products to IndexedDB...');
+        
+        // Get products from Supabase
+        const response = await fetch('/api/products');
+        if (!response.ok) throw new Error('Failed to fetch products');
+        
+        const products = await response.json();
+        console.log(`📦 Received ${products.length} products from server`);
+        
+        // Store in IndexedDB
+        const db = await openDB();
+        const tx = db.transaction(['sync_data'], 'readwrite');
+        const store = tx.objectStore('sync_data');
+        
+        // Store products with timestamp
+        await new Promise((resolve, reject) => {
+            const request = store.put({
+                id: 'products',
+                data: products,
+                syncedAt: new Date().toISOString()
+            });
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+        
+        db.close();
+        console.log('✅ Products synced to IndexedDB');
+        return true;
+        
+    } catch (error) {
+        console.error('❌ Sync error:', error);
+        return false;
+    }
+}
+
+// ============================================================
+// GET PRODUCTS FROM INDEXEDDB (Offline)
+// ============================================================
+async function getProductsFromIndexedDB() {
+    try {
+        const db = await openDB();
+        const tx = db.transaction(['sync_data'], 'readonly');
+        const store = tx.objectStore('sync_data');
+        
+        const result = await new Promise((resolve) => {
+            const request = store.get('products');
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => resolve(null);
+        });
+        
+        db.close();
+        
+        if (result && result.data) {
+            console.log(`📦 Loaded ${result.data.length} products from cache (${result.syncedAt})`);
+            return result.data;
+        }
+        return null;
+        
+    } catch (error) {
+        console.error('❌ Error getting products:', error);
+        return null;
+    }
+}
+
+// ============================================================
+// LOAD PRODUCTS - ONLINE FIRST, FALLBACK TO CACHE
+// ============================================================
+async function loadProductsWithCache() {
+    console.log('📁 Loading products...');
+    
+    // Try online first
+    if (navigator.onLine) {
+        try {
+            const response = await fetch('/api/products?t=' + Date.now());
+            if (response.ok) {
+                const products = await response.json();
+                console.log(`✅ Loaded ${products.length} products from server`);
+                // Cache for offline use
+                await syncProductsToIndexedDB();
+                return products;
+            }
+        } catch (error) {
+            console.log('⚠️ Online fetch failed, trying cache...');
+        }
+    }
+    
+    // Try cache
+    const cachedProducts = await getProductsFromIndexedDB();
+    if (cachedProducts) {
+        console.log(`📦 Using ${cachedProducts.length} cached products`);
+        return cachedProducts;
+    }
+    
+    // Fallback: use allProducts from template
+    console.log('⚠️ Using fallback products from template');
+    return allProducts || [];
+}
+
+// ============================================================
+// OVERRIDE searchProducts TO USE CACHED DATA
+// ============================================================
+// Store original functions
+const originalSearchProducts = searchProducts;
+const originalRenderProducts = renderProducts;
+
+// ============================================================
+// INIT - LOAD PRODUCTS WITH CACHE
+// ============================================================
+async function initPOSWithCache() {
+    console.log('🚀 Initializing POS with cache support...');
+    
+    // Load products from cache or server
+    const products = await loadProductsWithCache();
+    
+    // Update global products array
+    if (products && products.length > 0) {
+        // Update allProducts in place
+        allProducts.length = 0;
+        allProducts.push(...products);
+        
+        // Re-render products
+        filteredProducts = allProducts.slice(0, 50);
+        renderProducts();
+        document.getElementById('resultCount').textContent = `${filteredProducts.length} of ${allProducts.length} products`;
+        document.getElementById('productCount').textContent = `${allProducts.length} total`;
+    }
+    
+    // Check for unsynced orders
+    setTimeout(function() {
+        if (navigator.onLine) {
+            checkUnsyncedOrders();
+            setTimeout(syncOfflineOrders, 3000);
+        }
+    }, 1000);
+    
+    console.log('✅ POS initialized with cache support');
+    console.log(`📦 ${allProducts.length} products ready`);
+}
+
+// ============================================================
+// OVERRIDE DOM CONTENT LOADED
+// ============================================================
+// Store original DOMContentLoaded handler
+const originalInit = document.addEventListener('DOMContentLoaded', function(e) {
+    // Remove existing handlers
+    document.removeEventListener('DOMContentLoaded', initPOSWithCache);
+    // Run our new init
+    initPOSWithCache();
+});
+
+// Check if DOM is already loaded
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    initPOSWithCache();
+} else {
+    document.addEventListener('DOMContentLoaded', initPOSWithCache);
+}
+
+// ============================================================
+// SYNC ON ONLINE EVENT
+// ============================================================
+window.addEventListener('online', function() {
+    console.log('🌐 Back online - Syncing products...');
+    showToast('🔄 Syncing products for offline use...', 'info');
+    setTimeout(function() {
+        syncProductsToIndexedDB().then(() => {
+            showToast('✅ Products synced for offline use!', 'success');
+        });
+    }, 2000);
+});
+
+// ============================================================
+// CHECK IF PRODUCTS ARE CACHED ON LOAD
+// ============================================================
+async function checkCacheStatus() {
+    const cached = await getProductsFromIndexedDB();
+    if (cached) {
+        console.log(`✅ Products cached: ${cached.length} items`);
+        console.log(`📅 Last synced: ${cached.syncedAt}`);
+        return true;
+    } else {
+        console.log('❌ No cached products found');
+        return false;
+    }
+}
+
+// Run cache check
+setTimeout(checkCacheStatus, 500);
+
+console.log('✅ Data sync system loaded');
 </body>
 </html>
