@@ -8,6 +8,36 @@
      DASHBOARD SECTION - MOBILE OPTIMIZED
      ============================================================ -->
 <div id="dashboard-section" class="section">
+    
+    <!-- ============================================================
+         SYNC STATUS BAR
+         ============================================================ -->
+    <div id="syncStatusBar" class="mb-4 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 hidden">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center animate-pulse">
+                    <i class="fas fa-cloud-upload-alt text-blue-600 text-xl"></i>
+                </div>
+                <div>
+                    <p class="text-sm font-semibold text-blue-800">
+                        <span id="offlineOrderCount">0</span> offline order(s) pending sync
+                    </p>
+                    <p class="text-xs text-blue-600" id="offlineOrderDetails">Click sync to upload to cloud</p>
+                </div>
+            </div>
+            <div class="flex gap-2 w-full sm:w-auto">
+                <button onclick="syncOfflineOrdersFromDashboard()" 
+                        class="btn-gradient text-sm py-2 px-4 flex-1 sm:flex-none"
+                        style="background: linear-gradient(135deg, #2563eb, #4f46e5);">
+                    <i class="fas fa-sync-alt"></i> Sync Now
+                </button>
+                <button onclick="dismissSyncBar()" class="text-gray-400 hover:text-gray-600 px-3">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Quick Actions - Mobile Friendly Grid -->
     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-3 mb-4 sm:mb-6">
         <button onclick="showSection('add-product')" class="quick-action p-2 sm:p-3">
@@ -55,6 +85,9 @@
             <span class="text-[10px] sm:text-xs text-gray-400 flex items-center gap-1.5">
                 <i class="fas fa-circle text-green-500 text-[6px] animate-pulse"></i>
                 Updated: <span id="liveTime">Just now</span>
+                <span id="offlineBadge" class="hidden ml-2 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[8px] font-semibold">
+                    <i class="fas fa-clock"></i> Offline orders
+                </span>
             </span>
         </div>
     </div>
@@ -127,7 +160,7 @@
                 </h3>
                 <span class="text-[10px] sm:text-xs text-gray-400">Last 6 months</span>
             </div>
-            <div class="chart-container" style="position: relative; height: 160px; width: 100%;">
+            <div class="chart-container" style="position: relative; height: 220px; width: 100%;">
                 <canvas id="revenueChart"></canvas>
             </div>
         </div>
@@ -138,7 +171,7 @@
                 </h3>
                 <span class="text-[10px] sm:text-xs text-gray-400">Distribution</span>
             </div>
-            <div class="chart-container" style="position: relative; height: 160px; width: 100%;">
+            <div class="chart-container" style="position: relative; height: 220px; width: 100%;">
                 <canvas id="categoryChart"></canvas>
             </div>
         </div>
@@ -215,7 +248,7 @@
             <h3 class="font-bold text-[#0f172a] text-xs sm:text-base"><i class="fas fa-calendar-alt text-blue-500 mr-1 sm:mr-2"></i> Monthly Performance</h3>
             <span class="text-[10px] sm:text-xs text-gray-400">Revenue breakdown</span>
         </div>
-        <div class="table-wrap max-h-48 sm:max-h-80 overflow-y-auto">
+        <div class="table-wrap max-h-64 sm:max-h-80 overflow-y-auto">
             <table>
                 <thead><tr><th class="text-xs sm:text-sm">Month</th><th class="text-right text-xs sm:text-sm">Orders</th><th class="text-right text-xs sm:text-sm">Items</th><th class="text-right text-xs sm:text-sm">Revenue</th><th class="text-right text-xs sm:text-sm">Cost</th><th class="text-right text-xs sm:text-sm">Profit</th><th class="text-right text-xs sm:text-sm">Margin</th></tr></thead>
                 <tbody id="monthlyTable"><tr><td colspan="7" class="text-center py-6 sm:py-8 text-gray-400"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr></tbody>
@@ -229,7 +262,7 @@
             <h3 class="font-bold text-[#0f172a] text-xs sm:text-base"><i class="fas fa-trophy text-yellow-500 mr-1 sm:mr-2"></i> Top Selling Products</h3>
             <span class="text-[10px] sm:text-xs text-gray-400">By profit</span>
         </div>
-        <div class="table-wrap max-h-48 sm:max-h-80 overflow-y-auto">
+        <div class="table-wrap max-h-64 sm:max-h-80 overflow-y-auto">
             <table>
                 <thead><tr><th class="text-xs sm:text-sm">Product</th><th class="text-right text-xs sm:text-sm">Qty</th><th class="text-right text-xs sm:text-sm">Revenue</th><th class="text-right text-xs sm:text-sm">Cost</th><th class="text-right text-xs sm:text-sm">Profit</th><th class="text-right text-xs sm:text-sm">Margin</th></tr></thead>
                 <tbody id="productTable"><tr><td colspan="6" class="text-center py-6 sm:py-8 text-gray-400"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr></tbody>
@@ -560,4 +593,563 @@
     </div>
 </div>
 
+{% endblock %}
+
+<!-- ============================================================
+     SCRIPTS - OFFLINE ORDER SUPPORT + CHARTS + ANALYTICS
+     ============================================================ -->
+{% block scripts %}
+<script>
+// ============================================================
+// SYNC BAR FUNCTIONS
+// ============================================================
+
+function showSyncBar(count, orders) {
+    const bar = document.getElementById('syncStatusBar');
+    const countEl = document.getElementById('offlineOrderCount');
+    const detailsEl = document.getElementById('offlineOrderDetails');
+    const badgeEl = document.getElementById('offlineBadge');
+    
+    if (count > 0) {
+        bar.classList.remove('hidden');
+        countEl.textContent = count;
+        detailsEl.textContent = count + ' order(s) pending sync. Click Sync Now to upload to cloud.';
+        badgeEl.classList.remove('hidden');
+        badgeEl.textContent = '📦 ' + count + ' offline';
+    } else {
+        bar.classList.add('hidden');
+        badgeEl.classList.add('hidden');
+    }
+}
+
+function dismissSyncBar() {
+    document.getElementById('syncStatusBar').classList.add('hidden');
+}
+
+// ============================================================
+// LOAD ANALYTICS DATA - FIXES "Loading..." issue
+// ============================================================
+function loadAnalyticsData() {
+    console.log('📊 Loading analytics data...');
+    
+    fetch('/admin/api/analytics?t=' + Date.now())
+        .then(response => response.json())
+        .then(data => {
+            console.log('✅ Analytics data loaded:', data);
+            
+            // Update Monthly Performance Table
+            const monthlyTable = document.getElementById('monthlyTable');
+            if (monthlyTable && data.monthly_data) {
+                const months = Object.keys(data.monthly_data).sort();
+                if (months.length > 0) {
+                    let html = '';
+                    months.forEach(month => {
+                        const m = data.monthly_data[month];
+                        html += `<tr>
+                            <td class="text-xs sm:text-sm font-semibold">${month}</td>
+                            <td class="text-right text-xs sm:text-sm">${m.orders || 0}</td>
+                            <td class="text-right text-xs sm:text-sm">${m.items || 0}</td>
+                            <td class="text-right text-xs sm:text-sm font-semibold text-green-600">KSh ${(m.revenue || 0).toLocaleString()}</td>
+                            <td class="text-right text-xs sm:text-sm text-gray-500">KSh ${(m.cost || 0).toLocaleString()}</td>
+                            <td class="text-right text-xs sm:text-sm font-semibold text-purple-600">KSh ${(m.profit || 0).toLocaleString()}</td>
+                            <td class="text-right text-xs sm:text-sm font-bold ${(m.margin || 0) > 20 ? 'text-green-600' : 'text-amber-600'}">${(m.margin || 0).toFixed(1)}%</td>
+                        </tr>`;
+                    });
+                    monthlyTable.innerHTML = html;
+                } else {
+                    monthlyTable.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-gray-400">No monthly data available</td></tr>`;
+                }
+            }
+            
+            // Update Top Selling Products
+            const productTable = document.getElementById('productTable');
+            if (productTable && data.product_sales) {
+                const products = Object.keys(data.product_sales);
+                if (products.length > 0) {
+                    let html = '';
+                    products.slice(0, 10).forEach(product => {
+                        const p = data.product_sales[product];
+                        html += `<tr>
+                            <td class="text-xs sm:text-sm font-medium truncate max-w-[100px]">${product}</td>
+                            <td class="text-right text-xs sm:text-sm">${p.quantity || 0}</td>
+                            <td class="text-right text-xs sm:text-sm text-green-600">KSh ${(p.revenue || 0).toLocaleString()}</td>
+                            <td class="text-right text-xs sm:text-sm text-gray-500">KSh ${(p.cost || 0).toLocaleString()}</td>
+                            <td class="text-right text-xs sm:text-sm font-semibold text-purple-600">KSh ${(p.profit || 0).toLocaleString()}</td>
+                            <td class="text-right text-xs sm:text-sm font-bold ${(p.margin || 0) > 20 ? 'text-green-600' : 'text-amber-600'}">${(p.margin || 0).toFixed(1)}%</td>
+                        </tr>`;
+                    });
+                    productTable.innerHTML = html;
+                } else {
+                    productTable.innerHTML = `<tr><td colspan="6" class="text-center py-6 text-gray-400">No product data available</td></tr>`;
+                }
+            }
+        })
+        .catch(err => {
+            console.error('❌ Error loading analytics:', err);
+            document.getElementById('monthlyTable').innerHTML = `<tr><td colspan="7" class="text-center py-6 text-red-400">Error loading data</td></tr>`;
+            document.getElementById('productTable').innerHTML = `<tr><td colspan="6" class="text-center py-6 text-red-400">Error loading data</td></tr>`;
+        });
+}
+
+// ============================================================
+// CHART INITIALIZATION - BIGGER CHARTS
+// ============================================================
+let revenueChart = null;
+let categoryChart = null;
+
+function waitForChartJS() {
+    if (typeof Chart !== 'undefined') {
+        console.log('✅ Chart.js loaded, initializing charts...');
+        setTimeout(initCharts, 300);
+    } else {
+        console.log('⏳ Waiting for Chart.js...');
+        setTimeout(waitForChartJS, 500);
+    }
+}
+
+function initCharts() {
+    // ============================================================
+    // REVENUE CHART - BIGGER
+    // ============================================================
+    const revenueCtx = document.getElementById('revenueChart');
+    if (revenueCtx) {
+        if (revenueChart) {
+            revenueChart.destroy();
+        }
+        
+        // Get data from analytics
+        let labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+        let data = [0, 0, 0, 0, 0, 0];
+        
+        try {
+            const monthlyData = {{ analytics.monthly_data | tojson | safe if analytics and analytics.monthly_data else '{}' }};
+            if (monthlyData && Object.keys(monthlyData).length > 0) {
+                const months = Object.keys(monthlyData).sort();
+                labels = months;
+                data = months.map(function(month) {
+                    return monthlyData[month].revenue || 0;
+                });
+            }
+        } catch(e) {
+            console.warn('Using fallback data for revenue chart');
+        }
+        
+        revenueChart = new Chart(revenueCtx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Revenue (KSh)',
+                    data: data,
+                    backgroundColor: [
+                        'rgba(5, 150, 105, 0.85)',
+                        'rgba(5, 150, 105, 0.7)',
+                        'rgba(5, 150, 105, 0.55)',
+                        'rgba(5, 150, 105, 0.4)',
+                        'rgba(5, 150, 105, 0.3)',
+                        'rgba(5, 150, 105, 0.2)'
+                    ],
+                    borderColor: 'rgba(5, 150, 105, 1)',
+                    borderWidth: 2,
+                    borderRadius: 8,
+                    barPercentage: 0.6,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { 
+                        display: false 
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return 'KSh ' + context.parsed.y.toLocaleString();
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(0,0,0,0.05)'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                if (value >= 1000000) {
+                                    return 'KSh ' + (value / 1000000).toFixed(1) + 'M';
+                                } else if (value >= 1000) {
+                                    return 'KSh ' + (value / 1000).toFixed(0) + 'k';
+                                } else {
+                                    return 'KSh ' + value;
+                                }
+                            },
+                            maxTicksLimit: 6,
+                            font: { size: 9 }
+                        }
+                    },
+                    x: { 
+                        grid: { display: false },
+                        ticks: { font: { size: 9 } }
+                    }
+                }
+            }
+        });
+        console.log('✅ Revenue chart initialized');
+    }
+
+    // ============================================================
+    // CATEGORY CHART - BIGGER
+    // ============================================================
+    const categoryCtx = document.getElementById('categoryChart');
+    if (categoryCtx) {
+        if (categoryChart) {
+            categoryChart.destroy();
+        }
+        
+        let labels = ['Electronics', 'Phones', 'Accessories', 'Laptops', 'Other'];
+        let values = [25, 35, 20, 15, 5];
+        
+        try {
+            const categorySales = {{ analytics.category_sales | tojson | safe if analytics and analytics.category_sales else '{}' }};
+            if (categorySales && Object.keys(categorySales).length > 0) {
+                const sorted = Object.entries(categorySales).sort(function(a, b) {
+                    return b[1].revenue - a[1].revenue;
+                }).slice(0, 5);
+                
+                labels = sorted.map(function(item) { return item[0]; });
+                values = sorted.map(function(item) { return item[1].revenue || 0; });
+            }
+        } catch(e) {
+            console.warn('Using fallback data for category chart');
+        }
+        
+        categoryChart = new Chart(categoryCtx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: [
+                        'rgba(99, 102, 241, 0.85)',
+                        'rgba(5, 150, 105, 0.85)',
+                        'rgba(251, 191, 36, 0.85)',
+                        'rgba(239, 68, 68, 0.85)',
+                        'rgba(168, 85, 247, 0.85)'
+                    ],
+                    borderWidth: 2,
+                    borderColor: 'white',
+                    hoverOffset: 12,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '50%',
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 12,
+                            usePointStyle: true,
+                            pointStyleWidth: 12,
+                            font: { size: 10, weight: '500' },
+                            boxWidth: 12
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let total = context.dataset.data.reduce(function(a, b) { return a + b; }, 0);
+                                let percentage = total > 0 ? ((context.parsed / total) * 100).toFixed(1) : 0;
+                                return context.label + ': ' + percentage + '% (KSh ' + context.parsed.toLocaleString() + ')';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        console.log('✅ Category chart initialized');
+    }
+}
+
+// ============================================================
+// HANDLE RESIZE
+// ============================================================
+function handleResize() {
+    if (revenueChart) revenueChart.resize();
+    if (categoryChart) categoryChart.resize();
+}
+
+// ============================================================
+// LOAD OFFLINE ORDERS FOR DASHBOARD
+// ============================================================
+async function loadOfflineOrdersForDashboard() {
+    try {
+        console.log('📁 Checking for offline orders...');
+        
+        const dbExists = await new Promise((resolve) => {
+            const request = indexedDB.open('PricePointDB', 1);
+            request.onsuccess = function(e) { resolve(true); };
+            request.onerror = function() { resolve(false); };
+            request.onupgradeneeded = function() { resolve(true); };
+        });
+        
+        if (!dbExists) {
+            console.log('📭 No IndexedDB database found');
+            return [];
+        }
+        
+        const orders = await new Promise((resolve) => {
+            const request = indexedDB.open('PricePointDB', 1);
+            request.onsuccess = function(e) {
+                const db = e.target.result;
+                const tx = db.transaction('orders', 'readonly');
+                const store = tx.objectStore('orders');
+                store.getAll().onsuccess = function(e2) { resolve(e2.target.result); };
+                store.getAll().onerror = function() { resolve([]); };
+            };
+            request.onerror = function() { resolve([]); };
+        });
+        
+        if (!orders || orders.length === 0) {
+            console.log('📭 No offline orders found');
+            showSyncBar(0);
+            return [];
+        }
+        
+        const unsynced = orders.filter(o => o.synced === false);
+        console.log(`📁 Found ${unsynced.length} offline orders (${orders.length} total)`);
+        
+        if (unsynced.length > 0) {
+            showSyncBar(unsynced.length, unsynced);
+            
+            const response = await fetch('/admin/api/sync-queue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orders: unsynced, dashboard: true })
+            });
+            const result = await response.json();
+            console.log('📊 Dashboard merge result:', result);
+            
+            if (result.success) {
+                console.log('✅ Offline orders sent to dashboard');
+                updateDashboardStats(unsynced);
+            }
+        } else {
+            showSyncBar(0);
+        }
+        
+        return unsynced;
+    } catch (err) {
+        console.error('❌ Error loading offline orders:', err);
+        return [];
+    }
+}
+
+function updateDashboardStats(offlineOrders) {
+    if (!offlineOrders || offlineOrders.length === 0) return;
+    
+    console.log(`📊 Updating dashboard with ${offlineOrders.length} offline orders`);
+    
+    let totalRevenue = 0;
+    let totalOrders = 0;
+    let todayRevenue = 0;
+    let todayOrders = 0;
+    const today = new Date().toDateString();
+    
+    offlineOrders.forEach(order => {
+        if (order.status === 'cancelled') return;
+        totalRevenue += parseFloat(order.total) || 0;
+        totalOrders++;
+        
+        const orderDate = order.created_at ? new Date(order.created_at).toDateString() : '';
+        if (orderDate === today) {
+            todayRevenue += parseFloat(order.total) || 0;
+            todayOrders++;
+        }
+    });
+    
+    const totalOrdersEl = document.getElementById('dashTotalOrders');
+    const totalRevenueEl = document.getElementById('dashTodayRevenue');
+    const liveRevenueEl = document.getElementById('liveRevenue');
+    const liveOrdersEl = document.getElementById('liveOrders');
+    
+    const currentOrders = parseInt(totalOrdersEl?.textContent?.replace(/,/g, '') || 0);
+    const currentRevenue = parseFloat(totalRevenueEl?.textContent?.replace(/[^0-9.]/g, '') || 0);
+    
+    if (totalOrdersEl) {
+        totalOrdersEl.textContent = (currentOrders + totalOrders).toLocaleString();
+    }
+    
+    if (totalRevenueEl) {
+        totalRevenueEl.textContent = 'KSh ' + (currentRevenue + totalRevenue).toLocaleString();
+    }
+    
+    if (liveRevenueEl) {
+        const liveRevenue = parseFloat(liveRevenueEl.textContent?.replace(/[^0-9.]/g, '') || 0);
+        liveRevenueEl.textContent = 'KSh ' + (liveRevenue + todayRevenue).toLocaleString();
+    }
+    
+    if (liveOrdersEl) {
+        const liveOrders = parseInt(liveOrdersEl.textContent || 0);
+        liveOrdersEl.textContent = liveOrders + todayOrders;
+    }
+    
+    const analyticsRevenue = document.getElementById('totalRevenue');
+    if (analyticsRevenue) {
+        const current = parseFloat(analyticsRevenue.textContent?.replace(/[^0-9.]/g, '') || 0);
+        analyticsRevenue.textContent = 'KSh ' + (current + totalRevenue).toLocaleString();
+    }
+    
+    const analyticsOrders = document.getElementById('totalOrders');
+    if (analyticsOrders) {
+        const current = parseInt(analyticsOrders.textContent || 0);
+        analyticsOrders.textContent = (current + totalOrders);
+    }
+    
+    console.log(`✅ Dashboard updated: +${totalOrders} orders, +KSh ${totalRevenue.toLocaleString()}`);
+}
+
+// ============================================================
+// SYNC OFFLINE ORDERS FROM DASHBOARD
+// ============================================================
+async function syncOfflineOrdersFromDashboard() {
+    console.log('🔄 Syncing offline orders...');
+    
+    try {
+        const orders = await new Promise((resolve) => {
+            const request = indexedDB.open('PricePointDB', 1);
+            request.onsuccess = function(e) {
+                const db = e.target.result;
+                const tx = db.transaction('orders', 'readonly');
+                const store = tx.objectStore('orders');
+                store.getAll().onsuccess = function(e2) { resolve(e2.target.result); };
+                store.getAll().onerror = function() { resolve([]); };
+            };
+            request.onerror = function() { resolve([]); };
+        });
+        
+        const unsynced = orders.filter(o => o.synced === false);
+        if (unsynced.length === 0) {
+            showToast('✅ No offline orders to sync', 'success');
+            showSyncBar(0);
+            return;
+        }
+        
+        const syncBtn = document.querySelector('#syncStatusBar .btn-gradient');
+        if (syncBtn) {
+            syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
+            syncBtn.disabled = true;
+        }
+        
+        const response = await fetch('/admin/api/sync-queue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orders: unsynced })
+        });
+        const result = await response.json();
+        
+        if (syncBtn) {
+            syncBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Sync Now';
+            syncBtn.disabled = false;
+        }
+        
+        if (result.synced > 0) {
+            showToast(`✅ ${result.synced} orders synced to cloud!`, 'success');
+            
+            const db = await new Promise((resolve) => {
+                const r = indexedDB.open('PricePointDB', 1);
+                r.onsuccess = function(e) { resolve(e.target.result); };
+            });
+            const tx = db.transaction('orders', 'readwrite');
+            const store = tx.objectStore('orders');
+            unsynced.forEach(order => {
+                order.synced = true;
+                order.syncedAt = new Date().toISOString();
+                store.put(order);
+            });
+            showSyncBar(0);
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showToast(`⚠️ ${result.failed || 0} orders failed to sync`, 'warning');
+        }
+    } catch (err) {
+        console.error('❌ Sync error:', err);
+        showToast('❌ Error syncing orders: ' + err.message, 'error');
+        const syncBtn = document.querySelector('#syncStatusBar .btn-gradient');
+        if (syncBtn) {
+            syncBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Sync Now';
+            syncBtn.disabled = false;
+        }
+    }
+}
+
+// ============================================================
+// TOAST NOTIFICATION
+// ============================================================
+function showToast(message, type) {
+    const colors = {
+        success: 'bg-green-500',
+        error: 'bg-red-500',
+        warning: 'bg-amber-500',
+        info: 'bg-blue-500'
+    };
+    
+    const toast = document.createElement('div');
+    toast.className = `fixed top-4 right-4 z-50 ${colors[type] || 'bg-blue-500'} text-white px-4 py-3 rounded-lg shadow-lg max-w-sm text-sm transition-all duration-300 transform translate-x-0`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.transform = 'translateX(100%)';
+        setTimeout(() => toast.remove(), 300);
+    }, 4000);
+}
+
+// ============================================================
+// ONLINE/OFFLINE HANDLING
+// ============================================================
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Admin dashboard loading...');
+    
+    // Load analytics data - fixes "Loading..." issue
+    loadAnalyticsData();
+    
+    // Initialize charts
+    setTimeout(waitForChartJS, 500);
+    
+    // Check for offline orders
+    setTimeout(loadOfflineOrdersForDashboard, 2000);
+    
+    // Auto-sync when coming back online
+    window.addEventListener('online', function() {
+        console.log('📡 Back online - checking for offline orders...');
+        showToast('🔄 Back online! Syncing orders...', 'info');
+        setTimeout(loadOfflineOrdersForDashboard, 2000);
+    });
+    
+    // Handle resize
+    let resizeTimer;
+    window.addEventListener('resize', function() {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function() {
+            if (revenueChart) revenueChart.resize();
+            if (categoryChart) categoryChart.resize();
+        }, 300);
+    });
+    
+    // Update live time
+    function updateLiveTime() {
+        const now = new Date();
+        document.getElementById('liveTime').textContent = now.toLocaleTimeString();
+    }
+    updateLiveTime();
+    setInterval(updateLiveTime, 30000);
+});
+
+console.log('✅ Admin dashboard fully loaded');
+</script>
 {% endblock %}
