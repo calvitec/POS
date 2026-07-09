@@ -1035,7 +1035,6 @@
     <div id="toast" class="toast hidden">
         <span id="toastMessage">Added to cart!</span>
     </div>
-    
 
     <script>
         // ============================================================
@@ -2250,49 +2249,56 @@
         }
 
         // ============================================================
-        // SEARCH PRODUCT BY BARCODE - UPDATED WITH FULL SUPPORT
+        // SEARCH PRODUCT BY BARCODE - FIXED VERSION
         // ============================================================
         function searchProductByBarcode(barcode) {
             console.log('🔍 Searching for product with barcode:', barcode);
             
-            const searchTerm = barcode.toLowerCase().trim();
+            // Convert to string for comparison
+            const searchTerm = String(barcode).trim();
+            console.log('📋 Search term:', searchTerm);
             
-            // FIRST: Try exact barcode match
+            // Log all products with barcodes for debugging
+            const productsWithBarcodes = allProducts.filter(p => p.barcode);
+            console.log('📦 Products with barcodes:', productsWithBarcodes.length);
+            
+            // FIRST: Try exact barcode match (using == for loose equality)
             let product = allProducts.find(p => {
-                const barcodeField = (p.barcode || '').toLowerCase();
-                return barcodeField === searchTerm;
+                const barcodeField = String(p.barcode || '').trim();
+                return barcodeField == searchTerm;
             });
             
             // SECOND: Try exact ID match
             if (!product) {
                 product = allProducts.find(p => {
-                    const id = (p.id || '').toLowerCase();
-                    return id === searchTerm;
+                    const id = String(p.id || '').trim();
+                    return id == searchTerm;
                 });
             }
             
             // THIRD: Try name contains match
             if (!product) {
                 product = allProducts.find(p => {
-                    const name = (p.name || '').toLowerCase();
-                    return name.includes(searchTerm);
+                    const name = String(p.name || '').toLowerCase();
+                    return name.includes(searchTerm.toLowerCase());
                 });
             }
             
             // FOURTH: Try barcode contains match
             if (!product) {
                 product = allProducts.find(p => {
-                    const barcodeField = (p.barcode || '').toLowerCase();
-                    return barcodeField.includes(searchTerm);
+                    const barcodeField = String(p.barcode || '').toLowerCase();
+                    return barcodeField.includes(searchTerm.toLowerCase());
                 });
             }
             
             if (product) {
+                console.log('✅ Found product:', product.name);
                 showToast(`✅ Found: ${product.name}`, 'success');
                 addToPOSCartByProduct(product);
-                // Close scanner after a moment
                 setTimeout(closeBarcodeScanner, 1000);
             } else {
+                console.log('❌ No product found for barcode:', barcode);
                 showToast(`❌ Product not found for: ${barcode}`, 'error');
                 // Ask if user wants to search by name
                 setTimeout(() => {
@@ -2322,8 +2328,8 @@
                     id: product.id,
                     name: product.name,
                     price: product.price,
-                    image: product.image,
-                    stock: product.stock,
+                    image: product.image || '',
+                    stock: product.stock || 0,
                     barcode: product.barcode || '',
                     quantity: 1
                 });
@@ -2386,6 +2392,13 @@
             console.log('✅ POS Pro v3.0 initialized with ' + allProducts.length + ' products');
             console.log('📡 Status:', navigator.onLine ? 'Online' : 'Offline');
             console.log('📋 Products with barcodes:', allProducts.filter(p => p.barcode).length);
+            
+            // Log barcodes for debugging
+            allProducts.forEach(p => {
+                if (p.barcode) {
+                    console.log(`📦 ${p.name}: ${p.barcode}`);
+                }
+            });
         });
     </script>
 </body>
