@@ -1037,17 +1037,25 @@ if ('serviceWorker' in navigator) {
                     }
                     
                     try {
-                        const transaction = db.transaction(['orders'], 'readonly');
-                        const store = transaction.objectStore('orders');
-                        const index = store.index('synced');
-                        const request = index.getAll(false);
+                        // Use cursor instead of index for better compatibility
+                        const allOrders = [];
+                        const tx = db.transaction(['orders'], 'readonly');
+                        const store = tx.objectStore('orders');
+                        const cursor = store.openCursor();
                         
-                        request.onsuccess = function() {
-                            db.close();
-                            resolve(request.result || []);
+                        cursor.onsuccess = function(event) {
+                            const c = event.target.result;
+                            if (c) {
+                                allOrders.push(c.value);
+                                c.continue();
+                            } else {
+                                const unsynced = allOrders.filter(o => o.synced === false);
+                                db.close();
+                                resolve(unsynced);
+                            }
                         };
                         
-                        request.onerror = function() {
+                        cursor.onerror = function() {
                             db.close();
                             resolve([]);
                         };
@@ -1060,47 +1068,149 @@ if ('serviceWorker' in navigator) {
         }
 
         // ============================================================
-        // SYNC FUNCTIONS - AUTO-SYNC
+        // SYNC FUNCTIONS - AUTO-SYNC (CONSOLE COMPATIBLE)
         // ============================================================
-        function syncOfflineOrders() {
+        async function syncOfflineOrders() {
             if (!navigator.onLine) {
                 showToast('📡 Offline - will sync when online', 'warning');
                 return;
             }
             
+            console.log('🔄 SYNCING OFFLINE ORDERS');
+            console.log('═══════════════════════════════════════════════');
             showToast('🔄 Syncing offline orders...', 'info');
             
-            getUnsyncedOrdersFromIndexedDB().then(unsynced => {
-                if (unsynced.length === 0) {
+            try {
+                // 1. Open database
+                const db = await new Promise((resolve, reject) => {
+                    const r = indexedDB.open('PricePointDB', 3);
+                    r.onsuccess = e => resolve(e.target.result);
+                    r.onerror = e => reject(e.target.error);
+                });
+                
+                if (!db.objectStoreNames.contains('orders')) {
+                    console.log('⚠️ No orders store found');
+                    db.close();
                     showToast('✅ No offline orders to sync', 'success');
                     return;
                 }
                 
-                console.log(`📦 Syncing ${unsynced.length} orders...`);
+                // 2. Get all orders using CURSOR (more compatible)
+                const allOrders = [];
+                const tx = db.transaction(['orders'], 'readonly');
+                const store = tx.objectStore('orders');
                 
-                fetch('/admin/api/sync-queue', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ orders: unsynced })
-                })
-                .then(r => r.json())
-                .then(data => {
-                    if (data.success && data.synced > 0) {
-                        showToast(`✅ ${data.synced} offline orders synced!`, 'success');
-                        // Update dashboard stats
-                        setTimeout(() => {
-                            window.location.href = '/admin';
-                        }, 1500);
-                        checkUnsyncedOrders();
-                    } else if (data.failed > 0) {
-                        showToast(`⚠️ ${data.failed} orders failed to sync.`, 'warning');
-                    }
-                })
-                .catch(err => {
-                    console.error('Sync error:', err);
-                    showToast('❌ Sync error', 'error');
+                await new Promise((resolve, reject) => {
+                    const cursor = store.openCursor();
+                    
+                    cursor.onsuccess = function(event) {
+                        const c = event.target.result;
+                        if (c) {
+                            allOrders.push(c.value);
+                            c.continue();
+                        } else {
+                            resolve();
+                        }
+                    };
+                    
+                    cursor.onerror = function(event) {
+                        reject(event.target.error);
+                    };
                 });
-            });
+                
+                db.close();
+                
+                if (allOrders.length === 0) {
+                    console.log('📭 No orders found in IndexedDB');
+                    showToast('✅ No offline orders to sync', 'success');
+                    return;
+                }
+                
+                console.log(`📦 Found ${allOrders.length} total orders`);
+                
+                // 3. Filter unsynced
+                const unsynced = allOrders.filter(o => o.synced === false);
+                
+                if (unsynced.length === 0) {
+                    console.log('✅ All orders are already synced!');
+                    showToast('✅ All orders are synced!', 'success');
+                    return;
+                }
+                
+                console.log(`⏳ Found ${unsynced.length} unsynced orders`);
+                console.log('─────────────────────────────────────────────');
+                
+                let synced = 0;
+                let failed = 0;
+                
+                // 4. Sync each order
+                for (const order of unsynced) {
+                    console.log(`🔄 Syncing: ${order.order_id}...`);
+                    
+                    try {
+                        const response = await fetch('/admin/api/sync-order', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(order)
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.success) {
+                            console.log(`   ✅ Synced: ${order.order_id}`);
+                            
+                            // Mark as synced in IndexedDB
+                            const writeDb = await new Promise((resolve) => {
+                                const r = indexedDB.open('PricePointDB', 3);
+                                r.onsuccess = e => resolve(e.target.result);
+                            });
+                            
+                            const writeTx = writeDb.transaction(['orders'], 'readwrite');
+                            const writeStore = writeTx.objectStore('orders');
+                            order.synced = true;
+                            order.synced_at = new Date().toISOString();
+                            
+                            await new Promise((resolve, reject) => {
+                                const result = writeStore.put(order);
+                                result.onsuccess = resolve;
+                                result.onerror = reject;
+                            });
+                            
+                            writeDb.close();
+                            synced++;
+                        } else {
+                            console.log(`   ❌ Failed: ${order.order_id} - ${result.message}`);
+                            failed++;
+                        }
+                    } catch (error) {
+                        console.log(`   ❌ Error: ${order.order_id} - ${error.message}`);
+                        failed++;
+                    }
+                }
+                
+                console.log('─────────────────────────────────────────────');
+                console.log(`📊 SYNC SUMMARY: ✅ ${synced} synced, ❌ ${failed} failed`);
+                console.log('📦 Total: ' + unsynced.length);
+                
+                if (synced > 0) {
+                    showToast(`✅ ${synced} orders synced to cloud!`, 'success');
+                    // Update dashboard stats
+                    loadSalesStats();
+                    loadUserStats();
+                    checkUnsyncedOrders();
+                    
+                    // Redirect to dashboard after 2 seconds
+                    setTimeout(() => {
+                        window.location.href = '/admin';
+                    }, 2000);
+                } else if (failed > 0 && synced === 0) {
+                    showToast(`⚠️ ${failed} orders failed to sync`, 'warning');
+                }
+                
+            } catch (error) {
+                console.error('❌ Sync error:', error);
+                showToast('❌ Sync error: ' + error.message, 'error');
+            }
         }
 
         function checkUnsyncedOrders() {
