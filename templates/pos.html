@@ -891,6 +891,7 @@ if ('serviceWorker' in navigator) {
     <div id="toast" class="toast hidden">
         <span id="toastMessage">Added to cart!</span>
     </div>
+
 <script>
         // ============================================================
         // DATA
@@ -906,36 +907,80 @@ if ('serviceWorker' in navigator) {
         let totalDiscount = 0;
 
         // ============================================================
-        // INDEXEDDB FUNCTIONS - MUST BE DEFINED FIRST
+        // INDEXEDDB FUNCTIONS - SELF-HEALING VERSION
         // ============================================================
         function openDB() {
             return new Promise((resolve, reject) => {
-                const request = indexedDB.open('PricePointDB', 3);
+                // First, check what version the database is on
+                const checkRequest = indexedDB.open('PricePointDB');
                 
-                request.onupgradeneeded = function(event) {
-                    const database = event.target.result;
+                checkRequest.onsuccess = function(e) {
+                    const db = e.target.result;
+                    const currentVersion = db.version;
+                    db.close();
                     
-                    if (!database.objectStoreNames.contains('orders')) {
-                        const store = database.createObjectStore('orders', { keyPath: 'order_id' });
-                        store.createIndex('synced', 'synced', { unique: false });
-                        store.createIndex('created_at', 'created_at', { unique: false });
-                        console.log('✅ Orders store created');
-                    }
+                    // Use the CURRENT version, not hardcoded
+                    const versionToUse = Math.max(currentVersion, 3);
+                    console.log('📁 Current DB version:', currentVersion, 'using version:', versionToUse);
                     
-                    if (!database.objectStoreNames.contains('sync_data')) {
-                        database.createObjectStore('sync_data', { keyPath: 'id' });
-                        console.log('✅ Sync data store created');
-                    }
+                    const request = indexedDB.open('PricePointDB', versionToUse);
+                    
+                    request.onupgradeneeded = function(event) {
+                        const database = event.target.result;
+                        
+                        if (!database.objectStoreNames.contains('orders')) {
+                            const store = database.createObjectStore('orders', { keyPath: 'order_id' });
+                            store.createIndex('synced', 'synced', { unique: false });
+                            store.createIndex('created_at', 'created_at', { unique: false });
+                            console.log('✅ Orders store created');
+                        }
+                        
+                        if (!database.objectStoreNames.contains('sync_data')) {
+                            database.createObjectStore('sync_data', { keyPath: 'id' });
+                            console.log('✅ Sync data store created');
+                        }
+                    };
+                    
+                    request.onsuccess = function(event) {
+                        console.log('✅ IndexedDB connected (version', versionToUse, ')');
+                        resolve(event.target.result);
+                    };
+                    
+                    request.onerror = function(event) {
+                        console.error('❌ IndexedDB error:', event.target.error);
+                        reject(event.target.error);
+                    };
                 };
                 
-                request.onsuccess = function(event) {
-                    console.log('✅ IndexedDB connected');
-                    resolve(event.target.result);
-                };
-                
-                request.onerror = function(event) {
-                    console.error('❌ IndexedDB error:', event.target.error);
-                    reject(event.target.error);
+                checkRequest.onerror = function(e) {
+                    // Database doesn't exist yet - open with version 3
+                    const request = indexedDB.open('PricePointDB', 3);
+                    
+                    request.onupgradeneeded = function(event) {
+                        const database = event.target.result;
+                        
+                        if (!database.objectStoreNames.contains('orders')) {
+                            const store = database.createObjectStore('orders', { keyPath: 'order_id' });
+                            store.createIndex('synced', 'synced', { unique: false });
+                            store.createIndex('created_at', 'created_at', { unique: false });
+                            console.log('✅ Orders store created');
+                        }
+                        
+                        if (!database.objectStoreNames.contains('sync_data')) {
+                            database.createObjectStore('sync_data', { keyPath: 'id' });
+                            console.log('✅ Sync data store created');
+                        }
+                    };
+                    
+                    request.onsuccess = function(event) {
+                        console.log('✅ IndexedDB connected (version 3)');
+                        resolve(event.target.result);
+                    };
+                    
+                    request.onerror = function(event) {
+                        console.error('❌ IndexedDB error:', event.target.error);
+                        reject(event.target.error);
+                    };
                 };
             });
         }
@@ -943,32 +988,38 @@ if ('serviceWorker' in navigator) {
         function saveOrderToIndexedDB(order) {
             return new Promise((resolve, reject) => {
                 openDB().then(db => {
-                    const transaction = db.transaction(['orders'], 'readwrite');
-                    const store = transaction.objectStore('orders');
-                    
-                    if (!order.order_id) {
-                        order.order_id = 'POS-' + Date.now().toString(36).toUpperCase();
-                    }
-                    if (order.synced === undefined) {
-                        order.synced = false;
-                    }
-                    if (!order.synced_at) {
-                        order.synced_at = null;
-                    }
-                    
-                    const result = store.put(order);
-                    
-                    result.onsuccess = function() {
-                        console.log('✅ Order saved to IndexedDB:', order.order_id);
+                    try {
+                        const transaction = db.transaction(['orders'], 'readwrite');
+                        const store = transaction.objectStore('orders');
+                        
+                        if (!order.order_id) {
+                            order.order_id = 'POS-' + Date.now().toString(36).toUpperCase();
+                        }
+                        if (order.synced === undefined) {
+                            order.synced = false;
+                        }
+                        if (!order.synced_at) {
+                            order.synced_at = null;
+                        }
+                        
+                        const result = store.put(order);
+                        
+                        result.onsuccess = function() {
+                            console.log('✅ Order saved to IndexedDB:', order.order_id);
+                            db.close();
+                            resolve(order);
+                        };
+                        
+                        result.onerror = function() {
+                            console.error('❌ IndexedDB save error:', result.error);
+                            db.close();
+                            reject(result.error);
+                        };
+                    } catch (error) {
+                        console.error('❌ Transaction error:', error);
                         db.close();
-                        resolve(order);
-                    };
-                    
-                    result.onerror = function() {
-                        console.error('❌ IndexedDB save error:', result.error);
-                        db.close();
-                        reject(result.error);
-                    };
+                        reject(error);
+                    }
                 }).catch(err => {
                     console.error('❌ openDB error:', err);
                     reject(err);
@@ -985,26 +1036,31 @@ if ('serviceWorker' in navigator) {
                         return;
                     }
                     
-                    const transaction = db.transaction(['orders'], 'readonly');
-                    const store = transaction.objectStore('orders');
-                    const index = store.index('synced');
-                    const request = index.getAll(false);
-                    
-                    request.onsuccess = function() {
-                        db.close();
-                        resolve(request.result);
-                    };
-                    
-                    request.onerror = function() {
+                    try {
+                        const transaction = db.transaction(['orders'], 'readonly');
+                        const store = transaction.objectStore('orders');
+                        const index = store.index('synced');
+                        const request = index.getAll(false);
+                        
+                        request.onsuccess = function() {
+                            db.close();
+                            resolve(request.result || []);
+                        };
+                        
+                        request.onerror = function() {
+                            db.close();
+                            resolve([]);
+                        };
+                    } catch (error) {
                         db.close();
                         resolve([]);
-                    };
+                    }
                 }).catch(() => resolve([]));
             });
         }
 
         // ============================================================
-        // SYNC FUNCTIONS
+        // SYNC FUNCTIONS - AUTO-SYNC
         // ============================================================
         function syncOfflineOrders() {
             if (!navigator.onLine) {
@@ -1020,6 +1076,8 @@ if ('serviceWorker' in navigator) {
                     return;
                 }
                 
+                console.log(`📦 Syncing ${unsynced.length} orders...`);
+                
                 fetch('/admin/api/sync-queue', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1028,7 +1086,11 @@ if ('serviceWorker' in navigator) {
                 .then(r => r.json())
                 .then(data => {
                     if (data.success && data.synced > 0) {
-                        showToast(`✅ Synced ${data.synced} offline orders!`, 'success');
+                        showToast(`✅ ${data.synced} offline orders synced!`, 'success');
+                        // Update dashboard stats
+                        setTimeout(() => {
+                            window.location.href = '/admin';
+                        }, 1500);
                         checkUnsyncedOrders();
                     } else if (data.failed > 0) {
                         showToast(`⚠️ ${data.failed} orders failed to sync.`, 'warning');
@@ -1062,6 +1124,53 @@ if ('serviceWorker' in navigator) {
         function manualSync() {
             syncOfflineOrders();
         }
+
+        // ============================================================
+        // AUTO-SYNC ON PAGE LOAD AND INTERVAL
+        // ============================================================
+        function checkAndSyncOfflineOrders() {
+            if (!navigator.onLine) {
+                console.log('📡 Offline - waiting for connection');
+                return;
+            }
+            
+            getUnsyncedOrdersFromIndexedDB().then(unsynced => {
+                if (unsynced.length > 0) {
+                    console.log(`⏳ Found ${unsynced.length} unsynced orders - syncing...`);
+                    syncOfflineOrders();
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initial sync check after 3 seconds
+            setTimeout(function() {
+                if (navigator.onLine) {
+                    console.log('🌐 Auto-sync on page load...');
+                    checkAndSyncOfflineOrders();
+                }
+            }, 3000);
+            
+            // Check every 30 seconds
+            setInterval(function() {
+                if (navigator.onLine) {
+                    checkAndSyncOfflineOrders();
+                }
+            }, 30000);
+        });
+
+        // Auto-sync when coming online
+        window.addEventListener('online', function() {
+            console.log('🌐 Back online! Auto-syncing...');
+            showToast('🔄 Back online! Syncing orders...', 'info');
+            setTimeout(checkAndSyncOfflineOrders, 1000);
+            setTimeout(checkUnsyncedOrders, 500);
+        });
+
+        window.addEventListener('offline', function() {
+            updateOnlineStatusUI();
+            showToast('📡 You are offline. Orders will be saved locally.', 'warning');
+        });
 
         // ============================================================
         // PLACE ORDER - COMPLETE WORKING VERSION
@@ -1200,18 +1309,6 @@ if ('serviceWorker' in navigator) {
                 badge.style.color = '#0f172a';
             }
         }
-
-        window.addEventListener('online', function() {
-            updateOnlineStatusUI();
-            showToast('🔄 Back online! Syncing orders...', 'info');
-            setTimeout(syncOfflineOrders, 1000);
-            setTimeout(checkUnsyncedOrders, 500);
-        });
-
-        window.addEventListener('offline', function() {
-            updateOnlineStatusUI();
-            showToast('📡 You are offline. Orders will be saved locally.', 'warning');
-        });
 
         updateOnlineStatusUI();
 
@@ -1784,10 +1881,11 @@ if ('serviceWorker' in navigator) {
             loadSalesStats();
             loadUserStats();
             
+            // Auto-sync check on load
             setTimeout(function() {
                 if (navigator.onLine) {
                     checkUnsyncedOrders();
-                    setTimeout(syncOfflineOrders, 3000);
+                    setTimeout(checkAndSyncOfflineOrders, 2000);
                 }
             }, 2000);
             
