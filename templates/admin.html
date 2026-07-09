@@ -1512,17 +1512,16 @@ function handleResize() {
 }
 
 // ============================================================
-// LOAD OFFLINE ORDERS FOR DASHBOARD - FIXED
+// LOAD OFFLINE ORDERS FOR DASHBOARD - FINAL FIX (Version 2)
 // ============================================================
 async function loadOfflineOrdersForDashboard() {
     try {
         console.log('📁 Checking for offline orders...');
         
-        // First, ensure database exists and has orders store
+        // Open database with version 2
         const db = await new Promise((resolve, reject) => {
-            const request = indexedDB.open('PricePointDB', 1);
+            const request = indexedDB.open('PricePointDB', 2);
             
-            // This runs when database is created or version changes
             request.onupgradeneeded = function(e) {
                 const db = e.target.result;
                 if (!db.objectStoreNames.contains('orders')) {
@@ -1543,29 +1542,10 @@ async function loadOfflineOrdersForDashboard() {
         
         // Check if orders store exists
         if (!db.objectStoreNames.contains('orders')) {
-            console.log('⚠️ Orders store not found, creating...');
+            console.log('⚠️ Orders store not found');
             db.close();
-            // Reopen with upgrade needed
-            const upgradeRequest = indexedDB.open('PricePointDB', 2);
-            upgradeRequest.onupgradeneeded = function(e) {
-                const db = e.target.result;
-                if (!db.objectStoreNames.contains('orders')) {
-                    db.createObjectStore('orders', { keyPath: 'order_id' });
-                    console.log('✅ Orders store created on upgrade');
-                }
-            };
-            upgradeRequest.onsuccess = function(e) {
-                const db = e.target.result;
-                db.close();
-                // Retry after store creation
-                setTimeout(loadOfflineOrdersForDashboard, 500);
-                return;
-            };
-            upgradeRequest.onerror = function() {
-                console.log('❌ Failed to create orders store');
-                showSyncBar(0);
-            };
-            return;
+            showSyncBar(0);
+            return [];
         }
         
         // Get orders from IndexedDB
@@ -1591,7 +1571,6 @@ async function loadOfflineOrdersForDashboard() {
         if (!orders || orders.length === 0) {
             console.log('📭 No offline orders found');
             showSyncBar(0);
-            db.close();
             return [];
         }
         
@@ -1687,15 +1666,15 @@ function updateDashboardStats(offlineOrders) {
 }
 
 // ============================================================
-// SYNC OFFLINE ORDERS FROM DASHBOARD - FIXED
+// SYNC OFFLINE ORDERS FROM DASHBOARD - FINAL FIX (Version 2)
 // ============================================================
 async function syncOfflineOrdersFromDashboard() {
     console.log('🔄 Syncing offline orders...');
     
     try {
-        // Open database with upgrade needed
+        // Open database with version 2
         const db = await new Promise((resolve, reject) => {
-            const request = indexedDB.open('PricePointDB', 1);
+            const request = indexedDB.open('PricePointDB', 2);
             
             request.onupgradeneeded = function(e) {
                 const db = e.target.result;
@@ -1769,7 +1748,7 @@ async function syncOfflineOrdersFromDashboard() {
             showToast(`✅ ${result.synced} orders synced to cloud!`, 'success');
             
             const writeDb = await new Promise((resolve) => {
-                const r = indexedDB.open('PricePointDB', 1);
+                const r = indexedDB.open('PricePointDB', 2);
                 r.onsuccess = function(e) { resolve(e.target.result); };
             });
             const tx = writeDb.transaction(['orders'], 'readwrite');
@@ -1795,6 +1774,7 @@ async function syncOfflineOrdersFromDashboard() {
         }
     }
 }
+
 // ============================================================
 // ONLINE/OFFLINE HANDLING
 // ============================================================
