@@ -21,12 +21,25 @@ def has_internet():
             headers=Config.SUPABASE_HEADERS,
             timeout=3
         )
-        # Any successful response (2xx, 3xx, 4xx) means we can reach the server
         return response.status_code < 500
     except Exception as e:
         print(f"Internet check failed: {e}")
         return False
 
+def load_orders():
+    """Load orders - try Supabase first, fallback to local"""
+    global orders_cache
+    
+    # ============================================================
+    # ADD THIS LINE - Force refresh every time in development
+    # ============================================================
+    orders_cache = []  # <--- ADD THIS ONE LINE
+    
+    # Check if we have cached orders and return them
+    if orders_cache:
+        print(f"📦 Returning {len(orders_cache)} cached orders")
+        return orders_cache
+    
 
 def get_sample_products():
     return [
@@ -596,7 +609,6 @@ def load_orders():
     """Load orders - try Supabase first, fallback to local"""
     global orders_cache
     
-    # Check if we have cached orders and return them
     if orders_cache:
         print(f"📦 Returning {len(orders_cache)} cached orders")
         return orders_cache
@@ -615,12 +627,9 @@ def load_orders():
             print(f"✅ Successfully loaded {len(data)} orders from Supabase")
             
             if isinstance(data, list):
-                # Process each order to ensure proper format
                 processed_orders = []
                 for order in data:
-                    # Handle customer field - it's already a dict in your DB
                     if isinstance(order.get('customer'), dict):
-                        # Already a dict, keep it
                         pass
                     elif isinstance(order.get('customer'), str):
                         try:
@@ -632,7 +641,6 @@ def load_orders():
                     else:
                         order['customer'] = {}
                     
-                    # Ensure customer has required fields
                     if not order['customer']:
                         order['customer'] = {
                             'name': order.get('customer_name', 'Customer'),
@@ -641,7 +649,6 @@ def load_orders():
                             'address': order.get('customer_address', 'N/A')
                         }
                     
-                    # Handle items field
                     if isinstance(order.get('items'), str):
                         try:
                             order['items'] = json.loads(order['items'])
@@ -650,7 +657,6 @@ def load_orders():
                     elif not isinstance(order.get('items'), list):
                         order['items'] = []
                     
-                    # Ensure numeric fields are numbers
                     for field in ['total', 'subtotal', 'shipping']:
                         if field in order:
                             try:
@@ -658,16 +664,13 @@ def load_orders():
                             except:
                                 order[field] = 0
                     
-                    # Ensure order_id is a string
                     if 'order_id' in order:
                         order['order_id'] = str(order['order_id'])
                     
                     processed_orders.append(order)
                 
-                # Cache the processed orders
                 orders_cache = processed_orders
                 
-                # Also update local cache
                 try:
                     json_data = load_json_data()
                     json_data['orders'] = processed_orders
@@ -682,7 +685,6 @@ def load_orders():
             print(f"⚠️ Failed to load from Supabase: {response.status_code}")
             print(f"Response: {response.text[:200]}")
         
-        # Fallback to local cache
         print("📂 Trying to load from local cache...")
         json_data = load_json_data()
         orders_cache = json_data.get('orders', [])
@@ -691,7 +693,6 @@ def load_orders():
         
     except requests.exceptions.ConnectionError as e:
         print(f"❌ Connection error loading orders: {e}")
-        # Fallback to local cache
         try:
             json_data = load_json_data()
             orders_cache = json_data.get('orders', [])
@@ -702,8 +703,6 @@ def load_orders():
     except Exception as exc:
         print(f'❌ Error loading orders: {exc}')
         traceback.print_exc()
-        
-        # Fallback to local cache
         try:
             json_data = load_json_data()
             orders_cache = json_data.get('orders', [])
@@ -716,6 +715,12 @@ def load_orders():
 def load_products():
     """Load products - ALWAYS from Supabase first"""
     global products_cache
+    
+    # ============================================================
+    # FORCE REFRESH - Clear cache
+    # ============================================================
+    products_cache = []  # <--- THIS IS THE FIX
+    
     try:
         print("🔄 Attempting to load products from Supabase...")
         
@@ -727,8 +732,11 @@ def load_products():
         if response.status_code == 200:
             data = response.json()
             if isinstance(data, list):
+                # Ensure barcode field exists
+                for product in data:
+                    if 'barcode' not in product:
+                        product['barcode'] = ''
                 products_cache = data
-                # Update cache with fresh data
                 try:
                     json_data = load_json_data()
                     json_data['products'] = data
@@ -740,7 +748,6 @@ def load_products():
         
         print(f"⚠️ Failed to load products from Supabase: {response.status_code}")
         
-        # Only use cache if Supabase fails
         if products_cache:
             print(f"⚠️ Using cached products ({len(products_cache)})")
             return products_cache
@@ -794,7 +801,6 @@ def sync_queued_orders():
         synced = []
         for order in queue:
             try:
-                # Prepare order for Supabase
                 supabase_order = {
                     'order_id': order.get('order_id'),
                     'items': order.get('items', []),
@@ -828,7 +834,6 @@ def sync_queued_orders():
         if synced:
             json_data['order_queue'] = [o for o in queue if o.get('order_id') not in synced]
             save_json_data(json_data)
-            # Clear orders cache to reload fresh data
             global orders_cache
             orders_cache = []
         
@@ -839,7 +844,6 @@ def sync_queued_orders():
 
 
 def sync_pending_data_if_possible():
-    """Sync pending orders if internet is available"""
     if has_internet():
         return sync_queued_orders()
     return False
@@ -850,11 +854,9 @@ def save_order_to_supabase(order_data):
     try:
         print(f"💾 Saving order: {order_data.get('order_id')}")
         
-        # Always save to local first (for offline support)
         json_data = load_json_data()
         json_data.setdefault('orders', [])
         
-        # Check if order already exists
         existing_order = None
         for order in json_data['orders']:
             if order.get('order_id') == order_data.get('order_id'):
@@ -862,22 +864,17 @@ def save_order_to_supabase(order_data):
                 break
         
         if existing_order:
-            # Update existing order
             for key, value in order_data.items():
                 existing_order[key] = value
         else:
-            # Add new order
             json_data['orders'].append(order_data)
         
         save_json_data(json_data)
         
-        # Clear cache to reload fresh data
         global orders_cache
         orders_cache = []
         
-        # Try to save to Supabase
         try:
-            # Prepare order for Supabase
             supabase_order = {
                 'order_id': order_data.get('order_id'),
                 'items': order_data.get('items', []),
@@ -903,7 +900,6 @@ def save_order_to_supabase(order_data):
             
             if response.status_code in [200, 201, 204]:
                 print(f"✅ Order saved to Supabase: {order_data.get('order_id')}")
-                # Mark as synced
                 for order in json_data['orders']:
                     if order.get('order_id') == order_data.get('order_id'):
                         order['synced'] = True
@@ -913,7 +909,6 @@ def save_order_to_supabase(order_data):
             else:
                 print(f"⚠️ Supabase save failed: {response.status_code}")
                 print(f"Response: {response.text[:200]}")
-                # Queue for later sync
                 queue = json_data.get('order_queue', [])
                 if order_data.get('order_id') not in [q.get('order_id') for q in queue]:
                     queue.append({**order_data, 'queued_at': datetime.utcnow().isoformat()})
@@ -923,7 +918,6 @@ def save_order_to_supabase(order_data):
                 
         except Exception as e:
             print(f"❌ Error saving to Supabase: {e}")
-            # Queue for later sync
             queue = json_data.get('order_queue', [])
             if order_data.get('order_id') not in [q.get('order_id') for q in queue]:
                 queue.append({**order_data, 'queued_at': datetime.utcnow().isoformat()})
@@ -951,7 +945,6 @@ def update_product_stock(product_id, new_stock):
         
         if response.status_code in [200, 204]:
             print(f"✅ Stock updated for {product_id}")
-            # Clear cache
             global products_cache
             products_cache = []
             return True
@@ -1020,11 +1013,9 @@ def get_sales_analytics():
         category_sales = {}
 
         for order in orders:
-            # Skip cancelled orders
             if order.get('status') == 'cancelled':
                 continue
                 
-            # Get customer info
             customer = order.get('customer', {})
             if isinstance(customer, str):
                 try:
@@ -1036,7 +1027,6 @@ def get_sales_analytics():
             if not isinstance(customer, dict):
                 customer = {}
 
-            # Get items
             items = order.get('items', [])
             if isinstance(items, str):
                 try:
@@ -1046,14 +1036,12 @@ def get_sales_analytics():
             if not isinstance(items, list):
                 items = []
 
-            # Count by source
             source = order.get('source', 'web')
             if source == 'pos':
                 pos_orders_count += 1
             else:
                 web_orders_count += 1
 
-            # Track customer data
             customer_name = customer.get('name', 'Unknown') if isinstance(customer, dict) else 'Unknown'
             if customer_name != 'Unknown' and customer_name not in customer_data:
                 customer_data[customer_name] = {
@@ -1067,7 +1055,6 @@ def get_sales_analytics():
                 customer_data[customer_name]['orders'] += 1
                 customer_data[customer_name]['total_spent'] += float(order.get('total', 0) or 0)
 
-            # Track monthly data
             created_at = order.get('created_at') or order.get('createdAt') or order.get('date') or datetime.utcnow().isoformat()
             try:
                 created_dt = datetime.fromisoformat(str(created_at).replace('Z', '+00:00'))
@@ -1083,7 +1070,6 @@ def get_sales_analytics():
             })
             month_entry['orders'] += 1
 
-            # Process items
             order_total = float(order.get('total', 0) or 0)
             order_cost = 0.0
             order_items_count = 0
@@ -1094,17 +1080,14 @@ def get_sales_analytics():
                 price = float(item.get('price', 0) or 0)
                 item_total = float(item.get('total', price * quantity) or 0)
                 
-                # Get cost_price
                 cost_price = 0
                 
-                # First try: cost_price from order item
                 if 'cost_price' in item:
                     try:
                         cost_price = float(item.get('cost_price', 0) or 0)
                     except (ValueError, TypeError):
                         cost_price = 0
                 
-                # Second try: get from product lookup
                 if cost_price == 0 and product_id:
                     product = product_lookup.get(product_id, {})
                     if product and 'cost_price' in product:
@@ -1113,11 +1096,9 @@ def get_sales_analytics():
                         except (ValueError, TypeError):
                             cost_price = 0
                 
-                # Final fallback: 70% of price
                 if cost_price == 0 and price > 0:
                     cost_price = price * 0.7
                 
-                # Ensure cost_price is a valid number
                 if cost_price is None or cost_price == '' or cost_price != cost_price:
                     cost_price = 0
                 
@@ -1129,7 +1110,6 @@ def get_sales_analytics():
                 total_profit += (item_total - item_cost)
                 total_items_sold += quantity
 
-                # Track product sales
                 product_name = product_lookup.get(product_id, {}).get('name') or item.get('name') or f'Product {product_id}'
                 sale_entry = product_sales.setdefault(product_name, {
                     'product_id': product_id,
@@ -1143,7 +1123,6 @@ def get_sales_analytics():
                 sale_entry['cost'] += item_cost
                 sale_entry['profit'] += (item_total - item_cost)
 
-                # Track category sales
                 category_name = product_lookup.get(product_id, {}).get('category') or item.get('category') or 'Uncategorized'
                 category_entry = category_sales.setdefault(category_name, {
                     'quantity': 0,
@@ -1161,7 +1140,6 @@ def get_sales_analytics():
             month_entry['cost'] += order_cost
             month_entry['profit'] += (order_total - order_cost)
 
-        # Sort by profit
         sorted_product_sales = dict(sorted(product_sales.items(), key=lambda item: item[1].get('profit', 0), reverse=True))
         sorted_category_sales = dict(sorted(category_sales.items(), key=lambda item: item[1].get('revenue', 0), reverse=True))
 
