@@ -1512,39 +1512,86 @@ function handleResize() {
 }
 
 // ============================================================
-// LOAD OFFLINE ORDERS FOR DASHBOARD
+// LOAD OFFLINE ORDERS FOR DASHBOARD - FIXED
 // ============================================================
 async function loadOfflineOrdersForDashboard() {
     try {
         console.log('📁 Checking for offline orders...');
         
-        const dbExists = await new Promise((resolve) => {
+        // First, ensure database exists and has orders store
+        const db = await new Promise((resolve, reject) => {
             const request = indexedDB.open('PricePointDB', 1);
-            request.onsuccess = function(e) { resolve(true); };
-            request.onerror = function() { resolve(false); };
-            request.onupgradeneeded = function() { resolve(true); };
+            
+            // This runs when database is created or version changes
+            request.onupgradeneeded = function(e) {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('orders')) {
+                    db.createObjectStore('orders', { keyPath: 'order_id' });
+                    console.log('✅ Orders store created');
+                }
+            };
+            
+            request.onsuccess = function(e) {
+                resolve(e.target.result);
+            };
+            
+            request.onerror = function(e) {
+                console.log('❌ Database error:', e.target.error);
+                reject(e.target.error);
+            };
         });
         
-        if (!dbExists) {
-            console.log('📭 No IndexedDB database found');
-            return [];
+        // Check if orders store exists
+        if (!db.objectStoreNames.contains('orders')) {
+            console.log('⚠️ Orders store not found, creating...');
+            db.close();
+            // Reopen with upgrade needed
+            const upgradeRequest = indexedDB.open('PricePointDB', 2);
+            upgradeRequest.onupgradeneeded = function(e) {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('orders')) {
+                    db.createObjectStore('orders', { keyPath: 'order_id' });
+                    console.log('✅ Orders store created on upgrade');
+                }
+            };
+            upgradeRequest.onsuccess = function(e) {
+                const db = e.target.result;
+                db.close();
+                // Retry after store creation
+                setTimeout(loadOfflineOrdersForDashboard, 500);
+                return;
+            };
+            upgradeRequest.onerror = function() {
+                console.log('❌ Failed to create orders store');
+                showSyncBar(0);
+            };
+            return;
         }
         
+        // Get orders from IndexedDB
         const orders = await new Promise((resolve) => {
-            const request = indexedDB.open('PricePointDB', 1);
-            request.onsuccess = function(e) {
-                const db = e.target.result;
-                const tx = db.transaction('orders', 'readonly');
+            try {
+                const tx = db.transaction(['orders'], 'readonly');
                 const store = tx.objectStore('orders');
-                store.getAll().onsuccess = function(e2) { resolve(e2.target.result); };
-                store.getAll().onerror = function() { resolve([]); };
-            };
-            request.onerror = function() { resolve([]); };
+                store.getAll().onsuccess = function(e2) {
+                    resolve(e2.target.result || []);
+                    db.close();
+                };
+                store.getAll().onerror = function() {
+                    resolve([]);
+                    db.close();
+                };
+            } catch (error) {
+                console.log('⚠️ Error accessing orders store:', error);
+                resolve([]);
+                db.close();
+            }
         });
         
         if (!orders || orders.length === 0) {
             console.log('📭 No offline orders found');
             showSyncBar(0);
+            db.close();
             return [];
         }
         
@@ -1570,9 +1617,11 @@ async function loadOfflineOrdersForDashboard() {
             showSyncBar(0);
         }
         
+        db.close();
         return unsynced;
     } catch (err) {
         console.error('❌ Error loading offline orders:', err);
+        showSyncBar(0);
         return [];
     }
 }
@@ -1638,22 +1687,57 @@ function updateDashboardStats(offlineOrders) {
 }
 
 // ============================================================
-// SYNC OFFLINE ORDERS FROM DASHBOARD
+// SYNC OFFLINE ORDERS FROM DASHBOARD - FIXED
 // ============================================================
 async function syncOfflineOrdersFromDashboard() {
     console.log('🔄 Syncing offline orders...');
     
     try {
-        const orders = await new Promise((resolve) => {
+        // Open database with upgrade needed
+        const db = await new Promise((resolve, reject) => {
             const request = indexedDB.open('PricePointDB', 1);
-            request.onsuccess = function(e) {
+            
+            request.onupgradeneeded = function(e) {
                 const db = e.target.result;
-                const tx = db.transaction('orders', 'readonly');
-                const store = tx.objectStore('orders');
-                store.getAll().onsuccess = function(e2) { resolve(e2.target.result); };
-                store.getAll().onerror = function() { resolve([]); };
+                if (!db.objectStoreNames.contains('orders')) {
+                    db.createObjectStore('orders', { keyPath: 'order_id' });
+                    console.log('✅ Orders store created');
+                }
             };
-            request.onerror = function() { resolve([]); };
+            
+            request.onsuccess = function(e) {
+                resolve(e.target.result);
+            };
+            
+            request.onerror = function(e) {
+                reject(e.target.error);
+            };
+        });
+        
+        if (!db.objectStoreNames.contains('orders')) {
+            console.log('⚠️ No orders store, nothing to sync');
+            showToast('✅ No offline orders to sync', 'success');
+            showSyncBar(0);
+            db.close();
+            return;
+        }
+        
+        const orders = await new Promise((resolve) => {
+            try {
+                const tx = db.transaction(['orders'], 'readonly');
+                const store = tx.objectStore('orders');
+                store.getAll().onsuccess = function(e2) {
+                    resolve(e2.target.result || []);
+                    db.close();
+                };
+                store.getAll().onerror = function() {
+                    resolve([]);
+                    db.close();
+                };
+            } catch (error) {
+                resolve([]);
+                db.close();
+            }
         });
         
         const unsynced = orders.filter(o => o.synced === false);
@@ -1684,11 +1768,11 @@ async function syncOfflineOrdersFromDashboard() {
         if (result.synced > 0) {
             showToast(`✅ ${result.synced} orders synced to cloud!`, 'success');
             
-            const db = await new Promise((resolve) => {
+            const writeDb = await new Promise((resolve) => {
                 const r = indexedDB.open('PricePointDB', 1);
                 r.onsuccess = function(e) { resolve(e.target.result); };
             });
-            const tx = db.transaction('orders', 'readwrite');
+            const tx = writeDb.transaction(['orders'], 'readwrite');
             const store = tx.objectStore('orders');
             unsynced.forEach(order => {
                 order.synced = true;
@@ -1697,6 +1781,7 @@ async function syncOfflineOrdersFromDashboard() {
             });
             showSyncBar(0);
             setTimeout(() => location.reload(), 1500);
+            writeDb.close();
         } else {
             showToast(`⚠️ ${result.failed || 0} orders failed to sync`, 'warning');
         }
@@ -1710,7 +1795,6 @@ async function syncOfflineOrdersFromDashboard() {
         }
     }
 }
-
 // ============================================================
 // ONLINE/OFFLINE HANDLING
 // ============================================================
