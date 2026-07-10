@@ -44,14 +44,14 @@
     </script>
 
     <!-- ============================================================
-         OFFLINE ORDER SYNC - POS
+         OFFLINE ORDER SYNC - POS (UPDATED TO VERSION 3)
     ============================================================ -->
     <script>
-        // Sync function
+        // Sync function - UPDATED to version 3
         async function syncNow() {
             console.log('🔍 Checking for offline orders...');
             
-            const r = indexedDB.open('PricePointDB', 1);
+            const r = indexedDB.open('PricePointDB', 3);  // ← CHANGED to 3
             r.onsuccess = function(e) {
                 const db = e.target.result;
                 const tx = db.transaction(['orders'], 'readonly');
@@ -1510,10 +1510,10 @@
         }
 
         // ============================================================
-        // INDEXEDDB FUNCTIONS
+        // INDEXEDDB FUNCTIONS - UPDATED TO VERSION 3
         // ============================================================
         const DB_NAME = 'PricePointDB';
-        const DB_VERSION = 1;
+        const DB_VERSION = 3;  // ← CHANGED from 1 to 3
         const STORE_NAME = 'orders';
         let db = null;
 
@@ -1538,7 +1538,7 @@
                 
                 request.onsuccess = function(event) {
                     db = event.target.result;
-                    console.log('✅ IndexedDB: Connected');
+                    console.log('✅ IndexedDB: Connected (Version ' + db.version + ')');
                     resolve(db);
                 };
                 
@@ -1580,8 +1580,92 @@
             });
         }
 
+        function getOrdersFromIndexedDB() {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const database = await openDB();
+                    const transaction = database.transaction(STORE_NAME, 'readonly');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const request = store.getAll();
+                    
+                    request.onsuccess = function() {
+                        console.log('✅ IndexedDB: Retrieved', request.result.length, 'orders');
+                        resolve(request.result);
+                    };
+                    
+                    request.onerror = function(event) {
+                        console.error('❌ IndexedDB get error:', event.target.error);
+                        reject(event.target.error);
+                    };
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        function getUnsyncedOrdersFromIndexedDB() {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const database = await openDB();
+                    const transaction = database.transaction(STORE_NAME, 'readonly');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const index = store.index('synced');
+                    const request = index.getAll(false);
+                    
+                    request.onsuccess = function() {
+                        console.log('✅ IndexedDB: Found', request.result.length, 'unsynced orders');
+                        resolve(request.result);
+                    };
+                    
+                    request.onerror = function(event) {
+                        reject(event.target.error);
+                    };
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        function markOrderSyncedInIndexedDB(orderId) {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const database = await openDB();
+                    const transaction = database.transaction(STORE_NAME, 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME);
+                    
+                    const request = store.get(orderId);
+                    
+                    request.onsuccess = function() {
+                        const order = request.result;
+                        if (order) {
+                            order.synced = true;
+                            order.synced_at = new Date().toISOString();
+                            const updateRequest = store.put(order);
+                            
+                            updateRequest.onsuccess = function() {
+                                console.log('✅ Order marked synced in IndexedDB:', orderId);
+                                resolve(order);
+                            };
+                            
+                            updateRequest.onerror = function(event) {
+                                reject(event.target.error);
+                            };
+                        } else {
+                            resolve(null);
+                        }
+                    };
+                    
+                    request.onerror = function(event) {
+                        reject(event.target.error);
+                    };
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
         // ============================================================
-        // PLACE ORDER - FIXED FOR OFFLINE
+        // PLACE ORDER - FIXED FOR OFFLINE (VERSION 3)
         // ============================================================
         function placePOSOrder() {
             console.log('🛒 placePOSOrder() called!');
@@ -1938,6 +2022,7 @@
             
             console.log('✅ POS Pro v3.0 initialized with ' + allProducts.length + ' products');
             console.log('📡 Status:', navigator.onLine ? 'Online' : 'Offline');
+            console.log('📦 IndexedDB Version: 3');
         });
     </script>
 </body>
