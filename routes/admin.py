@@ -14,7 +14,6 @@ import requests
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for, send_from_directory
 from werkzeug.utils import secure_filename
 
-# Now this will work
 from config import Config
 from utils.data import get_cart, get_sales_analytics, load_bundles, load_orders, load_products, update_product_stock
 
@@ -25,6 +24,9 @@ admin_bp = Blueprint('admin', __name__)
 # ============================================================
 IS_VERCEL = os.environ.get('VERCEL') == '1' or os.environ.get('NOW_REGION') is not None
 print(f"🚀 Running on: {'Vercel' if IS_VERCEL else 'Local'}")
+
+# On Vercel, we can only write to /tmp
+DATA_FILE = os.path.join('/tmp', 'data.json') if IS_VERCEL else 'data.json'
 
 
 def allowed_file(filename):
@@ -187,9 +189,6 @@ def admin_dashboard():
         return redirect(url_for('admin.user_login'))
 
     try:
-        # ============================================================
-        # FIX: Clear cache on every request to get fresh data
-        # ============================================================
         import utils.data
         utils.data.orders_cache = []
 
@@ -503,6 +502,7 @@ def admin_dashboard():
             DB_CONNECTED=False
         )
 
+
 # ============================================================
 # POS ROUTE
 # ============================================================
@@ -556,7 +556,7 @@ def admin_pos():
 
 
 # ============================================================
-# POS ORDER ROUTE
+# POS ORDER ROUTE - FIXED (No Barcode)
 # ============================================================
 
 @admin_bp.route('/admin/pos/place-order', methods=['POST'])
@@ -574,18 +574,25 @@ def admin_pos_place_order():
         user_name = user.get('name', 'Unknown User')
         user_role = user.get('role', 'user')
 
-        order_id = f'POS-{uuid.uuid4().hex[:8].upper()}'
-
+        order_id = data.get('order_id', f'POS-{uuid.uuid4().hex[:8].upper()}')
+        
         items = data.get('items', [])
-        subtotal = data.get('subtotal', 0)
-        shipping = data.get('shipping', 0)
-        total = subtotal + shipping
+        
+        print(f"📦 Received order: {order_id}")
+        print(f"📦 Items: {len(items)}")
+        for item in items:
+            print(f"  - {item.get('name')} x{item.get('quantity')}")
+
+        subtotal = float(data.get('subtotal', 0))
+        shipping = float(data.get('shipping', 0))
+        total = float(data.get('total', subtotal + shipping))
 
         customer_name = data.get('customer_name', 'Walk-in Customer')
         customer_email = data.get('customer_email', 'walkin@example.com')
         customer_phone = data.get('customer_phone', 'N/A')
         customer_address = data.get('customer_address', 'In-store purchase')
 
+        # Build order data (NO BARCODES)
         order_data = {
             'order_id': order_id,
             'items': items,
@@ -611,83 +618,106 @@ def admin_pos_place_order():
             'staff_name': user_name
         }
 
-        print(f"📦 Order ID: {order_id}")
-        print(f"👤 User: {user_name}")
         print(f"💰 Total: KSh {total}")
 
-        # Check stock
-        products_supabase = load_products()
-        product_lookup = {str(p.get('id')): p for p in products_supabase}
-
-        for item in items:
-            product_id = str(item.get('product_id'))
-            quantity = item.get('quantity', 1)
-            product = product_lookup.get(product_id)
-
-            if product:
-                current_stock = product.get('stock', 0)
-                if current_stock < quantity:
-                    return jsonify({
-                        'success': False,
-                        'message': f'Not enough stock for {product.get("name", "Product")}. Available: {current_stock}'
-                    }), 400
-
-        # Update stock
-        for item in items:
-            product_id = str(item.get('product_id'))
-            quantity = item.get('quantity', 1)
-            product = product_lookup.get(product_id)
-
-            if product:
-                current_stock = product.get('stock', 0)
-                new_stock = max(0, current_stock - quantity)
-                requests.patch(
-                    f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
+        # ============================================================
+        # TRY TO SAVE TO SUPABASE
+        # ============================================================
+        supabase_success = False
+        supabase_error = None
+        
+        try:
+            # Check if Supabase is reachable
+            try:
+                test_response = requests.get(
+                    f"{Config.SUPABASE_URL}/rest/v1/",
                     headers=Config.SUPABASE_HEADERS,
-                    json={'stock': new_stock},
-                    timeout=10
+                    timeout=3
                 )
-                print(f"✅ Stock updated: {product_id} → {new_stock}")
+                if test_response.status_code < 500:
+                    supabase_reachable = True
+                else:
+                    supabase_reachable = False
+            except:
+                supabase_reachable = False
+            
+            if supabase_reachable:
+                print("🌐 Supabase reachable, saving...")
+                response = requests.post(
+                    f"{Config.SUPABASE_URL}/rest/v1/orders",
+                    headers=Config.SUPABASE_HEADERS,
+                    json=order_data,
+                    timeout=15
+                )
 
-        # Add cost price
-        items_with_cost = []
-        for item in items:
-            product_id = str(item.get('product_id'))
-            product = product_lookup.get(product_id)
-            cost_price = product.get('cost_price', 0) if product else 0
-            item_with_cost = item.copy()
-            item_with_cost['cost_price'] = cost_price
-            items_with_cost.append(item_with_cost)
-        order_data['items'] = items_with_cost
+                if response.status_code in [200, 201]:
+                    print(f"✅ Order saved to Supabase: {order_id}")
+                    supabase_success = True
+                    
+                    import utils.data
+                    utils.data.orders_cache = []
 
-        # Save to Supabase
-        response = requests.post(
-            f"{Config.SUPABASE_URL}/rest/v1/orders",
-            headers=Config.SUPABASE_HEADERS,
-            json=order_data,
-            timeout=15
-        )
+                    return jsonify({
+                        'success': True,
+                        'order_id': order_id,
+                        'order': order_data,
+                        'synced': True,
+                        'message': f'✅ Order #{order_id} placed! Total: KSh {total:,.0f}',
+                        'total': total
+                    })
+                else:
+                    supabase_error = f"Supabase error: {response.status_code}"
+                    print(f"❌ {supabase_error}")
+            else:
+                print("📡 Supabase not reachable, using fallback")
+                
+        except requests.exceptions.ConnectionError as e:
+            supabase_error = f"Connection error: {str(e)}"
+            print(f"❌ {supabase_error}")
+        except Exception as e:
+            supabase_error = f"Error: {str(e)}"
+            print(f"❌ {supabase_error}")
 
-        if response.status_code in [200, 201]:
-            print(f"✅ Order saved to Supabase: {order_id}")
-
+        # ============================================================
+        # FALLBACK: Save locally if Supabase fails
+        # ============================================================
+        print("💾 Saving order locally (offline fallback)")
+        
+        try:
+            # Save to local JSON file (use /tmp on Vercel)
+            data_file = DATA_FILE
+            json_data = {}
+            
+            if os.path.exists(data_file):
+                with open(data_file, 'r') as f:
+                    json_data = json.load(f)
+            
+            json_data.setdefault('orders', [])
+            json_data['orders'].append(order_data)
+            
+            with open(data_file, 'w') as f:
+                json.dump(json_data, f, indent=2, default=str)
+            
             import utils.data
             utils.data.orders_cache = []
-
+            
+            print(f"✅ Order saved locally: {order_id}")
+            
             return jsonify({
                 'success': True,
                 'order_id': order_id,
                 'order': order_data,
-                'synced': True,
-                'message': f'✅ Order #{order_id} placed! Total: KSh {total:,.0f}',
+                'synced': False,
+                'offline': True,
+                'message': f'✅ Order #{order_id} saved locally! Will sync when online.',
                 'total': total
             })
-        else:
-            print(f"❌ Supabase error: {response.status_code} - {response.text}")
+        except Exception as e:
+            print(f"❌ Local save error: {e}")
+            traceback.print_exc()
             return jsonify({
                 'success': False,
-                'message': f'Database error: {response.status_code}',
-                'supabase_error': response.text[:500]
+                'message': f'Error saving order: {str(e)}'
             }), 500
 
     except Exception as exc:
@@ -796,7 +826,7 @@ def api_sync_order():
 
 
 # ============================================================
-# SYNC QUEUED ORDERS
+# SYNC QUEUED ORDERS - FIXED
 # ============================================================
 
 @admin_bp.route('/admin/api/sync-queue', methods=['POST'])
@@ -2017,7 +2047,6 @@ def api_update_product(product_id):
         if not data:
             return jsonify({'success': False, 'message': 'No data provided'}), 400
         
-        # Check if online
         try:
             requests.get(
                 f"{Config.SUPABASE_URL}/rest/v1/",
@@ -2059,7 +2088,6 @@ def api_update_product(product_id):
 def api_delete_product(product_id):
     """Delete a product"""
     try:
-        # Check if online
         try:
             requests.get(
                 f"{Config.SUPABASE_URL}/rest/v1/",
