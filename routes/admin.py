@@ -556,7 +556,7 @@ def admin_pos():
 
 
 # ============================================================
-# POS ORDER ROUTE - FIXED (No Barcode)
+# POS ORDER ROUTE - FIXED WITH BETTER ERROR HANDLING
 # ============================================================
 
 @admin_bp.route('/admin/pos/place-order', methods=['POST'])
@@ -624,7 +624,6 @@ def admin_pos_place_order():
         # TRY TO SAVE TO SUPABASE
         # ============================================================
         supabase_success = False
-        supabase_error = None
         
         try:
             # Check if Supabase is reachable
@@ -634,10 +633,7 @@ def admin_pos_place_order():
                     headers=Config.SUPABASE_HEADERS,
                     timeout=3
                 )
-                if test_response.status_code < 500:
-                    supabase_reachable = True
-                else:
-                    supabase_reachable = False
+                supabase_reachable = test_response.status_code < 500
             except:
                 supabase_reachable = False
             
@@ -666,25 +662,24 @@ def admin_pos_place_order():
                         'total': total
                     })
                 else:
-                    supabase_error = f"Supabase error: {response.status_code}"
-                    print(f"❌ {supabase_error}")
+                    print(f"❌ Supabase error: {response.status_code}")
+                    if response.text:
+                        print(f"Response: {response.text[:200]}")
             else:
                 print("📡 Supabase not reachable, using fallback")
                 
         except requests.exceptions.ConnectionError as e:
-            supabase_error = f"Connection error: {str(e)}"
-            print(f"❌ {supabase_error}")
+            print(f"❌ Connection error: {str(e)}")
         except Exception as e:
-            supabase_error = f"Error: {str(e)}"
-            print(f"❌ {supabase_error}")
+            print(f"❌ Supabase save error: {str(e)}")
+            traceback.print_exc()
 
         # ============================================================
-        # FALLBACK: Save locally if Supabase fails
+        # FALLBACK 1: Save to local file (if Supabase fails)
         # ============================================================
-        print("💾 Saving order locally (offline fallback)")
+        print("💾 Attempting to save order locally...")
         
         try:
-            # Save to local JSON file (use /tmp on Vercel)
             data_file = DATA_FILE
             json_data = {}
             
@@ -713,17 +708,27 @@ def admin_pos_place_order():
                 'total': total
             })
         except Exception as e:
-            print(f"❌ Local save error: {e}")
+            print(f"❌ Local save error: {str(e)}")
             traceback.print_exc()
-            return jsonify({
-                'success': False,
-                'message': f'Error saving order: {str(e)}'
-            }), 500
+
+        # ============================================================
+        # FALLBACK 2: Return error but still try to save to IndexedDB from client
+        # ============================================================
+        return jsonify({
+            'success': False,
+            'message': '❌ Failed to save order. Please try again or check internet connection.',
+            'fallback': True,
+            'save_offline': True,
+            'order_data': order_data
+        }), 500
 
     except Exception as exc:
         print(f'❌ POS Order error: {exc}')
         traceback.print_exc()
-        return jsonify({'success': False, 'message': str(exc)}), 500
+        return jsonify({
+            'success': False, 
+            'message': f'Error: {str(exc)[:100]}'
+        }), 500
 
 
 # ============================================================
