@@ -15,126 +15,123 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
-    <!-- Barcode Scanner Library -->
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     
     <!-- ===== SERVICE WORKER REGISTRATION ===== -->
     <script>
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-            .then(reg => {
-                console.log('✅ Service Worker registered successfully!', reg);
-                
-                // Handle updates
-                reg.addEventListener('updatefound', () => {
-                    const newWorker = reg.installing;
-                    newWorker.addEventListener('statechange', () => {
-                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                            console.log('🔄 New update available!');
-                            if (confirm('New version available! Refresh to update?')) {
-                                window.location.reload();
-                            }
-                        }
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(reg => {
+                        console.log('✅ Service Worker registered successfully!', reg);
+                        
+                        reg.addEventListener('updatefound', () => {
+                            const newWorker = reg.installing;
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    console.log('🔄 New update available!');
+                                    if (confirm('New version available! Refresh to update?')) {
+                                        window.location.reload();
+                                    }
+                                }
+                            });
+                        });
+                    })
+                    .catch(err => {
+                        console.error('❌ Service Worker registration failed:', err);
                     });
-                });
-            })
-            .catch(err => {
-                console.error('❌ Service Worker registration failed:', err);
             });
-    });
-}
-</script>
-<!-- ============================================================
-     OFFLINE ORDER SYNC - POS
-============================================================ -->
-<script>
-// Sync function
-async function syncNow() {
-    console.log('🔍 Checking for offline orders...');
-    
-    const r = indexedDB.open('PricePointDB', 1);
-    r.onsuccess = function(e) {
-        const db = e.target.result;
-        const tx = db.transaction(['orders'], 'readonly');
-        const store = tx.objectStore('orders');
-        
-        store.getAll().onsuccess = function(r2) {
-            const orders = r2.target.result;
-            const unsynced = orders.filter(o => !o.synced);
-            
-            if (unsynced.length === 0) {
-                console.log('✅ No offline orders to sync');
-                db.close();
-                return;
-            }
-            
-            console.log(`📦 Found ${unsynced.length} offline order(s) to sync`);
-            
-            fetch('/admin/api/sync-queue', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ orders: unsynced })
-            })
-            .then(response => response.json())
-            .then(data => {
-                console.log('✅ Sync result:', data);
-                if (data.synced > 0) {
-                    const wtx = db.transaction(['orders'], 'readwrite');
-                    const wstore = wtx.objectStore('orders');
-                    unsynced.forEach(order => {
-                        order.synced = true;
-                        order.syncedAt = new Date().toISOString();
-                        wstore.put(order);
-                    });
-                    console.log(`✅ Marked ${data.synced} orders as synced`);
-                    // Show notification
-                    showNotification(`✅ ${data.synced} orders synced!`);
-                }
-                db.close();
-            })
-            .catch(err => {
-                console.log('❌ Sync failed:', err);
-                db.close();
-            });
-        };
-    };
-}
-
-// Auto-sync when coming online
-window.addEventListener('online', function() {
-    console.log('🌐 Back online - syncing offline orders...');
-    syncNow();
-});
-
-// Auto-sync when page loads
-document.addEventListener('DOMContentLoaded', function() {
-    setTimeout(function() {
-        if (navigator.onLine) {
-            syncNow();
         }
-    }, 2000);
-});
+    </script>
 
-// After placing an order, check for pending sync
-function afterOrderPlaced() {
-    if (navigator.onLine) {
-        setTimeout(syncNow, 2000);
-    }
-}
+    <!-- ============================================================
+         OFFLINE ORDER SYNC - POS
+    ============================================================ -->
+    <script>
+        // Sync function
+        async function syncNow() {
+            console.log('🔍 Checking for offline orders...');
+            
+            const r = indexedDB.open('PricePointDB', 1);
+            r.onsuccess = function(e) {
+                const db = e.target.result;
+                const tx = db.transaction(['orders'], 'readonly');
+                const store = tx.objectStore('orders');
+                
+                store.getAll().onsuccess = function(r2) {
+                    const orders = r2.target.result;
+                    const unsynced = orders.filter(o => !o.synced);
+                    
+                    if (unsynced.length === 0) {
+                        console.log('✅ No offline orders to sync');
+                        db.close();
+                        return;
+                    }
+                    
+                    console.log(`📦 Found ${unsynced.length} offline order(s) to sync`);
+                    
+                    fetch('/admin/api/sync-queue', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ orders: unsynced })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('✅ Sync result:', data);
+                        if (data.synced > 0) {
+                            const wtx = db.transaction(['orders'], 'readwrite');
+                            const wstore = wtx.objectStore('orders');
+                            unsynced.forEach(order => {
+                                order.synced = true;
+                                order.syncedAt = new Date().toISOString();
+                                wstore.put(order);
+                            });
+                            console.log(`✅ Marked ${data.synced} orders as synced`);
+                            showNotification(`✅ ${data.synced} orders synced!`);
+                        }
+                        db.close();
+                    })
+                    .catch(err => {
+                        console.log('❌ Sync failed:', err);
+                        db.close();
+                    });
+                };
+            };
+        }
 
-// Notification helper
-function showNotification(message) {
-    const toast = document.createElement('div');
-    toast.className = 'alert alert-success position-fixed top-0 end-0 m-3';
-    toast.style.zIndex = '9999';
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
-}
+        // Auto-sync when coming online
+        window.addEventListener('online', function() {
+            console.log('🌐 Back online - syncing offline orders...');
+            syncNow();
+        });
 
-console.log('✅ POS sync functions loaded');
-</script>
+        // Auto-sync when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                if (navigator.onLine) {
+                    syncNow();
+                }
+            }, 2000);
+        });
+
+        // After placing an order, check for pending sync
+        function afterOrderPlaced() {
+            if (navigator.onLine) {
+                setTimeout(syncNow, 2000);
+            }
+        }
+
+        // Notification helper
+        function showNotification(message) {
+            const toast = document.createElement('div');
+            toast.className = 'alert alert-success position-fixed top-0 end-0 m-3';
+            toast.style.zIndex = '9999';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        console.log('✅ POS sync functions loaded');
+    </script>
     
     <style>
         * { font-family: 'Inter', sans-serif; margin: 0; padding: 0; box-sizing: border-box; }
@@ -752,9 +749,6 @@ console.log('✅ POS sync functions loaded');
             <div class="quick-action-btn" onclick="document.getElementById('posSearch').focus();">
                 <i class="fas fa-search"></i> Search
             </div>
-            <div class="quick-action-btn" onclick="scanBarcode()">
-                <i class="fas fa-barcode"></i> Scan
-            </div>
             <div class="quick-action-btn" onclick="toggleDiscountModal()">
                 <i class="fas fa-percent"></i> Discount
             </div>
@@ -771,55 +765,6 @@ console.log('✅ POS sync functions loaded');
                 <i class="fas fa-cloud-upload-alt"></i> Sync
             </div>
         </div>
-        <!-- ===== BARCODE SCANNER MODAL ===== -->
-<div id="barcodeModal" class="modal-overlay hidden" onclick="closeBarcodeScanner()">
-    <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 500px;">
-        <button class="close-btn" onclick="closeBarcodeScanner()">&times;</button>
-        <h3 class="text-lg font-bold text-[#0f172a] mb-4 flex items-center gap-2">
-            <i class="fas fa-barcode text-blue-500"></i> Scan Barcode
-        </h3>
-        <p class="text-sm text-gray-500 mb-3">Position the barcode in front of your camera</p>
-        <div id="scanner-container" style="width: 100%; max-width: 400px; margin: 0 auto;">
-            <div id="barcode-reader" style="width: 100%;"></div>
-        </div>
-        <div class="mt-3 flex flex-wrap gap-2">
-            <button onclick="startScanner()" class="btn-primary flex-1" id="startScannerBtn" style="background: linear-gradient(135deg, #2563eb, #4f46e5);">
-                <i class="fas fa-play"></i> Start Camera
-            </button>
-            <button onclick="closeBarcodeScanner()" class="btn-outline flex-1">Cancel</button>
-        </div>
-        <div id="scannerResult" class="mt-3 p-3 bg-gray-50 rounded-lg hidden">
-            <p class="text-sm font-semibold text-green-600">✅ Scanned:</p>
-            <p id="scannedValue" class="text-sm font-mono break-all"></p>
-        </div>
-        <div class="mt-3 text-center">
-            <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="text-blue-500 hover:text-blue-700 text-sm">
-                <i class="fas fa-keyboard"></i> Or enter barcode manually
-            </button>
-        </div>
-    </div>
-</div>
-
-<!-- ===== BARCODE INPUT MODAL (Manual Entry) ===== -->
-<div id="barcodeInputModal" class="modal-overlay hidden" onclick="closeBarcodeInputModal()">
-    <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 380px;">
-        <button class="close-btn" onclick="closeBarcodeInputModal()">&times;</button>
-        <h3 class="text-lg font-bold text-[#0f172a] mb-4 flex items-center gap-2">
-            <i class="fas fa-keyboard text-amber-500"></i> Enter Barcode
-        </h3>
-        <p class="text-sm text-gray-500 mb-3">Type the product ID or barcode number</p>
-        <input type="text" id="manualBarcode" class="form-input" placeholder="Enter product ID or barcode..." autofocus>
-        <div class="mt-4 flex gap-3">
-            <button onclick="submitManualBarcode()" class="btn-primary flex-1">
-                <i class="fas fa-search"></i> Find Product
-            </button>
-            <button onclick="closeBarcodeInputModal()" class="btn-outline flex-1">Cancel</button>
-        </div>
-        <div class="mt-3 text-xs text-gray-400 text-center">
-            💡 Tip: You can search by product ID, name, or barcode
-        </div>
-    </div>
-</div>
 
         <div class="grid lg:grid-cols-3 gap-4">
             <!-- ===== LEFT: PRODUCTS ===== -->
@@ -828,7 +773,7 @@ console.log('✅ POS sync functions loaded');
                     <div class="relative">
                         <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
                         <input type="text" id="posSearch" 
-                               placeholder="🔍 Search by name, category, barcode, or SKU..." 
+                               placeholder="🔍 Search by name or category..." 
                                class="w-full pl-9 pr-10 py-2.5 rounded-xl border-2 border-gray-200 focus:border-green-500 focus:ring-4 focus:ring-green-100 transition outline-none text-sm"
                                oninput="searchProducts(this.value)" />
                         <span id="searchClear" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hidden" onclick="clearSearch()">
@@ -1036,7 +981,6 @@ console.log('✅ POS sync functions loaded');
     <div id="toast" class="toast hidden">
         <span id="toastMessage">Added to cart!</span>
     </div>
-    
 
     <script>
         // ============================================================
@@ -1226,6 +1170,7 @@ console.log('✅ POS sync functions loaded');
                     const name = (p.name || '').toLowerCase();
                     const category = (p.category || '').toLowerCase();
                     const id = (p.id || '').toLowerCase();
+                    
                     return name.includes(searchTerm) || category.includes(searchTerm) || id.includes(searchTerm);
                 });
                 filteredProducts = results.slice(0, 100);
@@ -1256,7 +1201,7 @@ console.log('✅ POS sync functions loaded');
                         <i class="fas fa-search"></i>
                         <p>No products found</p>
                         <p class="text-xs text-gray-400">Try a different search term</p>
-                        <div class="shortcuts">💡 Tip: Scan barcode or search by name</div>
+                        <div class="shortcuts">💡 Tip: Search by name or category</div>
                     </div>
                 `;
                 return;
@@ -1301,15 +1246,6 @@ console.log('✅ POS sync functions loaded');
             document.getElementById('posSearch').value = '';
             document.getElementById('searchClear').classList.add('hidden');
             searchProducts('');
-        }
-
-        function scanBarcode() {
-            const scannerInput = prompt('📷 Scan barcode or enter product ID:');
-            if (scannerInput && scannerInput.trim()) {
-                document.getElementById('posSearch').value = scannerInput.trim();
-                searchProducts(scannerInput.trim());
-                showToast('🔍 Searching for: ' + scannerInput.trim(), 'info');
-            }
         }
 
         // ============================================================
@@ -1405,6 +1341,7 @@ console.log('✅ POS sync functions loaded');
             posCart.forEach((item, index) => {
                 const price = Number(item.price) || 0;
                 const quantity = Number(item.quantity) || 1;
+                
                 html += `
                     <div class="pos-cart-item flex items-center gap-2 bg-gray-50 rounded-lg p-1.5 border border-gray-100 hover:border-green-200 transition-all">
                         <div class="w-8 h-8 rounded-lg overflow-hidden bg-white flex-shrink-0 flex items-center justify-center">
@@ -2072,297 +2009,6 @@ console.log('✅ POS sync functions loaded');
             console.log('✅ POS Pro v3.0 initialized with ' + allProducts.length + ' products');
             console.log('📡 Status:', navigator.onLine ? 'Online' : 'Offline');
         });
-
-        // ============================================================
-// BARCODE SCANNER - Complete Implementation
-// ============================================================
-
-let html5QrCode = null;
-let isScannerRunning = false;
-let scannerStarted = false;
-
-// ============================================================
-// OPEN BARCODE SCANNER
-// ============================================================
-function openBarcodeScanner() {
-    const modal = document.getElementById('barcodeModal');
-    modal.classList.remove('hidden');
-    
-    // Reset scanner state
-    document.getElementById('scannerResult').classList.add('hidden');
-    document.getElementById('scannedValue').textContent = '';
-    
-    // Show start button
-    const btn = document.getElementById('startScannerBtn');
-    btn.style.display = 'block';
-    btn.innerHTML = '<i class="fas fa-play"></i> Start Camera';
-    btn.disabled = false;
-    
-    // Reset scanner
-    if (html5QrCode) {
-        try {
-            html5QrCode.stop().then(() => {
-                html5QrCode.clear();
-                scannerStarted = false;
-            }).catch(() => {});
-        } catch(e) {}
-    }
-    
-    // Check if camera is available
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        showToast('⚠️ Camera not available on this device', 'warning');
-        btn.style.display = 'none';
-        document.getElementById('barcode-reader').innerHTML = `
-            <div class="text-center py-8 text-gray-400">
-                <i class="fas fa-camera-slash text-4xl block mb-3"></i>
-                <p>Camera not available</p>
-                <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="btn-primary mt-3" style="display:inline-block; padding: 8px 20px; width:auto; background: linear-gradient(135deg, #f59e0b, #d97706);">
-                    <i class="fas fa-keyboard"></i> Enter Manually
-                </button>
-            </div>
-        `;
-    }
-}
-
-// ============================================================
-// CLOSE BARCODE SCANNER
-// ============================================================
-function closeBarcodeScanner() {
-    const modal = document.getElementById('barcodeModal');
-    modal.classList.add('hidden');
-    
-    // Stop scanner
-    if (html5QrCode && scannerStarted) {
-        try {
-            html5QrCode.stop().then(() => {
-                html5QrCode.clear();
-                scannerStarted = false;
-            }).catch(() => {});
-        } catch(e) {}
-    }
-    isScannerRunning = false;
-}
-
-// ============================================================
-// START SCANNER
-// ============================================================
-function startScanner() {
-    if (isScannerRunning) return;
-    
-    const btn = document.getElementById('startScannerBtn');
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
-    btn.disabled = true;
-    
-    const config = {
-        fps: 10,
-        qrbox: { width: 250, height: 250 },
-        aspectRatio: 1.0,
-        formatsToSupport: [
-            Html5QrcodeSupportedFormats.QR_CODE,
-            Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.CODE_39,
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.EAN_8,
-            Html5QrcodeSupportedFormats.UPC_A,
-            Html5QrcodeSupportedFormats.UPC_E,
-            Html5QrcodeSupportedFormats.DATA_MATRIX,
-            Html5QrcodeSupportedFormats.AZTEC,
-            Html5QrcodeSupportedFormats.CODE_93,
-            Html5QrcodeSupportedFormats.CODABAR,
-            Html5QrcodeSupportedFormats.MAXICODE,
-            Html5QrcodeSupportedFormats.PDF417,
-            Html5QrcodeSupportedFormats.RSS_14,
-            Html5QrcodeSupportedFormats.RSS_EXPANDED
-        ]
-    };
-    
-    try {
-        html5QrCode = new Html5Qrcode("barcode-reader");
-        
-        html5QrCode.start(
-            { facingMode: "environment" },
-            config,
-            onScanSuccess,
-            onScanError
-        ).then(() => {
-            console.log('✅ Scanner started successfully');
-            scannerStarted = true;
-            isScannerRunning = true;
-            btn.innerHTML = '<i class="fas fa-pause"></i> Scanning...';
-            btn.disabled = false;
-        }).catch(err => {
-            console.error('❌ Scanner start error:', err);
-            btn.innerHTML = '<i class="fas fa-camera"></i> Try Again';
-            btn.disabled = false;
-            showToast('⚠️ Could not access camera: ' + err.message, 'error');
-            
-            document.getElementById('barcode-reader').innerHTML = `
-                <div class="text-center py-8 text-gray-400">
-                    <i class="fas fa-camera-slash text-4xl block mb-3"></i>
-                    <p>Camera not accessible</p>
-                    <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="btn-primary mt-3" style="display:inline-block; padding: 8px 20px; width:auto; background: linear-gradient(135deg, #f59e0b, #d97706);">
-                        <i class="fas fa-keyboard"></i> Enter Manually
-                    </button>
-                </div>
-            `;
-            btn.style.display = 'none';
-        });
-    } catch(err) {
-        console.error('❌ Scanner init error:', err);
-        btn.innerHTML = '<i class="fas fa-camera"></i> Try Again';
-        btn.disabled = false;
-        showToast('⚠️ Scanner error: ' + err.message, 'error');
-    }
-}
-
-// ============================================================
-// ON SCAN SUCCESS
-// ============================================================
-function onScanSuccess(decodedText, decodedResult) {
-    console.log('📷 Barcode scanned:', decodedText);
-    
-    // Vibrate if supported
-    try {
-        if (navigator.vibrate) navigator.vibrate(200);
-    } catch(e) {}
-    
-    // Show result
-    document.getElementById('scannerResult').classList.remove('hidden');
-    document.getElementById('scannedValue').textContent = decodedText;
-    
-    // Stop scanner
-    if (html5QrCode && scannerStarted) {
-        try {
-            html5QrCode.pause();
-            isScannerRunning = false;
-            document.getElementById('startScannerBtn').innerHTML = '<i class="fas fa-play"></i> Resume';
-        } catch(e) {}
-    }
-    
-    // Search for product
-    searchProductByBarcode(decodedText);
-}
-
-function onScanError(error) {
-    // Ignore - called frequently
-}
-
-// ============================================================
-// SEARCH PRODUCT BY BARCODE
-// ============================================================
-function searchProductByBarcode(barcode) {
-    console.log('🔍 Searching for product with barcode:', barcode);
-    
-    // Search in products - check multiple fields
-    const searchTerm = barcode.toLowerCase().trim();
-    const product = allProducts.find(p => {
-        const id = (p.id || '').toLowerCase();
-        const name = (p.name || '').toLowerCase();
-        const barcodeField = (p.barcode || '').toLowerCase();
-        const sku = (p.sku || '').toLowerCase();
-        
-        return id === searchTerm || 
-               name === searchTerm ||
-               barcodeField === searchTerm ||
-               sku === searchTerm ||
-               id.includes(searchTerm) ||
-               name.includes(searchTerm);
-    });
-    
-    if (product) {
-        showToast(`✅ Found: ${product.name}`, 'success');
-        // Add to cart
-        addToPOSCartByProduct(product);
-        // Close scanner after a moment
-        setTimeout(closeBarcodeScanner, 1000);
-    } else {
-        showToast(`❌ Product not found for: ${barcode}`, 'error');
-        // Ask if user wants to search by name
-        setTimeout(() => {
-            if (confirm(`Product not found for "${barcode}".\n\nSearch by name instead?`)) {
-                closeBarcodeScanner();
-                document.getElementById('posSearch').value = barcode;
-                searchProducts(barcode);
-            }
-        }, 500);
-    }
-}
-
-// ============================================================
-// ADD PRODUCT TO CART FROM SCANNER
-// ============================================================
-function addToPOSCartByProduct(product) {
-    const existing = posCart.find(item => item.id === product.id);
-    if (existing) {
-        if (existing.quantity < product.stock) {
-            existing.quantity++;
-            showToast(`✅ Added another ${product.name} (${existing.quantity} total)`, 'success');
-        } else {
-            showToast(`⚠️ Not enough stock for ${product.name}`, 'warning');
-        }
-    } else {
-        posCart.push({
-            id: product.id,
-            name: product.name,
-            price: product.price,
-            image: product.image,
-            stock: product.stock,
-            quantity: 1
-        });
-        showToast(`✅ Added: ${product.name}`, 'success');
-    }
-    updatePOSUI();
-}
-
-// ============================================================
-// MANUAL BARCODE INPUT
-// ============================================================
-function openBarcodeInputModal() {
-    document.getElementById('barcodeInputModal').classList.remove('hidden');
-    setTimeout(() => {
-        document.getElementById('manualBarcode').focus();
-    }, 300);
-}
-
-function closeBarcodeInputModal() {
-    document.getElementById('barcodeInputModal').classList.add('hidden');
-    document.getElementById('manualBarcode').value = '';
-}
-
-function submitManualBarcode() {
-    const barcode = document.getElementById('manualBarcode').value.trim();
-    if (!barcode) {
-        showToast('⚠️ Please enter a barcode', 'warning');
-        return;
-    }
-    closeBarcodeInputModal();
-    searchProductByBarcode(barcode);
-}
-
-// ============================================================
-// KEYBOARD SHORTCUTS FOR BARCODE
-// ============================================================
-// Add to your existing keyboard shortcuts
-document.addEventListener('keydown', function(e) {
-    // F7 for barcode scanner
-    if (e.key === 'F7') {
-        e.preventDefault();
-        if (document.getElementById('barcodeModal').classList.contains('hidden')) {
-            openBarcodeScanner();
-        } else {
-            closeBarcodeScanner();
-        }
-    }
-    // F8 for manual barcode input
-    if (e.key === 'F8') {
-        e.preventDefault();
-        if (document.getElementById('barcodeInputModal').classList.contains('hidden')) {
-            openBarcodeInputModal();
-        } else {
-            closeBarcodeInputModal();
-        }
-    }
-});
     </script>
 </body>
 </html>
