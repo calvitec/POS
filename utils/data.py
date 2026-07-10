@@ -26,20 +26,6 @@ def has_internet():
         print(f"Internet check failed: {e}")
         return False
 
-def load_orders():
-    """Load orders - try Supabase first, fallback to local"""
-    global orders_cache
-    
-    # ============================================================
-    # ADD THIS LINE - Force refresh every time in development
-    # ============================================================
-    orders_cache = []  # <--- ADD THIS ONE LINE
-    
-    # Check if we have cached orders and return them
-    if orders_cache:
-        print(f"📦 Returning {len(orders_cache)} cached orders")
-        return orders_cache
-    
 
 def get_sample_products():
     return [
@@ -54,33 +40,8 @@ def get_sample_products():
             'stock': 20,
             'rating': 4.9,
             'reviews': 312,
-            'badge': 'Best Seller'
-        },
-        {
-            'id': 'iphone_16_pro',
-            'name': 'iPhone 16 Pro',
-            'price': 235000,
-            'cost_price': 175000,
-            'category': 'Phones',
-            'description': 'Professional iPhone with titanium design',
-            'image': 'https://images.unsplash.com/photo-1592286927505-1def25e4c479?w=500',
-            'stock': 18,
-            'rating': 4.8,
-            'reviews': 256,
-            'badge': 'New'
-        },
-        {
-            'id': 'iphone_16',
-            'name': 'iPhone 16',
-            'price': 195000,
-            'cost_price': 145000,
-            'category': 'Phones',
-            'description': 'Latest iPhone with A18 chip',
-            'image': 'https://images.unsplash.com/photo-1592286927505-1def25e4c479?w=500',
-            'stock': 25,
-            'rating': 4.7,
-            'reviews': 189,
-            'badge': ''
+            'badge': 'Best Seller',
+            'barcode': '6971663563420'
         },
         {
             'id': 'samsung_s25_ultra',
@@ -93,7 +54,36 @@ def get_sample_products():
             'stock': 15,
             'rating': 4.9,
             'reviews': 278,
-            'badge': 'Best Seller'
+            'badge': 'Best Seller',
+            'barcode': '6971663563421'
+        },
+        {
+            'id': 'iphone_16_pro',
+            'name': 'iPhone 16 Pro',
+            'price': 235000,
+            'cost_price': 175000,
+            'category': 'Phones',
+            'description': 'Professional iPhone with titanium design',
+            'image': 'https://images.unsplash.com/photo-1592286927505-1def25e4c479?w=500',
+            'stock': 18,
+            'rating': 4.8,
+            'reviews': 256,
+            'badge': 'New',
+            'barcode': '6971663563422'
+        },
+        {
+            'id': 'iphone_16',
+            'name': 'iPhone 16',
+            'price': 195000,
+            'cost_price': 145000,
+            'category': 'Phones',
+            'description': 'Latest iPhone with A18 chip',
+            'image': 'https://images.unsplash.com/photo-1592286927505-1def25e4c479?w=500',
+            'stock': 25,
+            'rating': 4.7,
+            'reviews': 189,
+            'badge': '',
+            'barcode': '6971663563423'
         },
         {
             'id': 'samsung_s25_plus',
@@ -106,7 +96,8 @@ def get_sample_products():
             'stock': 20,
             'rating': 4.7,
             'reviews': 198,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563424'
         },
         {
             'id': 'google_pixel_9_pro',
@@ -119,7 +110,8 @@ def get_sample_products():
             'stock': 12,
             'rating': 4.8,
             'reviews': 145,
-            'badge': 'New'
+            'badge': 'New',
+            'barcode': '6971663563425'
         },
         {
             'id': 'nothing_phone_3',
@@ -132,7 +124,8 @@ def get_sample_products():
             'stock': 15,
             'rating': 4.5,
             'reviews': 98,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563426'
         },
         {
             'id': 'macbook_pro_m4',
@@ -145,7 +138,8 @@ def get_sample_products():
             'stock': 8,
             'rating': 4.9,
             'reviews': 189,
-            'badge': 'Best Seller'
+            'badge': 'Best Seller',
+            'barcode': '6971663563427'
         },
         {
             'id': 'macbook_air_m4',
@@ -158,7 +152,8 @@ def get_sample_products():
             'stock': 15,
             'rating': 4.8,
             'reviews': 223,
-            'badge': 'New'
+            'badge': 'New',
+            'barcode': '6971663563428'
         },
         {
             'id': 'dell_xps_16',
@@ -171,7 +166,8 @@ def get_sample_products():
             'stock': 10,
             'rating': 4.6,
             'reviews': 134,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563429'
         },
         {
             'id': 'lenovo_thinkpad_x1',
@@ -184,7 +180,8 @@ def get_sample_products():
             'stock': 12,
             'rating': 4.7,
             'reviews': 156,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563430'
         },
         {
             'id': 'hp_spectre_x360_2025',
@@ -197,7 +194,8 @@ def get_sample_products():
             'stock': 8,
             'rating': 4.5,
             'reviews': 112,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563431'
         },
         {
             'id': 'asus_zenbook_pro',
@@ -210,7 +208,8 @@ def get_sample_products():
             'stock': 6,
             'rating': 4.6,
             'reviews': 89,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563432'
         },
         {
             'id': 'ipad_pro_m4',
@@ -223,7 +222,8 @@ def get_sample_products():
             'stock': 15,
             'rating': 4.9,
             'reviews': 245,
-            'badge': 'Best Seller'
+            'badge': 'Best Seller',
+            'barcode': '6971663563433'
         },
         {
             'id': 'ipad_air_m3',
@@ -236,7 +236,8 @@ def get_sample_products():
             'stock': 20,
             'rating': 4.7,
             'reviews': 178,
-            'badge': 'New'
+            'badge': 'New',
+            'barcode': '6971663563434'
         },
         {
             'id': 'samsung_galaxy_tab_s10',
@@ -249,7 +250,8 @@ def get_sample_products():
             'stock': 12,
             'rating': 4.6,
             'reviews': 145,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563435'
         },
         {
             'id': 'lenovo_tab_extreme',
@@ -262,7 +264,8 @@ def get_sample_products():
             'stock': 10,
             'rating': 4.4,
             'reviews': 78,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563436'
         },
         {
             'id': 'apple_watch_ultra_3',
@@ -275,7 +278,8 @@ def get_sample_products():
             'stock': 20,
             'rating': 4.8,
             'reviews': 234,
-            'badge': 'Best Seller'
+            'badge': 'Best Seller',
+            'barcode': '6971663563437'
         },
         {
             'id': 'apple_watch_series_10',
@@ -288,7 +292,8 @@ def get_sample_products():
             'stock': 30,
             'rating': 4.7,
             'reviews': 312,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563438'
         },
         {
             'id': 'samsung_galaxy_watch_7',
@@ -301,7 +306,8 @@ def get_sample_products():
             'stock': 25,
             'rating': 4.6,
             'reviews': 189,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563439'
         },
         {
             'id': 'garmin_fenix_8',
@@ -314,7 +320,8 @@ def get_sample_products():
             'stock': 10,
             'rating': 4.8,
             'reviews': 98,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563440'
         },
         {
             'id': 'airpods_max_2',
@@ -327,7 +334,8 @@ def get_sample_products():
             'stock': 20,
             'rating': 4.7,
             'reviews': 234,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563441'
         },
         {
             'id': 'airpods_pro_3',
@@ -340,7 +348,8 @@ def get_sample_products():
             'stock': 35,
             'rating': 4.8,
             'reviews': 389,
-            'badge': 'Best Seller'
+            'badge': 'Best Seller',
+            'barcode': '6971663563442'
         },
         {
             'id': 'airpods_4',
@@ -353,7 +362,8 @@ def get_sample_products():
             'stock': 40,
             'rating': 4.6,
             'reviews': 267,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563443'
         },
         {
             'id': 'sony_wh_1000xm6',
@@ -366,7 +376,8 @@ def get_sample_products():
             'stock': 15,
             'rating': 4.9,
             'reviews': 178,
-            'badge': 'New'
+            'badge': 'New',
+            'barcode': '6971663563444'
         },
         {
             'id': 'samsung_buds_3_pro',
@@ -379,7 +390,8 @@ def get_sample_products():
             'stock': 30,
             'rating': 4.7,
             'reviews': 156,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563445'
         },
         {
             'id': 'bose_qc_ultra',
@@ -392,7 +404,8 @@ def get_sample_products():
             'stock': 18,
             'rating': 4.8,
             'reviews': 145,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563446'
         },
         {
             'id': 'magic_keyboard',
@@ -405,7 +418,8 @@ def get_sample_products():
             'stock': 50,
             'rating': 4.5,
             'reviews': 234,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563447'
         },
         {
             'id': 'apple_pencil_pro',
@@ -418,7 +432,8 @@ def get_sample_products():
             'stock': 45,
             'rating': 4.7,
             'reviews': 189,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563448'
         },
         {
             'id': 'samsung_pen_s25',
@@ -431,7 +446,8 @@ def get_sample_products():
             'stock': 40,
             'rating': 4.5,
             'reviews': 134,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563449'
         },
         {
             'id': 'anker_power_bank_30000',
@@ -444,7 +460,8 @@ def get_sample_products():
             'stock': 60,
             'rating': 4.7,
             'reviews': 456,
-            'badge': 'Best Seller'
+            'badge': 'Best Seller',
+            'barcode': '6971663563450'
         },
         {
             'id': 'ugreen_100w_charger',
@@ -457,7 +474,8 @@ def get_sample_products():
             'stock': 70,
             'rating': 4.6,
             'reviews': 234,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563451'
         },
         {
             'id': 'spigen_magsafe_stand',
@@ -470,7 +488,8 @@ def get_sample_products():
             'stock': 55,
             'rating': 4.4,
             'reviews': 178,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563452'
         },
         {
             'id': 'belkin_3m_usb_c_cable',
@@ -483,7 +502,8 @@ def get_sample_products():
             'stock': 80,
             'rating': 4.5,
             'reviews': 312,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563453'
         },
         {
             'id': 'ps5_digital',
@@ -496,7 +516,8 @@ def get_sample_products():
             'stock': 10,
             'rating': 4.9,
             'reviews': 456,
-            'badge': 'Best Seller'
+            'badge': 'Best Seller',
+            'barcode': '6971663563454'
         },
         {
             'id': 'xbox_series_x',
@@ -509,7 +530,8 @@ def get_sample_products():
             'stock': 12,
             'rating': 4.8,
             'reviews': 389,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563455'
         },
         {
             'id': 'nintendo_switch_2',
@@ -522,7 +544,8 @@ def get_sample_products():
             'stock': 15,
             'rating': 4.7,
             'reviews': 234,
-            'badge': 'New'
+            'badge': 'New',
+            'barcode': '6971663563456'
         },
         {
             'id': 'ps5_controller',
@@ -535,7 +558,8 @@ def get_sample_products():
             'stock': 40,
             'rating': 4.6,
             'reviews': 567,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563457'
         },
         {
             'id': 'xbox_elite_2',
@@ -548,7 +572,8 @@ def get_sample_products():
             'stock': 25,
             'rating': 4.7,
             'reviews': 189,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563458'
         },
         {
             'id': 'apple_homepod_2',
@@ -561,7 +586,8 @@ def get_sample_products():
             'stock': 15,
             'rating': 4.7,
             'reviews': 234,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563459'
         },
         {
             'id': 'amazon_echo_show_15',
@@ -574,7 +600,8 @@ def get_sample_products():
             'stock': 18,
             'rating': 4.5,
             'reviews': 178,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563460'
         },
         {
             'id': 'google_nest_hub_max',
@@ -587,7 +614,8 @@ def get_sample_products():
             'stock': 20,
             'rating': 4.6,
             'reviews': 156,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563461'
         },
         {
             'id': 'philips_hue_starter',
@@ -600,7 +628,8 @@ def get_sample_products():
             'stock': 30,
             'rating': 4.7,
             'reviews': 234,
-            'badge': ''
+            'badge': '',
+            'barcode': '6971663563462'
         }
     ]
 
@@ -609,9 +638,8 @@ def load_orders():
     """Load orders - try Supabase first, fallback to local"""
     global orders_cache
     
-    if orders_cache:
-        print(f"📦 Returning {len(orders_cache)} cached orders")
-        return orders_cache
+    # Force refresh - clear cache
+    orders_cache = []
     
     try:
         print("🔄 Attempting to load orders from Supabase...")
@@ -716,10 +744,8 @@ def load_products():
     """Load products - ALWAYS from Supabase first"""
     global products_cache
     
-    # ============================================================
-    # FORCE REFRESH - Clear cache
-    # ============================================================
-    products_cache = []  # <--- THIS IS THE FIX
+    # Force refresh - clear cache
+    products_cache = []
     
     try:
         print("🔄 Attempting to load products from Supabase...")
