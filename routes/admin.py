@@ -556,7 +556,7 @@ def admin_pos():
 
 
 # ============================================================
-# POS ORDER ROUTE - FIXED WITH BETTER ERROR HANDLING
+# POS ORDER ROUTE - FIXED WITH STOCK DEDUCTION
 # ============================================================
 
 @admin_bp.route('/admin/pos/place-order', methods=['POST'])
@@ -583,6 +583,60 @@ def admin_pos_place_order():
         for item in items:
             print(f"  - {item.get('name')} x{item.get('quantity')}")
 
+        # ============================================================
+        # STOCK DEDUCTION - ADDED THIS BLOCK
+        # ============================================================
+        print("📦 DEDUCTING STOCK...")
+        
+        # Get all products from Supabase once to reduce API calls
+        try:
+            products_response = requests.get(
+                f"{Config.SUPABASE_URL}/rest/v1/products",
+                headers=Config.SUPABASE_HEADERS,
+                timeout=10
+            )
+            all_products = products_response.json() if products_response.status_code == 200 else []
+            products_dict = {p.get('id'): p for p in all_products if p.get('id')}
+        except Exception as e:
+            print(f"⚠️ Could not fetch products: {e}")
+            products_dict = {}
+
+        for item in items:
+            product_id = item.get('product_id')
+            quantity = int(item.get('quantity', 1))
+            
+            if not product_id:
+                print(f"⚠️ No product_id for item: {item.get('name')}")
+                continue
+            
+            # Get product from dict
+            product = products_dict.get(product_id)
+            if product:
+                current_stock = product.get('stock', 0)
+                new_stock = max(0, current_stock - quantity)
+                
+                # Update stock in Supabase
+                try:
+                    update_response = requests.patch(
+                        f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
+                        headers=Config.SUPABASE_HEADERS,
+                        json={'stock': new_stock},
+                        timeout=10
+                    )
+                    
+                    if update_response.status_code in [200, 204]:
+                        print(f"✅ {product.get('name')}: {current_stock} → {new_stock}")
+                    else:
+                        print(f"❌ Failed to update stock for {product_id}: {update_response.status_code}")
+                except Exception as e:
+                    print(f"❌ Stock update error for {product_id}: {e}")
+            else:
+                print(f"⚠️ Product not found: {product_id}")
+
+        # ============================================================
+        # CONTINUE WITH ORDER CREATION
+        # ============================================================
+
         subtotal = float(data.get('subtotal', 0))
         shipping = float(data.get('shipping', 0))
         total = float(data.get('total', subtotal + shipping))
@@ -592,7 +646,7 @@ def admin_pos_place_order():
         customer_phone = data.get('customer_phone', 'N/A')
         customer_address = data.get('customer_address', 'In-store purchase')
 
-        # Build order data (NO BARCODES)
+        # Build order data
         order_data = {
             'order_id': order_id,
             'items': items,
@@ -638,7 +692,7 @@ def admin_pos_place_order():
                 supabase_reachable = False
             
             if supabase_reachable:
-                print("🌐 Supabase reachable, saving...")
+                print("🌐 Supabase reachable, saving order...")
                 response = requests.post(
                     f"{Config.SUPABASE_URL}/rest/v1/orders",
                     headers=Config.SUPABASE_HEADERS,
@@ -675,7 +729,7 @@ def admin_pos_place_order():
             traceback.print_exc()
 
         # ============================================================
-        # FALLBACK 1: Save to local file (if Supabase fails)
+        # FALLBACK 1: Save to local file
         # ============================================================
         print("💾 Attempting to save order locally...")
         
@@ -712,7 +766,7 @@ def admin_pos_place_order():
             traceback.print_exc()
 
         # ============================================================
-        # FALLBACK 2: Return error but still try to save to IndexedDB from client
+        # FALLBACK 2: Return error
         # ============================================================
         return jsonify({
             'success': False,
@@ -831,7 +885,7 @@ def api_sync_order():
 
 
 # ============================================================
-# SYNC QUEUED ORDERS - FIXED
+# SYNC QUEUED ORDERS
 # ============================================================
 
 @admin_bp.route('/admin/api/sync-queue', methods=['POST'])
@@ -877,6 +931,19 @@ def api_sync_queue():
         synced = 0
         failed = 0
 
+        # Get all products for stock deduction
+        try:
+            products_response = requests.get(
+                f"{Config.SUPABASE_URL}/rest/v1/products",
+                headers=Config.SUPABASE_HEADERS,
+                timeout=10
+            )
+            all_products = products_response.json() if products_response.status_code == 200 else []
+            products_dict = {p.get('id'): p for p in all_products if p.get('id')}
+        except Exception as e:
+            print(f"⚠️ Could not fetch products: {e}")
+            products_dict = {}
+
         for order in orders_to_sync:
             try:
                 order_id = order.get('order_id', f'OFF-{uuid.uuid4().hex[:8].upper()}')
@@ -892,6 +959,33 @@ def api_sync_queue():
                     print(f"⏭️ Order {order_id} already exists, skipping")
                     synced += 1
                     continue
+
+                # Deduct stock for this order
+                for item in order.get('items', []):
+                    product_id = item.get('product_id')
+                    quantity = int(item.get('quantity', 1))
+                    
+                    if not product_id:
+                        continue
+                    
+                    product = products_dict.get(product_id)
+                    if product:
+                        current_stock = product.get('stock', 0)
+                        new_stock = max(0, current_stock - quantity)
+                        
+                        try:
+                            update_response = requests.patch(
+                                f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
+                                headers=Config.SUPABASE_HEADERS,
+                                json={'stock': new_stock},
+                                timeout=10
+                            )
+                            if update_response.status_code in [200, 204]:
+                                print(f"✅ Stock deducted for {product.get('name')}: {current_stock} → {new_stock}")
+                                # Update dict for future orders
+                                product['stock'] = new_stock
+                        except Exception as e:
+                            print(f"❌ Stock update error: {e}")
 
                 order_data = {
                     'order_id': order_id,
