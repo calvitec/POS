@@ -53,7 +53,7 @@
         async function syncNow() {
             console.log('🔍 Checking for offline orders...');
             
-            const r = indexedDB.open('PricePointDB', 5);
+            const r = indexedDB.open('PricePointDB', 1);
             r.onsuccess = function(e) {
                 const db = e.target.result;
                 const tx = db.transaction(['orders'], 'readonly');
