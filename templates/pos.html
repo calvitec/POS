@@ -641,7 +641,7 @@
             </div>
             <div class="flex gap-2 flex-wrap">
                 <button class="btn-gradient sync" onclick="manualSync()">
-                   
+                    <i class="fas fa-cloud-upload-alt"></i> Sync
                 </button>
                 <button class="btn-gradient" onclick="toggleCustomerModal()">
                     <i class="fas fa-user-plus"></i> Customer
@@ -1035,16 +1035,13 @@
         }
 
         // ============================================================
-        // SYNC FUNCTIONS - CLEANED
+        // SYNC FUNCTIONS - VERSION 4
         // ============================================================
 
-        // ============================================================
-        // syncNow uses version 3 to match existing database
-        // ============================================================
         function syncNow() {
             console.log('🔍 Checking for offline orders...');
             
-            const r = indexedDB.open('PricePointDB', 3);
+            const r = indexedDB.open('PricePointDB', 4);
             
             r.onsuccess = function(e) {
                 const db = e.target.result;
@@ -1081,7 +1078,6 @@
                             });
                             console.log(`✅ Marked ${data.synced} orders as synced`);
                             showNotification(`✅ ${data.synced} orders synced!`);
-                            // Update UI
                             checkUnsyncedOrders();
                         }
                         db.close();
@@ -1094,19 +1090,13 @@
             };
         }
 
-        // Auto-sync when coming online - IMMEDIATE
+        // Auto-sync when coming online
         window.addEventListener('online', function() {
             console.log('🌐 Back online - IMMEDIATE SYNC!');
             updateOnlineStatusUI();
             showToast('🔄 Back online! Syncing pending orders...', 'info');
-            
-            // Check and sync immediately
             checkUnsyncedOrders();
-            
-            // Sync after 1 second
-            setTimeout(function() {
-                syncNow();
-            }, 500);
+            setTimeout(function() { syncNow(); }, 500);
         });
 
         // Auto-sync when page loads
@@ -1114,9 +1104,7 @@
             setTimeout(function() {
                 if (navigator.onLine) {
                     checkUnsyncedOrders();
-                    setTimeout(function() {
-                        syncNow();
-                    }, 2000);
+                    setTimeout(function() { syncNow(); }, 2000);
                 }
             }, 1000);
         });
@@ -1145,7 +1133,6 @@
             }
         }, 30000);
 
-        // Notification helper
         function showNotification(message) {
             const toast = document.createElement('div');
             toast.className = 'alert alert-success position-fixed top-0 end-0 m-3';
@@ -1167,20 +1154,14 @@
                             if (data.count > 0) {
                                 statusEl.style.display = 'inline-flex';
                                 statusEl.className = 'has-orders';
-                                if (countEl) {
-                                    countEl.textContent = data.count;
-                                    statusEl.style.animation = 'pulse-badge 2s infinite';
-                                }
+                                if (countEl) countEl.textContent = data.count;
+                                statusEl.style.animation = 'pulse-badge 2s infinite';
                                 let orderIds = data.orders || [];
-                                let tooltip = orderIds.length > 0 ? 'Orders: ' + orderIds.join(', ') : data.count + ' offline orders waiting to sync';
-                                statusEl.title = tooltip;
+                                statusEl.title = orderIds.length > 0 ? 'Orders: ' + orderIds.join(', ') : data.count + ' offline orders waiting to sync';
                                 
-                                // Auto-sync if online
                                 if (navigator.onLine) {
                                     console.log(`🔄 ${data.count} offline orders found - auto-syncing...`);
-                                    setTimeout(function() {
-                                        syncNow();
-                                    }, 1000);
+                                    setTimeout(function() { syncNow(); }, 1000);
                                 }
                             } else {
                                 statusEl.style.display = 'none';
@@ -1204,9 +1185,7 @@
                 const originalText = syncBtn.innerHTML;
                 syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
                 syncBtn.className = 'syncing';
-                
                 syncNow();
-                
                 setTimeout(function() {
                     syncBtn.innerHTML = originalText;
                     syncBtn.className = '';
@@ -1216,16 +1195,6 @@
             } else {
                 syncNow();
             }
-        }
-
-        function syncOfflineOrders() {
-            if (!navigator.onLine) {
-                showToast('📡 Offline - will sync when online', 'warning');
-                return;
-            }
-            
-            showToast('🔄 Syncing offline orders...', 'info');
-            syncNow();
         }
 
         // ============================================================
@@ -1612,10 +1581,10 @@
         }
 
         // ============================================================
-        // INDEXEDDB FUNCTIONS - VERSION 3
+        // INDEXEDDB FUNCTIONS - VERSION 4
         // ============================================================
         const DB_NAME = 'PricePointDB';
-        const DB_VERSION = 3;
+        const DB_VERSION = 4;  // ← VERSION 4
         const STORE_NAME = 'orders';
         let db = null;
 
@@ -1634,7 +1603,7 @@
                         const store = database.createObjectStore(STORE_NAME, { keyPath: 'order_id' });
                         store.createIndex('synced', 'synced', { unique: false });
                         store.createIndex('created_at', 'created_at', { unique: false });
-                        console.log('✅ IndexedDB: Orders store created');
+                        console.log('✅ IndexedDB: Orders store created (version 4)');
                     }
                 };
                 
@@ -1683,13 +1652,17 @@
         }
 
         // ============================================================
-        // PLACE ORDER - FIXED FOR OFFLINE
+        // PLACE ORDER - FIXED FOR OFFLINE (VERSION 4)
         // ============================================================
         function placePOSOrder() {
             if (posCart.length === 0) { 
                 showToast('⚠️ Add items first!', 'warning'); 
                 return; 
             }
+            
+            console.log('🛒 Placing order...');
+            console.log('📦 Cart items:', posCart);
+            console.log('📡 Online status:', navigator.onLine);
             
             const select = document.getElementById('posCustomer');
             const selectedOption = select.options[select.selectedIndex];
@@ -1739,105 +1712,181 @@
                 barcodes: posCart.map(item => item.barcode).filter(b => b)
             };
             
+            console.log('📦 Order data:', orderData);
+            
             const btn = document.getElementById('posPlaceOrderBtn');
             const originalText = btn.innerHTML;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
             btn.disabled = true;
             
             // ============================================================
-            // CHECK IF ONLINE
+            // STEP 1: ALWAYS SAVE TO INDEXEDDB (VERSION 4)
             // ============================================================
-            if (!navigator.onLine) {
-                // OFFLINE: Save to IndexedDB only
-                console.log('📡 OFFLINE: Saving order to IndexedDB');
-                
-                const localOrderId = 'OFF-' + Date.now().toString(36).toUpperCase();
-                orderData.order_id = localOrderId;
-                orderData.synced = false;
-                orderData.synced_at = null;
-                
-                saveOrderToIndexedDB(orderData)
-                    .then(() => {
-                        showToast(`✅ Order #${localOrderId} saved offline! Will sync when online.`, 'warning');
-                        posCart = [];
-                        discountValue = 0;
-                        document.getElementById('discountDisplay').textContent = '0%';
-                        updatePOSUI();
-                        checkUnsyncedOrders();
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
-                    })
-                    .catch(err => {
-                        console.error('❌ IndexedDB save error:', err);
-                        showToast('❌ Failed to save order offline', 'error');
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
-                    });
-                return;
+            
+            function saveToIndexedDB(order) {
+                return new Promise((resolve, reject) => {
+                    console.log('💾 Saving to IndexedDB (version 4)...');
+                    
+                    const request = indexedDB.open('PricePointDB', 4);
+                    
+                    request.onupgradeneeded = function(event) {
+                        const database = event.target.result;
+                        if (!database.objectStoreNames.contains('orders')) {
+                            const store = database.createObjectStore('orders', { keyPath: 'order_id' });
+                            store.createIndex('synced', 'synced', { unique: false });
+                            console.log('✅ Orders store created');
+                        }
+                    };
+                    
+                    request.onsuccess = function(event) {
+                        const db = event.target.result;
+                        console.log('✅ DB opened, saving order...');
+                        
+                        const tx = db.transaction('orders', 'readwrite');
+                        const store = tx.objectStore('orders');
+                        const putRequest = store.put(order);
+                        
+                        putRequest.onsuccess = function() {
+                            console.log('✅ Order saved to IndexedDB:', order.order_id);
+                            db.close();
+                            resolve(order);
+                        };
+                        
+                        putRequest.onerror = function(event) {
+                            console.error('❌ IndexedDB save error:', event.target.error);
+                            db.close();
+                            reject(event.target.error);
+                        };
+                    };
+                    
+                    request.onerror = function(event) {
+                        console.error('❌ DB open error:', event.target.error);
+                        reject(event.target.error);
+                    };
+                });
             }
             
-            // ONLINE: Try Supabase first, fallback to IndexedDB
-            console.log('📡 ONLINE: Saving order to Supabase');
+            // ============================================================
+            // STEP 2: SYNC TO SERVER (if online)
+            // ============================================================
             
-            fetch('/admin/pos/place-order', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(orderData)
-            })
-            .then(r => {
-                if (!r.ok) throw new Error('Network error: ' + r.status);
-                return r.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    let message = '✅ Order placed! #' + data.order_id + ' | Total: KSh ' + total.toLocaleString();
-                    
-                    if (data.order) {
-                        data.order.synced = true;
-                        data.order.synced_at = new Date().toISOString();
-                        saveOrderToIndexedDB(data.order).catch(err => console.warn('⚠️ Backup save failed:', err));
+            function syncToServer(order) {
+                return new Promise((resolve, reject) => {
+                    if (!navigator.onLine) {
+                        console.log('📡 Offline - skipping server sync');
+                        resolve({ synced: false, message: 'Offline' });
+                        return;
                     }
                     
-                    showToast(message, 'success');
+                    console.log('🌐 Syncing to server...');
+                    
+                    fetch('/admin/pos/place-order', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(order)
+                    })
+                    .then(r => {
+                        if (!r.ok) throw new Error('HTTP error: ' + r.status);
+                        return r.json();
+                    })
+                    .then(data => {
+                        console.log('✅ Server response:', data);
+                        if (data.success) {
+                            resolve({ synced: true, data: data });
+                        } else {
+                            reject(new Error(data.message || 'Server error'));
+                        }
+                    })
+                    .catch(err => {
+                        console.log('⚠️ Server sync failed:', err.message);
+                        resolve({ synced: false, message: err.message });
+                    });
+                });
+            }
+            
+            // ============================================================
+            // STEP 3: MARK ORDER AS SYNCED
+            // ============================================================
+            
+            function markAsSynced(orderId) {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open('PricePointDB', 4);
+                    
+                    request.onsuccess = function(event) {
+                        const db = event.target.result;
+                        const tx = db.transaction('orders', 'readwrite');
+                        const store = tx.objectStore('orders');
+                        const getRequest = store.get(orderId);
+                        
+                        getRequest.onsuccess = function() {
+                            const order = getRequest.result;
+                            if (order) {
+                                order.synced = true;
+                                order.synced_at = new Date().toISOString();
+                                store.put(order);
+                                console.log('✅ Order marked as synced:', orderId);
+                            }
+                            db.close();
+                            resolve();
+                        };
+                        
+                        getRequest.onerror = function() {
+                            db.close();
+                            resolve();
+                        };
+                    };
+                });
+            }
+            
+            // ============================================================
+            // EXECUTE: Save -> Sync -> Update UI
+            // ============================================================
+            
+            // First, save to IndexedDB (always works, online or offline)
+            saveToIndexedDB(orderData)
+                .then(() => {
+                    console.log('✅ Order saved locally!');
+                    showToast(`✅ Order #${orderData.order_id} saved locally!`, 'success');
+                    
+                    // Clear cart immediately
                     posCart = [];
                     discountValue = 0;
                     document.getElementById('discountDisplay').textContent = '0%';
                     updatePOSUI();
-                    loadSalesStats();
-                    loadUserStats();
-                } else {
-                    showToast('❌ Error: ' + (data.message || 'Unknown error'), 'error');
-                }
-                btn.innerHTML = originalText;
-                btn.disabled = false;
-            })
-            .catch(err => {
-                // ONLINE BUT FAILED: Save to IndexedDB as fallback
-                console.warn('⚠️ Supabase failed, saving to IndexedDB:', err);
-                
-                const localOrderId = 'OFF-' + Date.now().toString(36).toUpperCase();
-                orderData.order_id = localOrderId;
-                orderData.synced = false;
-                orderData.synced_at = null;
-                
-                saveOrderToIndexedDB(orderData)
-                    .then(() => {
-                        showToast(`✅ Order #${localOrderId} saved offline! Will sync when online.`, 'warning');
-                        posCart = [];
-                        discountValue = 0;
-                        document.getElementById('discountDisplay').textContent = '0%';
-                        updatePOSUI();
-                        checkUnsyncedOrders();
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
-                    })
-                    .catch(err2 => {
-                        console.error('❌ Both Supabase and IndexedDB failed:', err2);
-                        showToast('❌ Failed to save order. Please try again.', 'error');
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
-                    });
-            });
+                    checkUnsyncedOrders();
+                    
+                    // Then try to sync to server
+                    syncToServer(orderData)
+                        .then(result => {
+                            if (result.synced) {
+                                console.log('✅ Order synced to server!');
+                                showToast(`✅ Order synced to cloud!`, 'success');
+                                // Mark as synced in IndexedDB
+                                markAsSynced(orderData.order_id);
+                                loadSalesStats();
+                                loadUserStats();
+                            } else {
+                                console.log('📡 Order saved offline, will sync later');
+                                if (navigator.onLine) {
+                                    showToast('⚠️ Order saved locally. Will sync later.', 'warning');
+                                } else {
+                                    showToast('📡 Offline - order saved locally. Will sync when online.', 'warning');
+                                }
+                            }
+                        })
+                        .catch(err => {
+                            console.log('⚠️ Sync error:', err);
+                        });
+                    
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                })
+                .catch(err => {
+                    console.error('❌ Failed to save order:', err);
+                    showToast('❌ Failed to save order: ' + err.message, 'error');
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                });
         }
 
         // ============================================================
@@ -1963,9 +2012,8 @@
         }
 
         // ============================================================
-        // BARCODE SCANNER - Complete Implementation
+        // BARCODE SCANNER
         // ============================================================
-
         let html5QrCode = null;
         let isScannerRunning = false;
         let scannerStarted = false;
@@ -2207,7 +2255,7 @@
         // INIT
         // ============================================================
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('✅ POS Pro v3.0 initializing...');
+            console.log('✅ POS Pro v4.0 initializing...');
             console.log('📦 IndexedDB Version:', DB_VERSION);
             
             document.getElementById('posProductGrid').innerHTML = `
