@@ -954,9 +954,9 @@
 
     <script>
         // ============================================================
-        // DATA
+        // DATA - This is the source of truth for stock
         // ============================================================
-        const allProducts = {{ products | tojson | safe }};
+        let allProducts = {{ products | tojson | safe }};
         let filteredProducts = [];
         let currentCategory = 'all';
         let posCart = [];
@@ -1038,7 +1038,7 @@
         }
 
         // ============================================================
-        // SYNC FUNCTIONS - VERSION 5
+        // SYNC FUNCTIONS
         // ============================================================
 
         function syncNow() {
@@ -1100,6 +1100,8 @@
             showToast('🔄 Back online! Syncing pending orders...', 'info');
             checkUnsyncedOrders();
             setTimeout(function() { syncNow(); }, 500);
+            // Also refresh products to get latest stock
+            setTimeout(function() { refreshProducts(); }, 1000);
         });
 
         // Auto-sync when page loads
@@ -1201,20 +1203,43 @@
         }
 
         // ============================================================
-        // REFRESH PRODUCTS (Update Stock After Order)
+        // REFRESH PRODUCTS - PERSISTENT STOCK UPDATE
         // ============================================================
         function refreshProducts() {
-            console.log('🔄 Refreshing products...');
+            console.log('🔄 Refreshing products from server...');
             
-            // First, try to get fresh data from server
-            fetch('/admin/api/products?page=1&per_page=1000')
+            fetch('/admin/api/products?page=1&per_page=1000&t=' + Date.now())
                 .then(r => r.json())
                 .then(data => {
                     if (data.success && data.products) {
-                        // Update the products array
-                        allProducts.length = 0;
-                        allProducts.push(...data.products);
+                        // Create a map of server products by ID
+                        const serverProductMap = {};
+                        data.products.forEach(p => {
+                            serverProductMap[p.id] = p;
+                        });
+                        
+                        // Update existing products or add new ones
+                        allProducts.forEach(localProduct => {
+                            const serverProduct = serverProductMap[localProduct.id];
+                            if (serverProduct) {
+                                // Update stock from server (this is the source of truth)
+                                localProduct.stock = serverProduct.stock;
+                                localProduct.price = serverProduct.price;
+                                localProduct.name = serverProduct.name;
+                                localProduct.category = serverProduct.category;
+                                localProduct.image = serverProduct.image;
+                                localProduct.barcode = serverProduct.barcode;
+                                delete serverProductMap[localProduct.id];
+                            }
+                        });
+                        
+                        // Add any new products from server
+                        Object.values(serverProductMap).forEach(newProduct => {
+                            allProducts.push(newProduct);
+                        });
+                        
                         console.log('✅ Products refreshed from server, new stock values loaded');
+                        console.log(`📦 ${allProducts.length} products loaded`);
                     } else {
                         console.log('⚠️ Could not refresh from server, using cached data');
                     }
@@ -1232,6 +1257,8 @@
                     document.getElementById('totalProducts').textContent = productCount;
                     document.getElementById('productCount').textContent = productCount + ' total';
                     document.getElementById('resultCount').textContent = filteredProducts.length + ' products';
+                    
+                    showToast('✅ Stock refreshed!', 'success');
                 })
                 .catch(err => {
                     console.log('⚠️ Error refreshing products:', err);
@@ -1615,6 +1642,8 @@
                     updatePOSUI();
                     loadSalesStats();
                     showToast(`✅ Return processed! Refund: KSh ${refundTotal.toLocaleString()}`, 'success');
+                    // Refresh products to update stock
+                    setTimeout(refreshProducts, 500);
                 } else {
                     showToast('❌ Error: ' + (data.message || 'Failed to process return'), 'error');
                 }
@@ -1668,39 +1697,8 @@
             });
         }
 
-        function saveOrderToIndexedDB(order) {
-            return new Promise(async (resolve, reject) => {
-                try {
-                    const database = await openDB();
-                    const transaction = database.transaction(STORE_NAME, 'readwrite');
-                    const store = transaction.objectStore(STORE_NAME);
-                    
-                    if (!order.synced) {
-                        order.synced = false;
-                    }
-                    if (!order.synced_at) {
-                        order.synced_at = null;
-                    }
-                    
-                    const request = store.put(order);
-                    
-                    request.onsuccess = function() {
-                        console.log('✅ Order saved to IndexedDB:', order.order_id);
-                        resolve(order);
-                    };
-                    
-                    request.onerror = function(event) {
-                        console.error('❌ IndexedDB save error:', event.target.error);
-                        reject(event.target.error);
-                    };
-                } catch (error) {
-                    reject(error);
-                }
-            });
-        }
-
         // ============================================================
-        // PLACE ORDER - WITH STOCK DEDUCTION
+        // PLACE ORDER - WITH PERSISTENT STOCK DEDUCTION
         // ============================================================
         function placePOSOrder() {
             if (posCart.length === 0) { 
@@ -1768,12 +1766,39 @@
             btn.disabled = true;
             
             // ============================================================
-            // SAVE TO INDEXEDDB (VERSION 5)
+            // STEP 1: DEDUCT STOCK FROM LOCAL allProducts ARRAY
             // ============================================================
+            function deductLocalStock() {
+                console.log('📦 Deducting local stock...');
+                
+                posCart.forEach(cartItem => {
+                    const product = allProducts.find(p => p.id === cartItem.id);
+                    if (product) {
+                        const oldStock = product.stock || 0;
+                        product.stock = Math.max(0, oldStock - cartItem.quantity);
+                        console.log(`📦 ${product.name}: ${oldStock} → ${product.stock}`);
+                    } else {
+                        console.warn(`⚠️ Product not found in local array: ${cartItem.id}`);
+                    }
+                });
+                
+                // Re-render products with updated stock
+                const searchInput = document.getElementById('posSearch');
+                if (searchInput) {
+                    searchProducts(searchInput.value || '');
+                } else {
+                    searchProducts('');
+                }
+                
+                console.log('✅ Local stock deducted and UI updated');
+            }
             
+            // ============================================================
+            // STEP 2: SAVE ORDER TO INDEXEDDB
+            // ============================================================
             function saveOrderLocally(order) {
                 return new Promise((resolve, reject) => {
-                    console.log('💾 Saving to IndexedDB (version 5)...');
+                    console.log('💾 Saving to IndexedDB...');
                     
                     const request = indexedDB.open('PricePointDB', 5);
                     
@@ -1815,9 +1840,8 @@
             }
             
             // ============================================================
-            // SYNC TO SERVER (if online)
+            // STEP 3: SYNC TO SERVER (if online)
             // ============================================================
-            
             function syncToServer(order) {
                 return new Promise((resolve) => {
                     if (!navigator.onLine) {
@@ -1853,9 +1877,8 @@
             }
             
             // ============================================================
-            // MARK ORDER AS SYNCED
+            // STEP 4: MARK ORDER AS SYNCED IN INDEXEDDB
             // ============================================================
-            
             function markAsSynced(orderId) {
                 const request = indexedDB.open('PricePointDB', 5);
                 request.onsuccess = function(event) {
@@ -1882,52 +1905,16 @@
             }
             
             // ============================================================
-            // UPDATE LOCAL STOCK
+            // EXECUTE ALL STEPS
             // ============================================================
             
-            function updateLocalStock() {
-                console.log('📦 Updating local stock...');
-                
-                // Reduce stock for each item in cart
-                posCart.forEach(cartItem => {
-                    const product = allProducts.find(p => p.id === cartItem.id);
-                    if (product) {
-                        const oldStock = product.stock || 0;
-                        product.stock = Math.max(0, oldStock - cartItem.quantity);
-                        console.log(`📦 ${product.name}: ${oldStock} → ${product.stock}`);
-                    }
-                });
-                
-                // Re-render products
-                const searchInput = document.getElementById('posSearch');
-                if (searchInput) {
-                    searchProducts(searchInput.value || '');
-                } else {
-                    searchProducts('');
-                }
-                
-                // Update product count
-                const productCount = allProducts.length;
-                document.getElementById('totalProducts').textContent = productCount;
-                document.getElementById('productCount').textContent = productCount + ' total';
-                document.getElementById('resultCount').textContent = filteredProducts.length + ' products';
-                
-                console.log('✅ Local stock updated');
-            }
+            // STEP 1: Deduct local stock first (immediate visual feedback)
+            deductLocalStock();
             
-            // ============================================================
-            // EXECUTE: Save -> Update Stock -> Sync
-            // ============================================================
-            
-            // First, save to IndexedDB (always works, online or offline)
+            // STEP 2: Save to IndexedDB
             saveOrderLocally(orderData)
                 .then(() => {
-                    console.log('✅ Order saved locally!');
-                    
-                    // ============================================================
-                    // UPDATE STOCK IMMEDIATELY
-                    // ============================================================
-                    updateLocalStock();
+                    console.log('✅ Order saved to IndexedDB!');
                     
                     // Clear cart
                     posCart = [];
@@ -1935,22 +1922,26 @@
                     document.getElementById('discountDisplay').textContent = '0%';
                     updatePOSUI();
                     
-                    showToast(`✅ Order #${orderData.order_id} saved! Stock updated.`, 'success');
+                    showToast(`✅ Order #${orderData.order_id} placed! Stock updated.`, 'success');
                     checkUnsyncedOrders();
                     
                     // Reset button
                     btn.innerHTML = originalText;
                     btn.disabled = false;
                     
-                    // Then try to sync to server
+                    // Load updated stats
+                    loadSalesStats();
+                    loadUserStats();
+                    
+                    // STEP 3 & 4: Try to sync to server
                     syncToServer(orderData)
                         .then(result => {
                             if (result.synced) {
                                 console.log('✅ Order synced to server!');
                                 showToast(`✅ Order synced to cloud!`, 'success');
                                 markAsSynced(orderData.order_id);
-                                loadSalesStats();
-                                loadUserStats();
+                                // Refresh products from server to ensure stock is consistent
+                                setTimeout(refreshProducts, 1000);
                             } else {
                                 console.log('📡 Order saved offline, will sync later');
                                 if (navigator.onLine) {
@@ -2335,18 +2326,63 @@
         }
 
         // ============================================================
+        // KEYBOARD SHORTCUTS
+        // ============================================================
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') { 
+                closeCustomerModal(); 
+                closeDiscountModal(); 
+                closeReturnModal(); 
+                closeBarcodeScanner();
+                closeBarcodeInputModal();
+            }
+            if (e.ctrlKey && e.key === 'Enter') { placePOSOrder(); e.preventDefault(); }
+            if (e.key === 'F1') { document.getElementById('posSearch').focus(); e.preventDefault(); }
+            if (e.key === 'F2') { toggleCustomerModal(); e.preventDefault(); }
+            if (e.key === 'F3') { toggleDiscountModal(); e.preventDefault(); }
+            if (e.key === 'F4') { toggleReturnModal(); e.preventDefault(); }
+            if (e.key === 'F5') { holdOrder(); e.preventDefault(); }
+            if (e.key === 'F6') { manualSync(); e.preventDefault(); }
+            if (e.key === 'F7') { 
+                e.preventDefault();
+                if (document.getElementById('barcodeModal').classList.contains('hidden')) {
+                    openBarcodeScanner();
+                } else {
+                    closeBarcodeScanner();
+                }
+            }
+            if (e.key === 'F8') { 
+                e.preventDefault();
+                if (document.getElementById('barcodeInputModal').classList.contains('hidden')) {
+                    openBarcodeInputModal();
+                } else {
+                    closeBarcodeInputModal();
+                }
+            }
+            if (e.key === 'F9') { 
+                e.preventDefault();
+                refreshProducts();
+            }
+            if ((e.key === 'Delete' || e.key === 'Backspace') && document.activeElement.id !== 'posSearch') {
+                voidLastItem();
+                e.preventDefault();
+            }
+        });
+
+        // ============================================================
         // INIT
         // ============================================================
         document.addEventListener('DOMContentLoaded', function() {
             console.log('✅ POS Pro v5.0 initializing...');
             console.log('📦 IndexedDB Version:', DB_VERSION);
+            console.log('📦 Products loaded:', allProducts.length);
             
             document.getElementById('posProductGrid').innerHTML = `
                 <div class="col-span-full search-hint">
                     <i class="fas fa-search"></i>
                     <p>Search for products</p>
                     <p class="text-xs text-gray-400">${allProducts.length} products available</p>
-                    <div class="shortcuts">⌨️ F1: Search | F2: Customer | F3: Discount | F4: Return | F5: Hold | F6: Sync | F7: Scan | F8: Manual Barcode | Ctrl+Enter: Checkout</div>
+                    <div class="shortcuts">⌨️ F1: Search | F2: Customer | F3: Discount | F4: Return | F5: Hold | F6: Sync | F7: Scan | F8: Manual Barcode | F9: Refresh Stock | Ctrl+Enter: Checkout</div>
                 </div>
             `;
             document.getElementById('resultCount').textContent = `${allProducts.length} products available`;
@@ -2354,8 +2390,7 @@
             loadSalesStats();
             loadUserStats();
             
-            // Check for unsynced orders
-            setTimeout(function() {
+            // Check for unsynced orders            setTimeout(function() {
                 if (navigator.onLine) {
                     checkUnsyncedOrders();
                     setTimeout(function() {
@@ -2363,6 +2398,14 @@
                     }, 2000);
                 }
             }, 1000);
+            
+            // Auto-refresh stock every 60 seconds
+            setInterval(function() {
+                if (navigator.onLine) {
+                    console.log('⏰ Auto-refreshing stock...');
+                    refreshProducts();
+                }
+            }, 60000);
             
             console.log('📡 Status:', navigator.onLine ? 'Online' : 'Offline');
             console.log('📋 Products with barcodes:', allProducts.filter(p => p.barcode).length);
