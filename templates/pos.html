@@ -1060,6 +1060,12 @@
                     
                     console.log(`📦 Found ${unsynced.length} offline order(s) to sync`);
                     
+                    const syncBtn = document.getElementById('syncStatus');
+                    if (syncBtn) {
+                        syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
+                        syncBtn.className = 'syncing';
+                    }
+                    
                     fetch('/admin/api/sync-queue', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -1080,10 +1086,19 @@
                             showNotification(`✅ ${data.synced} orders synced!`);
                             checkUnsyncedOrders();
                         }
+                        if (syncBtn) {
+                            syncBtn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> <span id="unsyncedCount">0</span> offline order(s) <i class="fas fa-sync-alt" style="font-size: 0.5rem; opacity: 0.7;"></i>';
+                            syncBtn.className = '';
+                            checkUnsyncedOrders();
+                        }
                         db.close();
                     })
                     .catch(err => {
                         console.log('❌ Sync failed:', err);
+                        if (syncBtn) {
+                            syncBtn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> <span id="unsyncedCount">0</span> offline order(s) <i class="fas fa-sync-alt" style="font-size: 0.5rem; opacity: 0.7;"></i>';
+                            syncBtn.className = '';
+                        }
                         db.close();
                     });
                 };
@@ -1584,7 +1599,7 @@
         // INDEXEDDB FUNCTIONS - VERSION 4
         // ============================================================
         const DB_NAME = 'PricePointDB';
-        const DB_VERSION = 4;  // ← VERSION 4
+        const DB_VERSION = 4;
         const STORE_NAME = 'orders';
         let db = null;
 
@@ -1652,7 +1667,7 @@
         }
 
         // ============================================================
-        // PLACE ORDER - FIXED FOR OFFLINE (VERSION 4)
+        // PLACE ORDER - FIXED (No Endless Processing)
         // ============================================================
         function placePOSOrder() {
             if (posCart.length === 0) { 
@@ -1680,8 +1695,7 @@
                 price: Number(item.price) || 0,
                 quantity: Number(item.quantity) || 1,
                 total: (Number(item.price) || 0) * (Number(item.quantity) || 1),
-                type: 'product',
-                barcode: item.barcode || ''
+                type: 'product'
             }));
             
             const orderData = {
@@ -1708,8 +1722,7 @@
                 user_role: '{{ session.user.role if session.user else "user" }}',
                 staff_name: '{{ session.user.name if session.user else "Unknown User" }}',
                 synced: false,
-                synced_at: null,
-                barcodes: posCart.map(item => item.barcode).filter(b => b)
+                synced_at: null
             };
             
             console.log('📦 Order data:', orderData);
@@ -1720,19 +1733,19 @@
             btn.disabled = true;
             
             // ============================================================
-            // STEP 1: ALWAYS SAVE TO INDEXEDDB (VERSION 4)
+            // SAVE TO INDEXEDDB (VERSION 4)
             // ============================================================
             
-            function saveToIndexedDB(order) {
+            function saveOrderLocally(order) {
                 return new Promise((resolve, reject) => {
-                    console.log('💾 Saving to IndexedDB (version 4)...');
+                    console.log('💾 Saving to IndexedDB...');
                     
                     const request = indexedDB.open('PricePointDB', 4);
                     
                     request.onupgradeneeded = function(event) {
-                        const database = event.target.result;
-                        if (!database.objectStoreNames.contains('orders')) {
-                            const store = database.createObjectStore('orders', { keyPath: 'order_id' });
+                        const db = event.target.result;
+                        if (!db.objectStoreNames.contains('orders')) {
+                            const store = db.createObjectStore('orders', { keyPath: 'order_id' });
                             store.createIndex('synced', 'synced', { unique: false });
                             console.log('✅ Orders store created');
                         }
@@ -1740,8 +1753,6 @@
                     
                     request.onsuccess = function(event) {
                         const db = event.target.result;
-                        console.log('✅ DB opened, saving order...');
-                        
                         const tx = db.transaction('orders', 'readwrite');
                         const store = tx.objectStore('orders');
                         const putRequest = store.put(order);
@@ -1753,28 +1764,28 @@
                         };
                         
                         putRequest.onerror = function(event) {
-                            console.error('❌ IndexedDB save error:', event.target.error);
+                            console.error('❌ Save error:', event.target.error);
                             db.close();
                             reject(event.target.error);
                         };
                     };
                     
                     request.onerror = function(event) {
-                        console.error('❌ DB open error:', event.target.error);
+                        console.error('❌ DB error:', event.target.error);
                         reject(event.target.error);
                     };
                 });
             }
             
             // ============================================================
-            // STEP 2: SYNC TO SERVER (if online)
+            // SYNC TO SERVER
             // ============================================================
             
             function syncToServer(order) {
-                return new Promise((resolve, reject) => {
+                return new Promise((resolve) => {
                     if (!navigator.onLine) {
                         console.log('📡 Offline - skipping server sync');
-                        resolve({ synced: false, message: 'Offline' });
+                        resolve({ synced: false, offline: true });
                         return;
                     }
                     
@@ -1786,7 +1797,7 @@
                         body: JSON.stringify(order)
                     })
                     .then(r => {
-                        if (!r.ok) throw new Error('HTTP error: ' + r.status);
+                        if (!r.ok) throw new Error('HTTP ' + r.status);
                         return r.json();
                     })
                     .then(data => {
@@ -1794,59 +1805,54 @@
                         if (data.success) {
                             resolve({ synced: true, data: data });
                         } else {
-                            reject(new Error(data.message || 'Server error'));
+                            resolve({ synced: false, error: data.message || 'Server error' });
                         }
                     })
                     .catch(err => {
-                        console.log('⚠️ Server sync failed:', err.message);
-                        resolve({ synced: false, message: err.message });
+                        console.log('⚠️ Server sync error:', err.message);
+                        resolve({ synced: false, error: err.message });
                     });
                 });
             }
             
             // ============================================================
-            // STEP 3: MARK ORDER AS SYNCED
+            // MARK AS SYNCED
             // ============================================================
             
-            function markAsSynced(orderId) {
-                return new Promise((resolve, reject) => {
-                    const request = indexedDB.open('PricePointDB', 4);
+            function markSynced(orderId) {
+                const request = indexedDB.open('PricePointDB', 4);
+                request.onsuccess = function(event) {
+                    const db = event.target.result;
+                    const tx = db.transaction('orders', 'readwrite');
+                    const store = tx.objectStore('orders');
+                    const getRequest = store.get(orderId);
                     
-                    request.onsuccess = function(event) {
-                        const db = event.target.result;
-                        const tx = db.transaction('orders', 'readwrite');
-                        const store = tx.objectStore('orders');
-                        const getRequest = store.get(orderId);
-                        
-                        getRequest.onsuccess = function() {
-                            const order = getRequest.result;
-                            if (order) {
-                                order.synced = true;
-                                order.synced_at = new Date().toISOString();
-                                store.put(order);
-                                console.log('✅ Order marked as synced:', orderId);
-                            }
-                            db.close();
-                            resolve();
-                        };
-                        
-                        getRequest.onerror = function() {
-                            db.close();
-                            resolve();
-                        };
+                    getRequest.onsuccess = function() {
+                        const order = getRequest.result;
+                        if (order) {
+                            order.synced = true;
+                            order.synced_at = new Date().toISOString();
+                            store.put(order);
+                            console.log('✅ Order marked synced:', orderId);
+                        }
+                        db.close();
                     };
-                });
+                    
+                    getRequest.onerror = function() {
+                        db.close();
+                    };
+                };
             }
             
             // ============================================================
-            // EXECUTE: Save -> Sync -> Update UI
+            // EXECUTE - Simple flow with immediate button reset
             // ============================================================
             
-            // First, save to IndexedDB (always works, online or offline)
-            saveToIndexedDB(orderData)
+            // Save locally first
+            saveOrderLocally(orderData)
                 .then(() => {
                     console.log('✅ Order saved locally!');
-                    showToast(`✅ Order #${orderData.order_id} saved locally!`, 'success');
+                    showToast(`✅ Order #${orderData.order_id} saved!`, 'success');
                     
                     // Clear cart immediately
                     posCart = [];
@@ -1855,31 +1861,30 @@
                     updatePOSUI();
                     checkUnsyncedOrders();
                     
-                    // Then try to sync to server
+                    // Reset button IMMEDIATELY (fixes endless processing)
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                    
+                    // Try to sync in background (don't wait for it)
                     syncToServer(orderData)
                         .then(result => {
                             if (result.synced) {
                                 console.log('✅ Order synced to server!');
                                 showToast(`✅ Order synced to cloud!`, 'success');
-                                // Mark as synced in IndexedDB
-                                markAsSynced(orderData.order_id);
+                                markSynced(orderData.order_id);
                                 loadSalesStats();
                                 loadUserStats();
                             } else {
-                                console.log('📡 Order saved offline, will sync later');
                                 if (navigator.onLine) {
-                                    showToast('⚠️ Order saved locally. Will sync later.', 'warning');
+                                    console.log('⚠️ Server sync failed, will retry later');
                                 } else {
-                                    showToast('📡 Offline - order saved locally. Will sync when online.', 'warning');
+                                    console.log('📡 Offline - will sync when online');
                                 }
                             }
                         })
                         .catch(err => {
                             console.log('⚠️ Sync error:', err);
                         });
-                    
-                    btn.innerHTML = originalText;
-                    btn.disabled = false;
                 })
                 .catch(err => {
                     console.error('❌ Failed to save order:', err);
