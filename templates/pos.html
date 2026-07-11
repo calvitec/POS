@@ -1035,13 +1035,13 @@
         }
 
         // ============================================================
-        // SYNC FUNCTIONS - VERSION 4
+        // SYNC FUNCTIONS - VERSION 5
         // ============================================================
 
         function syncNow() {
             console.log('🔍 Checking for offline orders...');
             
-            const r = indexedDB.open('PricePointDB', 4);
+            const r = indexedDB.open('PricePointDB', 5);
             
             r.onsuccess = function(e) {
                 const db = e.target.result;
@@ -1059,12 +1059,6 @@
                     }
                     
                     console.log(`📦 Found ${unsynced.length} offline order(s) to sync`);
-                    
-                    const syncBtn = document.getElementById('syncStatus');
-                    if (syncBtn) {
-                        syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
-                        syncBtn.className = 'syncing';
-                    }
                     
                     fetch('/admin/api/sync-queue', {
                         method: 'POST',
@@ -1086,19 +1080,10 @@
                             showNotification(`✅ ${data.synced} orders synced!`);
                             checkUnsyncedOrders();
                         }
-                        if (syncBtn) {
-                            syncBtn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> <span id="unsyncedCount">0</span> offline order(s) <i class="fas fa-sync-alt" style="font-size: 0.5rem; opacity: 0.7;"></i>';
-                            syncBtn.className = '';
-                            checkUnsyncedOrders();
-                        }
                         db.close();
                     })
                     .catch(err => {
                         console.log('❌ Sync failed:', err);
-                        if (syncBtn) {
-                            syncBtn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> <span id="unsyncedCount">0</span> offline order(s) <i class="fas fa-sync-alt" style="font-size: 0.5rem; opacity: 0.7;"></i>';
-                            syncBtn.className = '';
-                        }
                         db.close();
                     });
                 };
@@ -1596,10 +1581,10 @@
         }
 
         // ============================================================
-        // INDEXEDDB FUNCTIONS - VERSION 4
+        // INDEXEDDB FUNCTIONS - VERSION 5 (FIXED)
         // ============================================================
         const DB_NAME = 'PricePointDB';
-        const DB_VERSION = 5;
+        const DB_VERSION = 5;  // ← PERMANENT VERSION 5
         const STORE_NAME = 'orders';
         let db = null;
 
@@ -1618,7 +1603,7 @@
                         const store = database.createObjectStore(STORE_NAME, { keyPath: 'order_id' });
                         store.createIndex('synced', 'synced', { unique: false });
                         store.createIndex('created_at', 'created_at', { unique: false });
-                        console.log('✅ IndexedDB: Orders store created (version 4)');
+                        console.log('✅ IndexedDB: Orders store created (version 5)');
                     }
                 };
                 
@@ -1667,7 +1652,7 @@
         }
 
         // ============================================================
-        // PLACE ORDER - FIXED (No Endless Processing)
+        // PLACE ORDER - FIXED FOR OFFLINE (VERSION 5)
         // ============================================================
         function placePOSOrder() {
             if (posCart.length === 0) { 
@@ -1695,7 +1680,8 @@
                 price: Number(item.price) || 0,
                 quantity: Number(item.quantity) || 1,
                 total: (Number(item.price) || 0) * (Number(item.quantity) || 1),
-                type: 'product'
+                type: 'product',
+                barcode: item.barcode || ''
             }));
             
             const orderData = {
@@ -1722,7 +1708,8 @@
                 user_role: '{{ session.user.role if session.user else "user" }}',
                 staff_name: '{{ session.user.name if session.user else "Unknown User" }}',
                 synced: false,
-                synced_at: null
+                synced_at: null,
+                barcodes: posCart.map(item => item.barcode).filter(b => b)
             };
             
             console.log('📦 Order data:', orderData);
@@ -1733,19 +1720,19 @@
             btn.disabled = true;
             
             // ============================================================
-            // SAVE TO INDEXEDDB (VERSION 4)
+            // SAVE TO INDEXEDDB (VERSION 5)
             // ============================================================
             
             function saveOrderLocally(order) {
                 return new Promise((resolve, reject) => {
-                    console.log('💾 Saving to IndexedDB...');
+                    console.log('💾 Saving to IndexedDB (version 5)...');
                     
                     const request = indexedDB.open('PricePointDB', 5);
                     
                     request.onupgradeneeded = function(event) {
-                        const db = event.target.result;
-                        if (!db.objectStoreNames.contains('orders')) {
-                            const store = db.createObjectStore('orders', { keyPath: 'order_id' });
+                        const database = event.target.result;
+                        if (!database.objectStoreNames.contains('orders')) {
+                            const store = database.createObjectStore('orders', { keyPath: 'order_id' });
                             store.createIndex('synced', 'synced', { unique: false });
                             console.log('✅ Orders store created');
                         }
@@ -1753,6 +1740,8 @@
                     
                     request.onsuccess = function(event) {
                         const db = event.target.result;
+                        console.log('✅ DB opened, saving order...');
+                        
                         const tx = db.transaction('orders', 'readwrite');
                         const store = tx.objectStore('orders');
                         const putRequest = store.put(order);
@@ -1764,21 +1753,21 @@
                         };
                         
                         putRequest.onerror = function(event) {
-                            console.error('❌ Save error:', event.target.error);
+                            console.error('❌ IndexedDB save error:', event.target.error);
                             db.close();
                             reject(event.target.error);
                         };
                     };
                     
                     request.onerror = function(event) {
-                        console.error('❌ DB error:', event.target.error);
+                        console.error('❌ DB open error:', event.target.error);
                         reject(event.target.error);
                     };
                 });
             }
             
             // ============================================================
-            // SYNC TO SERVER
+            // SYNC TO SERVER (if online)
             // ============================================================
             
             function syncToServer(order) {
@@ -1797,7 +1786,7 @@
                         body: JSON.stringify(order)
                     })
                     .then(r => {
-                        if (!r.ok) throw new Error('HTTP ' + r.status);
+                        if (!r.ok) throw new Error('HTTP error: ' + r.status);
                         return r.json();
                     })
                     .then(data => {
@@ -1809,18 +1798,18 @@
                         }
                     })
                     .catch(err => {
-                        console.log('⚠️ Server sync error:', err.message);
+                        console.log('⚠️ Server sync failed:', err.message);
                         resolve({ synced: false, error: err.message });
                     });
                 });
             }
             
             // ============================================================
-            // MARK AS SYNCED
+            // MARK ORDER AS SYNCED
             // ============================================================
             
-            function markSynced(orderId) {
-                const request = indexedDB.open('PricePointDB', 4);
+            function markAsSynced(orderId) {
+                const request = indexedDB.open('PricePointDB', 5);
                 request.onsuccess = function(event) {
                     const db = event.target.result;
                     const tx = db.transaction('orders', 'readwrite');
@@ -1833,7 +1822,7 @@
                             order.synced = true;
                             order.synced_at = new Date().toISOString();
                             store.put(order);
-                            console.log('✅ Order marked synced:', orderId);
+                            console.log('✅ Order marked as synced:', orderId);
                         }
                         db.close();
                     };
@@ -1845,14 +1834,14 @@
             }
             
             // ============================================================
-            // EXECUTE - Simple flow with immediate button reset
+            // EXECUTE: Save -> Sync -> Update UI
             // ============================================================
             
-            // Save locally first
+            // First, save to IndexedDB (always works, online or offline)
             saveOrderLocally(orderData)
                 .then(() => {
                     console.log('✅ Order saved locally!');
-                    showToast(`✅ Order #${orderData.order_id} saved!`, 'success');
+                    showToast(`✅ Order #${orderData.order_id} saved locally!`, 'success');
                     
                     // Clear cart immediately
                     posCart = [];
@@ -1861,24 +1850,25 @@
                     updatePOSUI();
                     checkUnsyncedOrders();
                     
-                    // Reset button IMMEDIATELY (fixes endless processing)
+                    // Reset button
                     btn.innerHTML = originalText;
                     btn.disabled = false;
                     
-                    // Try to sync in background (don't wait for it)
+                    // Then try to sync to server
                     syncToServer(orderData)
                         .then(result => {
                             if (result.synced) {
                                 console.log('✅ Order synced to server!');
                                 showToast(`✅ Order synced to cloud!`, 'success');
-                                markSynced(orderData.order_id);
+                                markAsSynced(orderData.order_id);
                                 loadSalesStats();
                                 loadUserStats();
                             } else {
+                                console.log('📡 Order saved offline, will sync later');
                                 if (navigator.onLine) {
-                                    console.log('⚠️ Server sync failed, will retry later');
+                                    showToast('⚠️ Order saved locally. Will sync later.', 'warning');
                                 } else {
-                                    console.log('📡 Offline - will sync when online');
+                                    showToast('📡 Offline - order saved locally. Will sync when online.', 'warning');
                                 }
                             }
                         })
@@ -2260,7 +2250,7 @@
         // INIT
         // ============================================================
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('✅ POS Pro v4.0 initializing...');
+            console.log('✅ POS Pro v5.0 initializing...');
             console.log('📦 IndexedDB Version:', DB_VERSION);
             
             document.getElementById('posProductGrid').innerHTML = `
