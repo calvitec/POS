@@ -14,7 +14,6 @@ import requests
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for, send_from_directory
 from werkzeug.utils import secure_filename
 
-# Now this will work
 from config import Config
 from utils.data import get_cart, get_sales_analytics, load_bundles, load_orders, load_products, update_product_stock
 
@@ -25,6 +24,9 @@ admin_bp = Blueprint('admin', __name__)
 # ============================================================
 IS_VERCEL = os.environ.get('VERCEL') == '1' or os.environ.get('NOW_REGION') is not None
 print(f"🚀 Running on: {'Vercel' if IS_VERCEL else 'Local'}")
+
+# On Vercel, we can only write to /tmp
+DATA_FILE = os.path.join('/tmp', 'data.json') if IS_VERCEL else 'data.json'
 
 
 def allowed_file(filename):
@@ -187,9 +189,6 @@ def admin_dashboard():
         return redirect(url_for('admin.user_login'))
 
     try:
-        # ============================================================
-        # FIX: Clear cache on every request to get fresh data
-        # ============================================================
         import utils.data
         utils.data.orders_cache = []
 
@@ -556,7 +555,7 @@ def admin_pos():
 
 
 # ============================================================
-# POS ORDER ROUTE
+# POS ORDER ROUTE - FIXED WITH BETTER ERROR HANDLING
 # ============================================================
 
 @admin_bp.route('/admin/pos/place-order', methods=['POST'])
@@ -574,18 +573,117 @@ def admin_pos_place_order():
         user_name = user.get('name', 'Unknown User')
         user_role = user.get('role', 'user')
 
-        order_id = f'POS-{uuid.uuid4().hex[:8].upper()}'
-
+        order_id = data.get('order_id', f'POS-{uuid.uuid4().hex[:8].upper()}')
         items = data.get('items', [])
-        subtotal = data.get('subtotal', 0)
-        shipping = data.get('shipping', 0)
-        total = subtotal + shipping
+        
+        print(f"📦 Received order: {order_id}")
+        print(f"📦 Items: {len(items)}")
+        
+        # Log items for debugging
+        for item in items:
+            print(f"  - {item.get('name')} x{item.get('quantity')}")
+
+        # ============================================================
+        # STOCK DEDUCTION - WITH ERROR HANDLING
+        # ============================================================
+        print("📦 DEDUCTING STOCK...")
+        
+        stock_updated = []
+        stock_failed = []
+        
+        for item in items:
+            product_id = item.get('product_id')
+            quantity = int(item.get('quantity', 1))
+            
+            if not product_id:
+                print(f"⚠️ No product_id for item: {item.get('name')}")
+                stock_failed.append({'name': item.get('name'), 'reason': 'No product_id'})
+                continue
+            
+            try:
+                # Get current product from Supabase
+                print(f"🔍 Fetching product: {product_id}")
+                response = requests.get(
+                    f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
+                    headers=Config.SUPABASE_HEADERS,
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    products = response.json()
+                    if products and len(products) > 0:
+                        product = products[0]
+                        current_stock = product.get('stock', 0)
+                        new_stock = max(0, current_stock - quantity)
+                        
+                        print(f"📦 {product.get('name')}: {current_stock} → {new_stock}")
+                        
+                        # Update stock in Supabase
+                        update_response = requests.patch(
+                            f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
+                            headers=Config.SUPABASE_HEADERS,
+                            json={'stock': new_stock},
+                            timeout=10
+                        )
+                        
+                        if update_response.status_code in [200, 204]:
+                            print(f"✅ Stock updated: {product.get('name')}")
+                            stock_updated.append({
+                                'name': product.get('name'),
+                                'old_stock': current_stock,
+                                'new_stock': new_stock
+                            })
+                        else:
+                            print(f"❌ Failed to update stock: {update_response.status_code}")
+                            print(f"Response: {update_response.text[:200]}")
+                            stock_failed.append({
+                                'name': product.get('name'),
+                                'reason': f'HTTP {update_response.status_code}'
+                            })
+                    else:
+                        print(f"⚠️ Product not found: {product_id}")
+                        stock_failed.append({
+                            'name': item.get('name'),
+                            'reason': 'Product not found'
+                        })
+                else:
+                    print(f"❌ Failed to fetch product: {response.status_code}")
+                    stock_failed.append({
+                        'name': item.get('name'),
+                        'reason': f'Fetch error: {response.status_code}'
+                    })
+                    
+            except Exception as e:
+                print(f"❌ Stock deduction error for {product_id}: {e}")
+                stock_failed.append({
+                    'name': item.get('name'),
+                    'reason': str(e)
+                })
+
+        # Log stock results
+        print(f"📊 Stock updated: {len(stock_updated)} items")
+        for s in stock_updated:
+            print(f"  ✅ {s['name']}: {s['old_stock']} → {s['new_stock']}")
+        
+        if stock_failed:
+            print(f"❌ Stock failed: {len(stock_failed)} items")
+            for s in stock_failed:
+                print(f"  ❌ {s['name']}: {s['reason']}")
+
+        # ============================================================
+        # CONTINUE WITH ORDER CREATION
+        # ============================================================
+
+        subtotal = float(data.get('subtotal', 0))
+        shipping = float(data.get('shipping', 0))
+        total = float(data.get('total', subtotal + shipping))
 
         customer_name = data.get('customer_name', 'Walk-in Customer')
         customer_email = data.get('customer_email', 'walkin@example.com')
         customer_phone = data.get('customer_phone', 'N/A')
         customer_address = data.get('customer_address', 'In-store purchase')
 
+        # Build order data
         order_data = {
             'order_id': order_id,
             'items': items,
@@ -611,89 +709,62 @@ def admin_pos_place_order():
             'staff_name': user_name
         }
 
-        print(f"📦 Order ID: {order_id}")
-        print(f"👤 User: {user_name}")
         print(f"💰 Total: KSh {total}")
 
-        # Check stock
-        products_supabase = load_products()
-        product_lookup = {str(p.get('id')): p for p in products_supabase}
+        # ============================================================
+        # SAVE ORDER TO SUPABASE
+        # ============================================================
+        try:
+            response = requests.post(
+                f"{Config.SUPABASE_URL}/rest/v1/orders",
+                headers=Config.SUPABASE_HEADERS,
+                json=order_data,
+                timeout=15
+            )
 
-        for item in items:
-            product_id = str(item.get('product_id'))
-            quantity = item.get('quantity', 1)
-            product = product_lookup.get(product_id)
+            if response.status_code in [200, 201]:
+                print(f"✅ Order saved to Supabase: {order_id}")
+                
+                import utils.data
+                utils.data.orders_cache = []
+                # Clear products cache so stock updates are reflected
+                utils.data.products_cache = []
 
-            if product:
-                current_stock = product.get('stock', 0)
-                if current_stock < quantity:
-                    return jsonify({
-                        'success': False,
-                        'message': f'Not enough stock for {product.get("name", "Product")}. Available: {current_stock}'
-                    }), 400
-
-        # Update stock
-        for item in items:
-            product_id = str(item.get('product_id'))
-            quantity = item.get('quantity', 1)
-            product = product_lookup.get(product_id)
-
-            if product:
-                current_stock = product.get('stock', 0)
-                new_stock = max(0, current_stock - quantity)
-                requests.patch(
-                    f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
-                    headers=Config.SUPABASE_HEADERS,
-                    json={'stock': new_stock},
-                    timeout=10
-                )
-                print(f"✅ Stock updated: {product_id} → {new_stock}")
-
-        # Add cost price
-        items_with_cost = []
-        for item in items:
-            product_id = str(item.get('product_id'))
-            product = product_lookup.get(product_id)
-            cost_price = product.get('cost_price', 0) if product else 0
-            item_with_cost = item.copy()
-            item_with_cost['cost_price'] = cost_price
-            items_with_cost.append(item_with_cost)
-        order_data['items'] = items_with_cost
-
-        # Save to Supabase
-        response = requests.post(
-            f"{Config.SUPABASE_URL}/rest/v1/orders",
-            headers=Config.SUPABASE_HEADERS,
-            json=order_data,
-            timeout=15
-        )
-
-        if response.status_code in [200, 201]:
-            print(f"✅ Order saved to Supabase: {order_id}")
-
-            import utils.data
-            utils.data.orders_cache = []
-
-            return jsonify({
-                'success': True,
-                'order_id': order_id,
-                'order': order_data,
-                'synced': True,
-                'message': f'✅ Order #{order_id} placed! Total: KSh {total:,.0f}',
-                'total': total
-            })
-        else:
-            print(f"❌ Supabase error: {response.status_code} - {response.text}")
+                return jsonify({
+                    'success': True,
+                    'order_id': order_id,
+                    'order': order_data,
+                    'synced': True,
+                    'stock_updated': stock_updated,
+                    'stock_failed': stock_failed,
+                    'message': f'✅ Order #{order_id} placed! Stock deducted: {len(stock_updated)} items.',
+                    'total': total
+                })
+            else:
+                print(f"❌ Failed to save order: {response.status_code}")
+                print(f"Response: {response.text[:200]}")
+                
+                return jsonify({
+                    'success': False,
+                    'message': f'Failed to save order: {response.status_code}',
+                    'supabase_error': response.text[:500]
+                }), 500
+                
+        except Exception as e:
+            print(f"❌ Order save error: {e}")
+            traceback.print_exc()
             return jsonify({
                 'success': False,
-                'message': f'Database error: {response.status_code}',
-                'supabase_error': response.text[:500]
+                'message': f'Error saving order: {str(e)}'
             }), 500
 
     except Exception as exc:
         print(f'❌ POS Order error: {exc}')
         traceback.print_exc()
-        return jsonify({'success': False, 'message': str(exc)}), 500
+        return jsonify({
+            'success': False, 
+            'message': f'Error: {str(exc)[:100]}'
+        }), 500
 
 
 # ============================================================
