@@ -46,14 +46,14 @@
     </script>
 
     <!-- ============================================================
-         OFFLINE ORDER SYNC - POS
+         OFFLINE ORDER SYNC - POS (UPDATED TO VERSION 5)
     ============================================================ -->
     <script>
-        // Sync function
+        // Sync function - UPDATED TO VERSION 5
         async function syncNow() {
             console.log('🔍 Checking for offline orders...');
             
-            const r = indexedDB.open('PricePointDB', 1);
+            const r = indexedDB.open('PricePointDB', 5); // CHANGED FROM 1 TO 5
             r.onsuccess = function(e) {
                 const db = e.target.result;
                 const tx = db.transaction(['orders'], 'readonly');
@@ -1590,10 +1590,10 @@
         }
 
         // ============================================================
-        // INDEXEDDB FUNCTIONS
+        // INDEXEDDB FUNCTIONS - UPDATED TO VERSION 5
         // ============================================================
         const DB_NAME = 'PricePointDB';
-        const DB_VERSION = 1;
+        const DB_VERSION = 5;  // CHANGED FROM 1 TO 5
         const STORE_NAME = 'orders';
         let db = null;
 
@@ -1612,13 +1612,13 @@
                         const store = database.createObjectStore(STORE_NAME, { keyPath: 'order_id' });
                         store.createIndex('synced', 'synced', { unique: false });
                         store.createIndex('created_at', 'created_at', { unique: false });
-                        console.log('✅ IndexedDB: Orders store created');
+                        console.log('✅ IndexedDB: Orders store created (v5)');
                     }
                 };
                 
                 request.onsuccess = function(event) {
                     db = event.target.result;
-                    console.log('✅ IndexedDB: Connected');
+                    console.log('✅ IndexedDB: Connected (Version ' + DB_VERSION + ')');
                     resolve(db);
                 };
                 
