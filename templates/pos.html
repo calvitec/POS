@@ -191,14 +191,15 @@
         @keyframes cardPop { 0% { opacity: 0; transform: scale(0.95) translateY(10px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
         @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
         @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+        @keyframes modalFadeIn { from { opacity: 0; transform: scale(0.95) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
         .animate-float { animation: float 3s ease-in-out infinite; }
 
-        /* ===== GRID SYSTEM - OPTIMIZED ===== */
+        /* ===== GRID SYSTEM ===== */
         .pos-layout {
             display: grid;
-            grid-template-columns: 1fr 360px;
+            grid-template-columns: 1fr 380px;
             gap: 20px;
-            max-width: 1400px;
+            max-width: 1440px;
             margin: 0 auto;
             padding: 16px 20px;
         }
@@ -218,7 +219,7 @@
         .gap-3 { gap: 0.75rem; }
         .gap-4 { gap: 1rem; }
 
-        /* ===== FLEX SYSTEM ===== */
+        /* ===== FLEX ===== */
         .flex { display: flex; }
         .flex-1 { flex: 1; }
         .flex-wrap { flex-wrap: wrap; }
@@ -233,7 +234,9 @@
         .p-2 { padding: 0.5rem; }
         .p-3 { padding: 0.75rem; }
         .p-4 { padding: 1rem; }
+        .p-6 { padding: 1.5rem; }
         .px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+        .px-4 { padding-left: 1rem; padding-right: 1rem; }
         .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
         .py-2\.5 { padding-top: 0.625rem; padding-bottom: 0.625rem; }
         .py-4 { padding-top: 1rem; padding-bottom: 1rem; }
@@ -296,6 +299,11 @@
         .bg-red-400 { background: #f87171; }
         .bg-green-600 { background: #16a34a; }
         .bg-amber-600 { background: #d97706; }
+        .bg-gradient-primary { background: linear-gradient(135deg, #059669, #047857); }
+        .bg-gradient-amber { background: linear-gradient(135deg, #f59e0b, #d97706); }
+        .bg-gradient-rose { background: linear-gradient(135deg, #ef4444, #dc2626); }
+        .bg-gradient-blue { background: linear-gradient(135deg, #2563eb, #4f46e5); }
+        .bg-gradient-indigo { background: linear-gradient(135deg, #4f46e5, #6366f1); }
 
         /* ===== WIDTH & HEIGHT ===== */
         .w-full { width: 100%; }
@@ -342,6 +350,8 @@
         .rounded { border-radius: 0.25rem; }
         .rounded-lg { border-radius: 0.5rem; }
         .rounded-xl { border-radius: 0.75rem; }
+        .rounded-2xl { border-radius: 1rem; }
+        .rounded-3xl { border-radius: 1.5rem; }
         .rounded-full { border-radius: 9999px; }
         .border-none { border: none; }
 
@@ -350,23 +360,20 @@
         .shadow-md { box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); }
         .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); }
         .shadow-xl { box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); }
+        .shadow-2xl { box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
 
-        /* ===== OVERFLOW ===== */
-        .overflow-hidden { overflow: hidden; }
-        .overflow-y-auto { overflow-y: auto; }
-
-        /* ===== PRODUCT CARDS - LARGER ===== */
+        /* ===== PRODUCT CARDS ===== */
         .product-pos-card {
             transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             animation: cardPop 0.3s ease-out forwards;
             background: white;
-            border-radius: 14px;
+            border-radius: 16px;
             border: 1px solid #eef2f6;
             padding: 14px;
             position: relative;
             overflow: hidden;
             cursor: pointer;
-            min-height: 180px;
+            min-height: 200px;
             display: flex;
             flex-direction: column;
         }
@@ -395,7 +402,7 @@
             width: 100%;
             height: 120px;
             background: #f8fafc;
-            border-radius: 10px;
+            border-radius: 12px;
             overflow: hidden;
             margin-bottom: 10px;
             display: flex;
@@ -454,7 +461,7 @@
             background: linear-gradient(135deg, #059669, #047857);
             color: white;
             border: none;
-            padding: 6px 0;
+            padding: 8px 0;
             border-radius: 9999px;
             font-size: 0.75rem;
             font-weight: 600;
@@ -465,31 +472,21 @@
         }
         .product-pos-card .add-btn:hover { transform: scale(1.03); box-shadow: 0 4px 16px rgba(5,150,105,0.3); }
         .product-pos-card .add-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-        .product-pos-card .barcode-label {
-            font-size: 0.45rem;
-            color: #94a3b8;
-            font-family: monospace;
-            margin-top: 4px;
-            text-align: center;
-            background: #f8fafc;
-            padding: 2px 6px;
-            border-radius: 4px;
-        }
 
-        /* ===== CART SECTION - OPTIMIZED ===== */
+        /* ===== CART SECTION ===== */
         .cart-section .glass-card {
             background: white;
-            border-radius: 16px;
-            padding: 16px;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.06);
             border: 1px solid #eef2f6;
         }
         .cart-section .cart-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 12px;
-            padding-bottom: 10px;
+            margin-bottom: 14px;
+            padding-bottom: 12px;
             border-bottom: 2px solid #f1f5f9;
         }
         .cart-section .cart-header h3 {
@@ -504,7 +501,7 @@
             font-size: 0.7rem;
             color: #94a3b8;
             background: #f1f5f9;
-            padding: 2px 10px;
+            padding: 2px 12px;
             border-radius: 9999px;
         }
         
@@ -530,8 +527,8 @@
             align-items: center;
             gap: 10px;
             background: #f8fafc;
-            border-radius: 10px;
-            padding: 8px 10px;
+            border-radius: 12px;
+            padding: 8px 12px;
             margin-bottom: 6px;
             border: 1px solid #f1f5f9;
             transition: all 0.2s;
@@ -540,11 +537,12 @@
         .pos-cart-item:hover {
             border-color: #e2e8f0;
             background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
         }
         .pos-cart-item .item-image {
             width: 40px;
             height: 40px;
-            border-radius: 8px;
+            border-radius: 10px;
             background: white;
             display: flex;
             align-items: center;
@@ -566,7 +564,9 @@
             font-size: 0.75rem;
             font-weight: 600;
             color: #0f172a;
-            truncate: true;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .pos-cart-item .item-details .item-price {
             font-size: 0.7rem;
@@ -579,8 +579,8 @@
             gap: 2px;
         }
         .pos-cart-item .item-quantity button {
-            width: 22px;
-            height: 22px;
+            width: 24px;
+            height: 24px;
             border-radius: 50%;
             border: none;
             background: #e2e8f0;
@@ -604,7 +604,7 @@
             cursor: pointer;
             font-size: 0.7rem;
             padding: 4px;
-            border-radius: 4px;
+            border-radius: 6px;
             transition: all 0.2s;
             flex-shrink: 0;
         }
@@ -612,37 +612,55 @@
 
         .cart-summary {
             border-top: 2px solid #f1f5f9;
-            padding-top: 10px;
+            padding-top: 12px;
         }
         .cart-summary .summary-row {
             display: flex;
             justify-content: space-between;
-            padding: 3px 0;
-            font-size: 0.8rem;
+            padding: 4px 0;
+            font-size: 0.85rem;
         }
         .cart-summary .summary-row.total {
             border-top: 2px solid #059669;
-            padding-top: 8px;
+            padding-top: 10px;
             margin-top: 4px;
             font-weight: 700;
-            font-size: 1rem;
+            font-size: 1.05rem;
         }
         .cart-summary .summary-row .label { color: #64748b; }
         .cart-summary .summary-row .value { font-weight: 600; color: #0f172a; }
-        .cart-summary .summary-row.total .value { color: #059669; font-size: 1.1rem; }
+        .cart-summary .summary-row.total .value { color: #059669; font-size: 1.2rem; }
 
         .cart-actions {
             display: flex;
             flex-direction: column;
             gap: 8px;
-            margin-top: 10px;
+            margin-top: 12px;
         }
         .cart-actions .btn-primary {
             background: linear-gradient(135deg, #059669, #047857);
             color: white;
-            padding: 10px 18px;
+            padding: 12px 20px;
             border-radius: 9999px;
             font-weight: 700;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .cart-actions .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(5,150,105,0.25); }
+        .cart-actions .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .cart-actions .btn-secondary {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: white;
+            padding: 10px 18px;
+            border-radius: 9999px;
+            font-weight: 600;
             border: none;
             cursor: pointer;
             transition: all 0.3s;
@@ -653,19 +671,35 @@
             justify-content: center;
             gap: 8px;
         }
-        .cart-actions .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(5,150,105,0.25); }
-        .cart-actions .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .cart-actions .btn-secondary:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(245,158,11,0.25); }
+        .cart-actions .btn-danger {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+            padding: 10px 18px;
+            border-radius: 9999px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .cart-actions .btn-danger:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(239,68,68,0.25); }
         .cart-actions .btn-outline {
             border: 2px solid #e2e8f0;
             color: #475569;
             background: transparent;
-            padding: 8px 14px;
+            padding: 10px 16px;
             border-radius: 9999px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s;
             width: 100%;
-            font-size: 0.8rem;
+            font-size: 0.85rem;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -681,16 +715,16 @@
             transform: translateX(-50%);
             background: #1e293b;
             color: white;
-            padding: 12px 28px;
-            border-radius: 14px;
+            padding: 14px 32px;
+            border-radius: 16px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.2);
             z-index: 9999;
             animation: slideUp 0.4s ease-out;
             font-weight: 500;
-            font-size: 0.85rem;
+            font-size: 0.9rem;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255,255,255,0.05);
         }
@@ -700,61 +734,88 @@
         .toast.warning { background: linear-gradient(135deg, #78350f, #d97706); }
         .toast.hidden { display: none; }
 
-        /* ===== MODALS ===== */
+        /* ===== MODALS - ADVANCED ===== */
         .modal-overlay {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.5);
-            backdrop-filter: blur(8px);
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(12px);
             z-index: 9999;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 20px;
-            animation: fadeIn 0.2s ease;
+            animation: fadeIn 0.3s ease;
         }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         .modal-overlay.hidden { display: none; }
         .modal-content {
             background: white;
-            border-radius: 16px;
-            max-width: 500px;
+            border-radius: 28px;
+            max-width: 520px;
             width: 100%;
-            padding: 28px;
+            padding: 32px;
             position: relative;
-            animation: slideUp 0.3s ease-out;
-            box-shadow: 0 30px 80px rgba(0,0,0,0.15);
+            animation: modalFadeIn 0.4s ease-out;
+            box-shadow: 0 50px 100px rgba(0,0,0,0.2);
             max-height: 90vh;
             overflow-y: auto;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .modal-content .modal-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            margin: 0 auto 16px;
+        }
+        .modal-content .modal-icon.green { background: #dcfce7; color: #059669; }
+        .modal-content .modal-icon.amber { background: #fef3c7; color: #d97706; }
+        .modal-content .modal-icon.rose { background: #fce4ec; color: #dc2626; }
+        .modal-content .modal-icon.blue { background: #dbeafe; color: #2563eb; }
+        .modal-content .modal-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            text-align: center;
+            color: #0f172a;
+            margin-bottom: 4px;
+        }
+        .modal-content .modal-subtitle {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            text-align: center;
+            margin-bottom: 20px;
         }
         .close-btn {
             position: absolute;
-            top: 12px;
-            right: 16px;
-            background: none;
+            top: 16px;
+            right: 20px;
+            background: #f1f5f9;
             border: none;
-            font-size: 1.2rem;
+            font-size: 1rem;
             color: #94a3b8;
             cursor: pointer;
-            padding: 4px 8px;
-            border-radius: 8px;
+            padding: 6px 12px;
+            border-radius: 9999px;
             transition: all 0.2s;
         }
-        .close-btn:hover { background: #f1f5f9; color: #0f172a; }
+        .close-btn:hover { background: #e2e8f0; color: #0f172a; transform: rotate(90deg); }
 
-        /* ===== FORM ELEMENTS ===== */
         .form-input {
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
-            padding: 8px 12px;
+            border: 2px solid #e2e8f0;
+            border-radius: 14px;
+            padding: 10px 14px;
             width: 100%;
             color: #0f172a;
             transition: all 0.3s;
             background: white;
-            font-size: 0.85rem;
+            font-size: 0.9rem;
         }
         .form-input:focus {
             outline: none;
@@ -762,20 +823,89 @@
             box-shadow: 0 0 0 4px rgba(5,150,105,0.08);
         }
         .form-label {
-            font-size: 0.65rem;
+            font-size: 0.7rem;
             font-weight: 600;
             color: #475569;
             display: block;
-            margin-bottom: 3px;
+            margin-bottom: 4px;
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
         .required { color: #ef4444; }
 
+        .btn-modal-primary {
+            background: linear-gradient(135deg, #059669, #047857);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 9999px;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn-modal-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(5,150,105,0.25); }
+        .btn-modal-secondary {
+            background: #f1f5f9;
+            color: #475569;
+            padding: 12px 24px;
+            border-radius: 9999px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn-modal-secondary:hover { background: #e2e8f0; }
+        .btn-modal-amber {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 9999px;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn-modal-amber:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(245,158,11,0.25); }
+        .btn-modal-rose {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 9999px;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn-modal-rose:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(239,68,68,0.25); }
+
         .btn-gradient {
             background: linear-gradient(135deg, #059669, #047857);
             color: white;
-            padding: 6px 14px;
+            padding: 8px 16px;
             border-radius: 9999px;
             font-weight: 600;
             font-size: 0.75rem;
@@ -822,8 +952,8 @@
         }
         .search-wrapper input {
             width: 100%;
-            padding: 10px 16px 10px 42px;
-            border-radius: 12px;
+            padding: 12px 16px 12px 44px;
+            border-radius: 14px;
             border: 2px solid #e2e8f0;
             font-size: 0.9rem;
             transition: all 0.3s;
@@ -849,7 +979,7 @@
         /* ===== HELD ORDERS ===== */
         .held-orders-panel {
             background: white;
-            border-radius: 10px;
+            border-radius: 12px;
             border: 1px solid #e2e8f0;
             padding: 10px;
             margin-top: 8px;
@@ -879,17 +1009,18 @@
 
         /* ===== DISCOUNT PRESETS ===== */
         .discount-preset {
-            padding: 4px 10px;
+            padding: 6px 14px;
             border-radius: 9999px;
-            font-size: 0.7rem;
+            font-size: 0.75rem;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
-            border: 1px solid #e2e8f0;
+            border: 2px solid #e2e8f0;
             background: white;
             color: #64748b;
         }
-        .discount-preset:hover { border-color: #f59e0b; color: #d97706; background: #fef3c7; }
+        .discount-preset:hover { border-color: #f59e0b; color: #d97706; background: #fef3c7; transform: scale(1.05); }
+        .discount-preset.active { border-color: #f59e0b; background: #fef3c7; color: #d97706; }
 
         /* ===== QUICK ACTIONS ===== */
         .quick-actions {
@@ -901,7 +1032,7 @@
         .quick-action-btn {
             background: #f8fafc;
             border: 1px solid #e2e8f0;
-            border-radius: 8px;
+            border-radius: 12px;
             padding: 8px 4px;
             text-align: center;
             cursor: pointer;
@@ -926,17 +1057,29 @@
         }
         .empty-cart i { font-size: 3rem; display: block; margin-bottom: 10px; color: #cbd5e1; }
 
+        /* ===== PRODUCT STATUS ===== */
+        .product-status {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: #94a3b8;
+            margin-top: 8px;
+            padding: 4px 0;
+        }
+        .product-status .count { font-weight: 600; }
+
         /* ===== RESPONSIVE ===== */
         @media (max-width: 1200px) {
             .pos-layout {
-                grid-template-columns: 1fr 320px;
+                grid-template-columns: 1fr 340px;
                 gap: 16px;
                 padding: 12px 16px;
             }
         }
         @media (max-width: 992px) {
             .pos-layout {
-                grid-template-columns: 1fr 300px;
+                grid-template-columns: 1fr 320px;
                 gap: 14px;
                 padding: 10px 14px;
             }
@@ -961,6 +1104,7 @@
             .product-pos-card { min-height: 150px; padding: 10px; }
             .product-pos-card .product-image { height: 80px; }
             .cart-items-container { max-height: 250px; }
+            .modal-content { padding: 24px 20px; }
         }
         @media (max-width: 480px) {
             .pos-layout { padding: 6px 8px; }
@@ -980,6 +1124,7 @@
             .cart-section .glass-card { padding: 10px; }
             .pos-cart-item { padding: 6px 8px; }
             .pos-cart-item .item-image { width: 32px; height: 32px; }
+            .modal-content { padding: 20px 16px; border-radius: 20px; }
         }
     </style>
 </head>
@@ -1100,7 +1245,7 @@
             </div>
 
             <!-- Categories -->
-            <div class="mb-3 flex flex-wrap gap-1.5" id="categoryFilters">
+            <div class="flex flex-wrap gap-1.5 mb-3" id="categoryFilters">
                 <span class="category-pill active" data-category="all" onclick="filterByCategory('all', this)">All</span>
                 {% set categories = [] %}
                 {% for product in products %}
@@ -1116,9 +1261,10 @@
             <!-- Product Grid -->
             <div class="grid grid-cols-3 gap-3 max-h-[450px] overflow-y-auto p-1" id="posProductGrid"></div>
 
-            <div class="mt-2 flex items-center justify-between text-xs text-gray-400" id="productStatus">
-                <span id="resultCount">Loading products...</span>
-                <span id="productCount">{{ products|length }} total</span>
+            <!-- Product Status -->
+            <div class="product-status">
+                <span id="resultCount">{{ products|length }} products</span>
+                <span id="productCount" class="count">{{ products|length }} total</span>
             </div>
         </div>
 
@@ -1145,7 +1291,7 @@
                             </option>
                             {% endfor %}
                         </select>
-                        <button onclick="toggleCustomerModal()" class="btn-outline text-sm px-3" style="width:auto; padding: 6px 10px;">
+                        <button onclick="toggleCustomerModal()" class="btn-gradient text-sm px-3" style="width:auto; padding: 8px 14px;">
                             <i class="fas fa-plus"></i>
                         </button>
                     </div>
@@ -1167,7 +1313,7 @@
                 <div class="flex items-center gap-2 mb-3">
                     <span class="text-xs font-medium text-gray-500">Discount:</span>
                     <span class="text-xs font-bold text-green-600" id="discountDisplay">0%</span>
-                    <button onclick="toggleDiscountModal()" class="text-xs text-blue-500 hover:text-blue-700 font-medium">Change</button>
+                    <button onclick="toggleDiscountModal()" class="text-xs text-blue-500 hover:text-blue-700 font-medium bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded-full transition">Change</button>
                 </div>
 
                 <!-- Summary -->
@@ -1191,10 +1337,10 @@
                     <button onclick="placePOSOrder()" class="btn-primary" id="posPlaceOrderBtn">
                         <i class="fas fa-check-circle"></i> Complete Order
                     </button>
-                    <button onclick="holdOrder()" class="btn-outline text-sm" style="border-color: #f59e0b; color: #d97706;">
+                    <button onclick="holdOrder()" class="btn-secondary">
                         <i class="fas fa-pause"></i> Hold Order
                     </button>
-                    <button onclick="clearCart()" class="btn-outline text-sm" style="border-color: #ef4444; color: #ef4444;">
+                    <button onclick="clearCart()" class="btn-danger">
                         <i class="fas fa-trash-alt"></i> Clear Cart
                     </button>
                 </div>
@@ -1208,15 +1354,19 @@
         </div>
     </div>
 
-    <!-- ===== MODALS ===== -->
+    <!-- ============================================================
+         MODALS - ADVANCED & BEAUTIFUL
+    ============================================================ -->
+
+    <!-- ===== CUSTOMER MODAL ===== -->
     <div id="customerModal" class="modal-overlay hidden" onclick="closeCustomerModal(event)">
         <div class="modal-content" onclick="event.stopPropagation()">
             <button class="close-btn" onclick="closeCustomerModal()">&times;</button>
-            <h3 class="text-lg font-bold text-[#0f172a] mb-4 flex items-center gap-2">
-                <i class="fas fa-user-plus text-green-500"></i> Add Customer
-            </h3>
+            <div class="modal-icon green"><i class="fas fa-user-plus"></i></div>
+            <div class="modal-title">Add Customer</div>
+            <div class="modal-subtitle">Add a new customer to your POS</div>
             <form id="customerForm" onsubmit="addCustomer(event)">
-                <div class="space-y-3">
+                <div class="space-y-4">
                     <div>
                         <label class="form-label"><i class="fas fa-user"></i> Full Name <span class="required">*</span></label>
                         <input type="text" id="custName" class="form-input" placeholder="John Doe" required>
@@ -1230,11 +1380,11 @@
                         <input type="tel" id="custPhone" class="form-input" placeholder="+254 700 000 000">
                     </div>
                 </div>
-                <div class="flex gap-3 mt-4 pt-4 border-t border-gray-100">
-                    <button type="submit" class="btn-primary flex-1">
+                <div class="flex gap-3 mt-6 pt-4 border-t border-gray-100">
+                    <button type="submit" class="btn-modal-primary flex-1">
                         <i class="fas fa-save"></i> Add Customer
                     </button>
-                    <button type="button" onclick="closeCustomerModal()" class="btn-outline flex-1">
+                    <button type="button" onclick="closeCustomerModal()" class="btn-modal-secondary flex-1">
                         Cancel
                     </button>
                 </div>
@@ -1242,13 +1392,14 @@
         </div>
     </div>
 
+    <!-- ===== DISCOUNT MODAL ===== -->
     <div id="discountModal" class="modal-overlay hidden" onclick="closeDiscountModal(event)">
-        <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 380px;">
+        <div class="modal-content" onclick="event.stopPropagation()">
             <button class="close-btn" onclick="closeDiscountModal()">&times;</button>
-            <h3 class="text-lg font-bold text-[#0f172a] mb-4 flex items-center gap-2">
-                <i class="fas fa-percent text-amber-500"></i> Apply Discount
-            </h3>
-            <div class="space-y-3">
+            <div class="modal-icon amber"><i class="fas fa-percent"></i></div>
+            <div class="modal-title">Apply Discount</div>
+            <div class="modal-subtitle">Add a discount to the current order</div>
+            <div class="space-y-4">
                 <div>
                     <label class="form-label">Discount Type</label>
                     <select id="discountType" class="form-input" onchange="updateDiscountPreview()">
@@ -1268,89 +1419,93 @@
                     <span class="discount-preset" onclick="setDiscountPreset(25)">25%</span>
                     <span class="discount-preset" onclick="setDiscountPreset(50)">50%</span>
                 </div>
-                <div class="bg-gray-50 p-3 rounded-xl text-sm">
-                    <div class="flex justify-between"><span>Subtotal:</span> <span id="discountSubtotal">KSh 0</span></div>
-                    <div class="flex justify-between font-bold text-green-600"><span>New Total:</span> <span id="discountNewTotal">KSh 0</span></div>
+                <div class="bg-gray-50 p-4 rounded-2xl text-sm">
+                    <div class="flex justify-between py-1"><span>Subtotal:</span> <span id="discountSubtotal" class="font-semibold">KSh 0</span></div>
+                    <div class="flex justify-between py-1 font-bold text-green-600 text-base"><span>New Total:</span> <span id="discountNewTotal">KSh 0</span></div>
                 </div>
                 <div class="flex gap-3">
-                    <button onclick="applyDiscount()" class="btn-primary flex-1" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                    <button onclick="applyDiscount()" class="btn-modal-amber flex-1">
                         <i class="fas fa-check"></i> Apply
                     </button>
-                    <button onclick="closeDiscountModal()" class="btn-outline flex-1">Cancel</button>
+                    <button onclick="closeDiscountModal()" class="btn-modal-secondary flex-1">
+                        Cancel
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- ===== RETURN MODAL ===== -->
     <div id="returnModal" class="modal-overlay hidden" onclick="closeReturnModal(event)">
-        <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 480px;">
+        <div class="modal-content" onclick="event.stopPropagation()">
             <button class="close-btn" onclick="closeReturnModal()">&times;</button>
-            <h3 class="text-lg font-bold text-[#0f172a] mb-4 flex items-center gap-2">
-                <i class="fas fa-undo-alt text-rose-500"></i> Customer Return
-            </h3>
-            <p class="text-xs text-gray-500 mb-3">Select items to return. This will refund and restock inventory.</p>
-            <div class="space-y-2 max-h-60 overflow-y-auto" id="returnItemsList"></div>
+            <div class="modal-icon rose"><i class="fas fa-undo-alt"></i></div>
+            <div class="modal-title">Customer Return</div>
+            <div class="modal-subtitle">Select items to return and refund</div>
+            <div class="space-y-3 max-h-60 overflow-y-auto" id="returnItemsList"></div>
             <div class="mt-4 pt-4 border-t border-gray-100">
                 <div class="flex justify-between font-bold text-lg">
                     <span>Refund Total:</span>
                     <span class="text-rose-600" id="refundTotal">KSh 0</span>
                 </div>
                 <div class="flex gap-3 mt-3">
-                    <button onclick="processReturn()" class="btn-primary flex-1" style="background: linear-gradient(135deg, #ef4444, #dc2626);">
+                    <button onclick="processReturn()" class="btn-modal-rose flex-1">
                         <i class="fas fa-check"></i> Process Return
                     </button>
-                    <button onclick="closeReturnModal()" class="btn-outline flex-1">Cancel</button>
+                    <button onclick="closeReturnModal()" class="btn-modal-secondary flex-1">
+                        Cancel
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- BARCODE SCANNER MODAL -->
+    <!-- ===== BARCODE SCANNER MODAL ===== -->
     <div id="barcodeModal" class="modal-overlay hidden" onclick="closeBarcodeScanner()">
         <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 500px;">
             <button class="close-btn" onclick="closeBarcodeScanner()">&times;</button>
-            <h3 class="text-lg font-bold text-[#0f172a] mb-4 flex items-center gap-2">
-                <i class="fas fa-barcode text-blue-500"></i> Scan Barcode
-            </h3>
-            <p class="text-sm text-gray-500 mb-3">Position the barcode in front of your camera</p>
-            <div id="scanner-container" style="width: 100%; max-width: 400px; margin: 0 auto;">
-                <div id="barcode-reader" style="width: 100%;"></div>
+            <div class="modal-icon blue"><i class="fas fa-barcode"></i></div>
+            <div class="modal-title">Scan Barcode</div>
+            <div class="modal-subtitle">Position the barcode in front of your camera</div>
+            <div id="scanner-container" style="width: 100%; max-width: 400px; margin: 0 auto; background: #000; border-radius: 16px; overflow: hidden;">
+                <div id="barcode-reader" style="width: 100%; min-height: 280px; background: #000;"></div>
             </div>
-            <div class="mt-3 flex flex-wrap gap-2">
-                <button onclick="startScanner()" class="btn-primary flex-1" id="startScannerBtn" style="background: linear-gradient(135deg, #2563eb, #4f46e5);">
+            <div class="mt-4 flex flex-wrap gap-2">
+                <button onclick="startScanner()" class="btn-modal-primary flex-1" id="startScannerBtn" style="background: linear-gradient(135deg, #2563eb, #4f46e5);">
                     <i class="fas fa-play"></i> Start Camera
                 </button>
-                <button onclick="closeBarcodeScanner()" class="btn-outline flex-1">Cancel</button>
+                <button onclick="closeBarcodeScanner()" class="btn-modal-secondary flex-1">Cancel</button>
             </div>
-            <div id="scannerResult" class="mt-3 p-3 bg-gray-50 rounded-lg hidden">
+            <div id="scannerResult" class="mt-3 p-3 bg-gray-50 rounded-xl hidden">
                 <p class="text-sm font-semibold text-green-600">✅ Scanned:</p>
                 <p id="scannedValue" class="text-sm font-mono break-all"></p>
             </div>
             <div class="mt-3 text-center">
-                <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="text-blue-500 hover:text-blue-700 text-sm">
+                <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="text-blue-500 hover:text-blue-700 text-sm font-medium">
                     <i class="fas fa-keyboard"></i> Or enter barcode manually
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- BARCODE INPUT MODAL -->
+    <!-- ===== BARCODE INPUT MODAL ===== -->
     <div id="barcodeInputModal" class="modal-overlay hidden" onclick="closeBarcodeInputModal()">
         <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 380px;">
             <button class="close-btn" onclick="closeBarcodeInputModal()">&times;</button>
-            <h3 class="text-lg font-bold text-[#0f172a] mb-4 flex items-center gap-2">
-                <i class="fas fa-keyboard text-amber-500"></i> Enter Barcode
-            </h3>
-            <p class="text-sm text-gray-500 mb-3">Type the product ID or barcode number</p>
+            <div class="modal-icon amber"><i class="fas fa-keyboard"></i></div>
+            <div class="modal-title">Enter Barcode</div>
+            <div class="modal-subtitle">Type the product ID or barcode number</div>
             <input type="text" id="manualBarcode" class="form-input" placeholder="Enter product ID or barcode..." autofocus>
             <div class="mt-4 flex gap-3">
-                <button onclick="submitManualBarcode()" class="btn-primary flex-1">
+                <button onclick="submitManualBarcode()" class="btn-modal-primary flex-1">
                     <i class="fas fa-search"></i> Find Product
                 </button>
-                <button onclick="closeBarcodeInputModal()" class="btn-outline flex-1">Cancel</button>
+                <button onclick="closeBarcodeInputModal()" class="btn-modal-secondary flex-1">
+                    Cancel
+                </button>
             </div>
             <div class="mt-3 text-xs text-gray-400 text-center">
-                💡 Tip: You can search by product ID, name, or barcode
+                💡 You can search by product ID, name, or barcode
             </div>
         </div>
     </div>
@@ -1618,7 +1773,7 @@
             if (searchTerm === '') {
                 if (currentCategory === 'all') {
                     filteredProducts = allProducts.slice(0, 60);
-                    document.getElementById('resultCount').textContent = `${filteredProducts.length} of ${allProducts.length} products`;
+                    document.getElementById('resultCount').textContent = `${filteredProducts.length} products`;
                 } else {
                     filteredProducts = allProducts.filter(p => p.category === currentCategory).slice(0, 60);
                     document.getElementById('resultCount').textContent = `${filteredProducts.length} in "${currentCategory}"`;
@@ -1636,7 +1791,7 @@
                            barcode.includes(searchTerm);
                 });
                 filteredProducts = results.slice(0, 120);
-                document.getElementById('resultCount').textContent = `${results.length} found${results.length > 120 ? ' (showing 120)' : ''}`;
+                document.getElementById('resultCount').textContent = `${results.length} found`;
             }
             renderProducts();
         }
@@ -1677,7 +1832,6 @@
                 const stockLabel = stock <= 0 ? 'Out' : stock < 10 ? 'Low' : stock < 30 ? 'Med' : 'In Stock';
                 const stockNumberClass = stock <= 0 ? 'low' : stock < 10 ? 'low' : stock < 30 ? 'medium' : 'high';
                 const isOutOfStock = stock <= 0;
-                const barcodeDisplay = product.barcode ? `<div class="barcode-label">${product.barcode}</div>` : '';
                 
                 html += `
                     <div class="product-pos-card" data-id="${product.id || ''}" data-name="${product.name || ''}" data-price="${price}" data-stock="${stock}" data-image="${image}" data-barcode="${product.barcode || ''}" onclick="${isOutOfStock ? '' : 'addToPOSCart(this)'}">
@@ -1693,7 +1847,6 @@
                             <span class="number ${stockNumberClass}">${stock}</span>
                             <span class="text-[8px] text-gray-400">in stock</span>
                         </div>
-                        ${barcodeDisplay}
                         <button class="add-btn" ${isOutOfStock ? 'disabled' : ''}>
                             ${isOutOfStock ? 'Out of Stock' : '<i class="fas fa-plus"></i> Add'}
                         </button>
@@ -1843,6 +1996,11 @@
             document.getElementById('discountType').value = 'percentage';
             document.getElementById('discountValue').value = value;
             updateDiscountPreview();
+            // Highlight preset
+            document.querySelectorAll('.discount-preset').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.discount-preset').forEach(el => {
+                if (parseInt(el.textContent) === value) el.classList.add('active');
+            });
         }
 
         function updateDiscountPreview() {
@@ -1904,7 +2062,7 @@
                 if (item.selected) refundTotal += total;
                 
                 html += `
-                    <div class="flex items-center gap-3 bg-gray-50 rounded-lg p-2 border border-gray-100 hover:border-rose-200 transition-all">
+                    <div class="flex items-center gap-3 bg-gray-50 rounded-xl p-3 border border-gray-100 hover:border-rose-200 transition-all">
                         <input type="checkbox" ${item.selected ? 'checked' : ''} 
                                onchange="toggleReturnItem(${idx})" class="w-4 h-4 accent-rose-500" />
                         <div class="flex-1 min-w-0">
@@ -1949,7 +2107,7 @@
                 reason: 'Customer return'
             };
             
-            const btn = document.querySelector('#returnModal .btn-primary');
+            const btn = document.querySelector('#returnModal .btn-modal-rose');
             const originalText = btn.innerHTML;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
             btn.disabled = true;
@@ -2357,7 +2515,7 @@
                     <div class="text-center py-8 text-gray-400">
                         <i class="fas fa-camera-slash text-4xl block mb-3"></i>
                         <p>Camera not available</p>
-                        <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="btn-primary mt-3" style="display:inline-block; padding: 8px 20px; width:auto; background: linear-gradient(135deg, #f59e0b, #d97706);">
+                        <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="btn-modal-primary mt-3" style="display:inline-block; padding: 8px 20px; width:auto; background: linear-gradient(135deg, #f59e0b, #d97706);">
                             <i class="fas fa-keyboard"></i> Enter Manually
                         </button>
                     </div>
@@ -2436,7 +2594,7 @@
                         <div class="text-center py-8 text-gray-400">
                             <i class="fas fa-camera-slash text-4xl block mb-3"></i>
                             <p>Camera not accessible</p>
-                            <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="btn-primary mt-3" style="display:inline-block; padding: 8px 20px; width:auto; background: linear-gradient(135deg, #f59e0b, #d97706);">
+                            <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="btn-modal-primary mt-3" style="display:inline-block; padding: 8px 20px; width:auto; background: linear-gradient(135deg, #f59e0b, #d97706);">
                                 <i class="fas fa-keyboard"></i> Enter Manually
                             </button>
                         </div>
@@ -2572,12 +2730,11 @@
             document.getElementById('posProductGrid').innerHTML = `
                 <div class="col-span-full search-hint">
                     <i class="fas fa-search"></i>
-                    <p>Search for products</p>
+                    <p>Loading products...</p>
                     <p class="text-xs text-gray-400">${allProducts.length} products available</p>
-                    <div class="shortcuts">💡 Tip: Search by name or category</div>
                 </div>
             `;
-            document.getElementById('resultCount').textContent = `${allProducts.length} products available`;
+            document.getElementById('resultCount').textContent = `${allProducts.length} products`;
             updatePOSUI();
             loadSalesStats();
             loadUserStats();
@@ -2590,7 +2747,6 @@
             }, 1000);
             
             console.log('📡 Status:', navigator.onLine ? 'Online' : 'Offline');
-            console.log('📋 Products with barcodes:', allProducts.filter(p => p.barcode).length);
         });
     </script>
 </body>
