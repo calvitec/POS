@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes" />
     <title>POS Pro · Point of Sale</title>
     
+    <!-- ===== PWA META TAGS ===== -->
     <link rel="manifest" href="/manifest.json" crossorigin="use-credentials">
     <meta name="theme-color" content="#059669">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -14,14 +15,17 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <!-- Barcode Scanner Library -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     
+    <!-- ===== SERVICE WORKER REGISTRATION ===== -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('/sw.js')
                     .then(reg => {
                         console.log('✅ Service Worker registered successfully!', reg);
+                        
                         reg.addEventListener('updatefound', () => {
                             const newWorker = reg.installing;
                             newWorker.addEventListener('statechange', () => {
@@ -40,268 +44,6 @@
             });
         }
     </script>
-    <!-- ============================================================
-     MANUAL SYNC BUTTON - FIX
-     ============================================================ -->
-<script>
-// ============================================================
-// FORCE SYNC - WORKS EVERY TIME
-// ============================================================
-
-async function forceSync() {
-    console.log('🔄 FORCE SYNC STARTED...');
-    console.log('========================================');
-    
-    // Show syncing status
-    const statusEl = document.getElementById('syncStatus');
-    if (statusEl) {
-        statusEl.className = 'syncing';
-        statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
-        statusEl.style.display = 'inline-flex';
-    }
-    
-    try {
-        // 1. Open IndexedDB
-        const db = await new Promise((resolve, reject) => {
-            const request = indexedDB.open('PricePointDB', 5);
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-        });
-        
-        // 2. Get all orders
-        const tx = db.transaction('orders', 'readonly');
-        const store = tx.objectStore('orders');
-        const allOrders = await new Promise((resolve) => {
-            const request = store.getAll();
-            request.onsuccess = () => resolve(request.result);
-        });
-        
-        // 3. Filter unsynced
-        const unsynced = allOrders.filter(order => order.synced !== true);
-        
-        console.log(`📊 Total orders: ${allOrders.length}`);
-        console.log(`📊 Unsynced orders: ${unsynced.length}`);
-        
-        if (unsynced.length === 0) {
-            console.log('✅ No orders to sync');
-            showToast('✅ No orders to sync', 'success');
-            if (statusEl) {
-                statusEl.style.display = 'none';
-                statusEl.className = '';
-            }
-            db.close();
-            return;
-        }
-        
-        console.log(`📦 Found ${unsynced.length} unsynced orders`);
-        console.log(`💰 Total value: KSh ${unsynced.reduce((sum, o) => sum + (o.total || 0), 0).toLocaleString()}`);
-        
-        // 4. Try to send to server
-        console.log('📡 Sending to server...');
-        
-        let synced = false;
-        
-        try {
-            const response = await fetch('/admin/api/sync-queue', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ orders: unsynced })
-            });
-            
-            const data = await response.json();
-            console.log('📡 Server response:', data);
-            
-            if (data.synced > 0) {
-                synced = true;
-                console.log(`✅ ${data.synced} orders synced to server!`);
-                showToast(`✅ ${data.synced} orders synced!`, 'success');
-            } else {
-                console.log('⚠️ Server returned 0 synced');
-            }
-        } catch (serverError) {
-            console.warn('⚠️ Server error:', serverError.message);
-            console.log('🔄 Will mark as synced locally...');
-        }
-        
-        // 5. Mark as synced in IndexedDB (always do this)
-        const writeTx = db.transaction('orders', 'readwrite');
-        const writeStore = writeTx.objectStore('orders');
-        
-        let markedCount = 0;
-        unsynced.forEach(order => {
-            order.synced = true;
-            order.synced_at = new Date().toISOString();
-            writeStore.put(order);
-            markedCount++;
-            console.log(`✅ Marked ${order.order_id} as synced`);
-        });
-        
-        console.log(`✅ Marked ${markedCount} orders as synced locally`);
-        
-        // 6. Update UI
-        if (statusEl) {
-            statusEl.style.display = 'none';
-            statusEl.className = '';
-            document.getElementById('unsyncedCount').textContent = '0';
-        }
-        
-        // 7. Show success message
-        const totalAmount = unsynced.reduce((sum, o) => sum + (o.total || 0), 0);
-        const message = synced 
-            ? `✅ ${markedCount} orders synced!\nTotal: KSh ${totalAmount.toLocaleString()}`
-            : `✅ ${markedCount} orders marked as synced locally!\nTotal: KSh ${totalAmount.toLocaleString()}`;
-        
-        showToast(message, 'success');
-        alert(message);
-        
-        db.close();
-        
-        // 8. Refresh stats
-        if (navigator.onLine) {
-            loadSalesStats();
-            loadUserStats();
-        }
-        
-    } catch (error) {
-        console.error('❌ Force sync error:', error);
-        showToast('❌ Sync error: ' + error.message, 'error');
-        
-        if (statusEl) {
-            statusEl.className = '';
-            statusEl.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> <span id="unsyncedCount">0</span> offline order(s)';
-        }
-    }
-}
-
-// ============================================================
-// ADD FLOATING SYNC BUTTON
-// ============================================================
-
-function addSyncButton() {
-    // Check if button already exists
-    if (document.getElementById('floatingSyncBtn')) return;
-    
-    const btn = document.createElement('button');
-    btn.id = 'floatingSyncBtn';
-    btn.innerHTML = `
-        <i class="fas fa-cloud-upload-alt"></i>
-        <span>Sync Now</span>
-        <span id="syncBadgeCount" style="background:red;color:white;border-radius:50%;padding:2px 8px;font-size:10px;margin-left:5px;">0</span>
-    `;
-    btn.style.cssText = `
-        position: fixed;
-        bottom: 30px;
-        right: 30px;
-        background: linear-gradient(135deg, #2563eb, #4f46e5);
-        color: white;
-        border: none;
-        padding: 12px 24px;
-        border-radius: 50px;
-        font-weight: 700;
-        font-size: 14px;
-        cursor: pointer;
-        box-shadow: 0 4px 20px rgba(37, 99, 235, 0.4);
-        z-index: 9999;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        transition: all 0.3s;
-        animation: pulse 2s infinite;
-    `;
-    btn.onmouseover = () => {
-        btn.style.transform = 'scale(1.05)';
-        btn.style.boxShadow = '0 8px 30px rgba(37, 99, 235, 0.6)';
-    };
-    btn.onmouseout = () => {
-        btn.style.transform = 'scale(1)';
-        btn.style.boxShadow = '0 4px 20px rgba(37, 99, 235, 0.4)';
-    };
-    btn.onclick = forceSync;
-    
-    document.body.appendChild(btn);
-    
-    // Update badge count
-    updateSyncBadgeCount();
-}
-
-async function updateSyncBadgeCount() {
-    try {
-        const db = await new Promise((resolve) => {
-            const request = indexedDB.open('PricePointDB', 5);
-            request.onsuccess = () => resolve(request.result);
-        });
-        const tx = db.transaction('orders', 'readonly');
-        const store = tx.objectStore('orders');
-        const orders = await new Promise((resolve) => {
-            const request = store.getAll();
-            request.onsuccess = () => resolve(request.result);
-        });
-        const unsynced = orders.filter(o => o.synced !== true);
-        const badge = document.getElementById('syncBadgeCount');
-        if (badge) {
-            badge.textContent = unsynced.length;
-            badge.style.display = unsynced.length > 0 ? 'inline' : 'none';
-        }
-        db.close();
-    } catch(e) {
-        // Silently fail
-    }
-}
-
-// ============================================================
-// STYLES FOR FLOATING BUTTON
-// ============================================================
-
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes pulse {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.02); }
-    }
-    #floatingSyncBtn {
-        animation: pulse 2s infinite;
-    }
-    #floatingSyncBtn:hover {
-        animation: none;
-    }
-`;
-document.head.appendChild(style);
-
-// ============================================================
-// INIT
-// ============================================================
-
-console.log('✅ Force sync loaded!');
-console.log('💡 Click the floating "Sync Now" button or run: forceSync()');
-console.log('💡 Or press F6 to sync');
-
-// Add floating button
-setTimeout(addSyncButton, 1000);
-
-// Update badge every 10 seconds
-setInterval(updateSyncBadgeCount, 10000);
-
-// Expose to console
-window.forceSync = forceSync;
-window.addSyncButton = addSyncButton;
-
-// Override manualSync to use forceSync
-window.manualSync = forceSync;
-
-// ============================================================
-// KEYBOARD SHORTCUT - F6
-// ============================================================
-
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'F6') {
-        e.preventDefault();
-        console.log('⌨️ F6 pressed - syncing...');
-        forceSync();
-    }
-});
-
-console.log('✅ Sync fix loaded!');
-</script>
 
     <style>
         * { font-family: 'Inter', sans-serif; margin: 0; padding: 0; box-sizing: border-box; }
@@ -379,6 +121,7 @@ console.log('✅ Sync fix loaded!');
         .pos-header .header-btn.logout-btn { color: #f87171; }
         .pos-header .header-btn.logout-btn:hover { background: rgba(239,68,68,0.15); color: #fca5a5; }
 
+        /* ===== SYNC STATUS ===== */
         #syncStatus {
             background: #dc2626;
             color: white;
@@ -397,8 +140,6 @@ console.log('✅ Sync fix loaded!');
         }
         #syncStatus:hover { transform: scale(1.05); opacity: 0.9; }
         #syncStatus.synced { background: #059669; animation: none; }
-        #syncStatus.syncing { background: #2563eb !important; animation: pulse-badge 1s infinite !important; }
-        #syncStatus.has-orders { background: #dc2626 !important; animation: pulse-badge 2s infinite !important; }
 
         .stats-bar {
             display: grid;
@@ -810,6 +551,7 @@ console.log('✅ Sync fix loaded!');
 </head>
 <body>
 
+    <!-- ===== POS HEADER ===== -->
     <header class="pos-header">
         <div class="brand">
             <i class="fas fa-cash-register text-green-400 animate-float"></i>
@@ -824,7 +566,8 @@ console.log('✅ Sync fix loaded!');
         </div>
         <div class="header-actions">
             <span class="time"><i class="far fa-clock"></i> <span id="clockDisplay"></span></span>
-            <span id="syncStatus" onclick="syncNow()">
+            <!-- Sync Status -->
+            <span id="syncStatus" onclick="manualSync()">
                 <i class="fas fa-cloud-upload-alt"></i>
                 <span id="unsyncedCount">0</span> offline order(s)
                 <i class="fas fa-sync-alt" style="font-size: 0.5rem; opacity: 0.7;"></i>
@@ -839,6 +582,7 @@ console.log('✅ Sync fix loaded!');
         </div>
     </header>
 
+    <!-- ===== STATS BAR ===== -->
     <div class="stats-bar" id="statsBar">
         <div class="stat-item">
             <div class="icon green"><i class="fas fa-coins"></i></div>
@@ -884,6 +628,7 @@ console.log('✅ Sync fix loaded!');
         </div>
     </div>
 
+    <!-- ===== POS SYSTEM ===== -->
     <div class="max-w-7xl mx-auto px-3 py-3">
         <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
             <div>
@@ -893,7 +638,7 @@ console.log('✅ Sync fix loaded!');
                 <p class="text-gray-400 text-xs">Search, scan, or browse to add items</p>
             </div>
             <div class="flex gap-2 flex-wrap">
-                <button class="btn-gradient sync" onclick="syncNow()">
+                <button class="btn-gradient sync" onclick="manualSync()">
                     <i class="fas fa-cloud-upload-alt"></i> Sync
                 </button>
                 <button class="btn-gradient" onclick="toggleCustomerModal()">
@@ -911,6 +656,7 @@ console.log('✅ Sync fix loaded!');
             </div>
         </div>
 
+        <!-- ===== QUICK ACTIONS ===== -->
         <div class="quick-actions">
             <div class="quick-action-btn" onclick="document.getElementById('posSearch').focus();">
                 <i class="fas fa-search"></i> Search
@@ -922,19 +668,19 @@ console.log('✅ Sync fix loaded!');
                 <i class="fas fa-percent"></i> Discount
             </div>
             <div class="quick-action-btn" onclick="voidLastItem()">
-                <i class="fas fa-undo"></i> Void Last
-            </div>
+                <i class="fas fa-undo"></i> Void Last            </div>
             <div class="quick-action-btn" onclick="toggleReturnModal()">
                 <i class="fas fa-undo-alt"></i> Return
             </div>
             <div class="quick-action-btn" onclick="holdOrder()">
                 <i class="fas fa-pause"></i> Hold
             </div>
-            <div class="quick-action-btn sync-btn" onclick="syncNow()">
+            <div class="quick-action-btn sync-btn" onclick="manualSync()">
                 <i class="fas fa-cloud-upload-alt"></i> Sync
             </div>
         </div>
 
+        <!-- ===== BARCODE SCANNER MODAL ===== -->
         <div id="barcodeModal" class="modal-overlay hidden" onclick="closeBarcodeScanner()">
             <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 500px;">
                 <button class="close-btn" onclick="closeBarcodeScanner()">&times;</button>
@@ -963,6 +709,7 @@ console.log('✅ Sync fix loaded!');
             </div>
         </div>
 
+        <!-- ===== BARCODE INPUT MODAL (Manual Entry) ===== -->
         <div id="barcodeInputModal" class="modal-overlay hidden" onclick="closeBarcodeInputModal()">
             <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 380px;">
                 <button class="close-btn" onclick="closeBarcodeInputModal()">&times;</button>
@@ -984,6 +731,7 @@ console.log('✅ Sync fix loaded!');
         </div>
 
         <div class="grid lg:grid-cols-3 gap-4">
+            <!-- ===== LEFT: PRODUCTS ===== -->
             <div class="lg:col-span-2">
                 <div class="mb-3">
                     <div class="relative">
@@ -1019,6 +767,7 @@ console.log('✅ Sync fix loaded!');
                 </div>
             </div>
 
+            <!-- ===== RIGHT: CART ===== -->
             <div class="lg:col-span-1">
                 <div class="glass-card sticky top-4">
                     <div class="flex items-center justify-between mb-2">
@@ -1095,6 +844,7 @@ console.log('✅ Sync fix loaded!');
         </div>
     </div>
 
+    <!-- ===== MODALS ===== -->
     <div id="customerModal" class="modal-overlay hidden" onclick="closeCustomerModal(event)">
         <div class="modal-content" onclick="event.stopPropagation()">
             <button class="close-btn" onclick="closeCustomerModal()">&times;</button>
@@ -1191,11 +941,12 @@ console.log('✅ Sync fix loaded!');
         </div>
     </div>
 
+    <!-- ===== TOAST ===== -->
     <div id="toast" class="toast hidden">
         <span id="toastMessage">Added to cart!</span>
     </div>
 
-    <script>
+   <script>
         // ============================================================
         // DATA
         // ============================================================
@@ -1210,214 +961,10 @@ console.log('✅ Sync fix loaded!');
         let totalDiscount = 0;
 
         // ============================================================
-        // SYNC FUNCTIONS - SAME AS TEST PAGE
-        // ============================================================
-
-        function openDB() {
-            return new Promise((resolve, reject) => {
-                const request = indexedDB.open('PricePointDB', 5);
-                request.onupgradeneeded = function(event) {
-                    const db = event.target.result;
-                    if (!db.objectStoreNames.contains('orders')) {
-                        const store = db.createObjectStore('orders', { keyPath: 'order_id' });
-                        store.createIndex('synced', 'synced', { unique: false });
-                        console.log('📦 IndexedDB store created');
-                    }
-                };
-                request.onsuccess = function() {
-                    resolve(request.result);
-                };
-                request.onerror = function() {
-                    reject(request.error);
-                };
-            });
-        }
-
-        function getAllOrders() {
-            return new Promise(async (resolve) => {
-                try {
-                    const db = await openDB();
-                    const tx = db.transaction('orders', 'readonly');
-                    const store = tx.objectStore('orders');
-                    const request = store.getAll();
-                    request.onsuccess = function() {
-                        db.close();
-                        resolve(request.result || []);
-                    };
-                    request.onerror = function() {
-                        db.close();
-                        resolve([]);
-                    };
-                } catch (e) {
-                    resolve([]);
-                }
-            });
-        }
-
-        function saveOrder(order) {
-            return new Promise(async (resolve, reject) => {
-                try {
-                    const db = await openDB();
-                    const tx = db.transaction('orders', 'readwrite');
-                    const store = tx.objectStore('orders');
-                    const request = store.put(order);
-                    request.onsuccess = function() {
-                        db.close();
-                        resolve(order);
-                    };
-                    request.onerror = function() {
-                        db.close();
-                        reject(request.error);
-                    };
-                } catch (e) {
-                    reject(e);
-                }
-            });
-        }
-
-        function markSynced(orderId) {
-            return new Promise(async (resolve) => {
-                try {
-                    const db = await openDB();
-                    const tx = db.transaction('orders', 'readwrite');
-                    const store = tx.objectStore('orders');
-                    const request = store.get(orderId);
-                    request.onsuccess = function() {
-                        const order = request.result;
-                        if (order) {
-                            order.synced = true;
-                            order.synced_at = new Date().toISOString();
-                            store.put(order);
-                            console.log(`✅ Marked ${orderId} as synced`);
-                        }
-                        db.close();
-                        resolve();
-                    };
-                    request.onerror = function() {
-                        db.close();
-                        resolve();
-                    };
-                } catch (e) {
-                    resolve();
-                }
-            });
-        }
-
-        async function checkUnsynced() {
-            console.log('🔍 Checking for unsynced orders...');
-            try {
-                const orders = await getAllOrders();
-                const unsynced = orders.filter(o => o.synced !== true);
-                
-                console.log(`📊 Total: ${orders.length}, Unsynced: ${unsynced.length}`);
-                
-                const statusEl = document.getElementById('syncStatus');
-                const countEl = document.getElementById('unsyncedCount');
-                
-                if (statusEl && unsynced.length > 0) {
-                    statusEl.style.display = 'inline-flex';
-                    statusEl.className = 'has-orders';
-                    if (countEl) countEl.textContent = unsynced.length;
-                    console.log(`📋 Found ${unsynced.length} unsynced orders`);
-                    
-                    if (navigator.onLine) {
-                        console.log('🌐 Online - auto-syncing...');
-                        setTimeout(syncNow, 2000);
-                    }
-                } else if (statusEl) {
-                    statusEl.style.display = 'none';
-                    statusEl.className = '';
-                    if (countEl) countEl.textContent = '0';
-                    console.log('✅ All orders synced!');
-                }
-                
-                return unsynced;
-            } catch (e) {
-                console.error('❌ Error:', e);
-                return [];
-            }
-        }
-
-        async function syncNow() {
-            console.log('🔄 Starting sync...');
-            
-            if (!navigator.onLine) {
-                showToast('📡 Offline - cannot sync', 'warning');
-                return;
-            }
-            
-            const statusEl = document.getElementById('syncStatus');
-            if (statusEl) {
-                statusEl.className = 'syncing';
-                statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
-            }
-            
-            try {
-                const orders = await getAllOrders();
-                const unsynced = orders.filter(o => o.synced !== true);
-                
-                if (unsynced.length === 0) {
-                    console.log('✅ No orders to sync');
-                    showToast('✅ No orders to sync', 'success');
-                    await checkUnsynced();
-                    return;
-                }
-                
-                console.log(`📦 Found ${unsynced.length} unsynced orders`);
-                showToast(`📦 Syncing ${unsynced.length} orders...`, 'info');
-                
-                const response = await fetch('/admin/api/sync-queue', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ orders: unsynced })
-                });
-                
-                const data = await response.json();
-                console.log('📡 Server response:', data);
-                
-                if (data.synced > 0) {
-                    for (const order of unsynced) {
-                        await markSynced(order.order_id);
-                    }
-                    showToast(`✅ ${data.synced} orders synced!`, 'success');
-                } else {
-                    showToast(`⚠️ ${data.message || 'No orders synced'}`, 'warning');
-                }
-                
-                await checkUnsynced();
-                
-            } catch (error) {
-                console.error('❌ Sync error:', error);
-                showToast('❌ Sync error: ' + error.message, 'error');
-                
-                // Try marking as synced locally
-                try {
-                    const orders = await getAllOrders();
-                    const unsynced = orders.filter(o => o.synced !== true);
-                    for (const order of unsynced) {
-                        await markSynced(order.order_id);
-                    }
-                    showToast(`✅ Marked ${unsynced.length} orders locally`, 'success');
-                    await checkUnsynced();
-                } catch (e) {
-                    console.error('❌ Failed to mark synced:', e);
-                }
-            }
-            
-            if (statusEl) {
-                statusEl.className = '';
-                statusEl.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> <span id="unsyncedCount">0</span> offline order(s)';
-            }
-        }
-
-        // ============================================================
         // CLOCK
         // ============================================================
         function updateClock() {
-            const clockEl = document.getElementById('clockDisplay');
-            if (clockEl) {
-                clockEl.textContent = new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            }
+            document.getElementById('clockDisplay').textContent = new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         }
         setInterval(updateClock, 1000);
         updateClock();
@@ -1427,8 +974,8 @@ console.log('✅ Sync fix loaded!');
         // ============================================================
         function updateOnlineStatusUI() {
             const badge = document.getElementById('onlineBadge');
-            if (!badge) return;
             const isOnline = navigator.onLine;
+            
             if (isOnline) {
                 badge.textContent = '● LIVE';
                 badge.className = 'badge';
@@ -1441,50 +988,225 @@ console.log('✅ Sync fix loaded!');
                 badge.style.color = '#0f172a';
             }
         }
-        updateOnlineStatusUI();
 
         window.addEventListener('online', function() {
             updateOnlineStatusUI();
-            showToast('🔄 Back online! Syncing...', 'info');
-            setTimeout(checkUnsynced, 500);
-            setTimeout(syncNow, 1500);
+            showToast('🔄 Back online! Syncing orders...', 'info');
+            setTimeout(syncOfflineOrders, 1000);
+            setTimeout(checkUnsyncedOrders, 500);
         });
 
         window.addEventListener('offline', function() {
             updateOnlineStatusUI();
-            showToast('📡 Offline mode', 'warning');
+            showToast('📡 You are offline. Orders will be saved locally.', 'warning');
         });
 
+        updateOnlineStatusUI();
+
         // ============================================================
-        // LOAD STATS
+        // LOAD USER STATS
         // ============================================================
         function loadUserStats() {
-            if (!navigator.onLine) return;
             fetch('/admin/api/user-stats')
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {
-                        document.getElementById('userTodaySales').textContent = 'KSh ' + (data.today_revenue || 0).toLocaleString();
-                        document.getElementById('userTodayOrders').textContent = data.today_orders || 0;
+                        const todaySales = 'KSh ' + (data.today_revenue || 0).toLocaleString();
+                        const todayOrders = data.today_orders || 0;
+                        
+                        document.getElementById('userTodaySales').textContent = todaySales;
+                        document.getElementById('userTodayOrders').textContent = todayOrders;
                     }
                 })
                 .catch(err => console.error('User stats error:', err));
         }
 
+        // ============================================================
+        // LOAD SALES STATS
+        // ============================================================
         function loadSalesStats() {
-            if (!navigator.onLine) return;
             fetch('/admin/api/sales-stats')
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {
-                        document.getElementById('todaySales').textContent = 'KSh ' + (data.today_revenue || 0).toLocaleString();
-                        document.getElementById('todayOrders').textContent = data.today_orders || 0;
-                        document.getElementById('todayReturns').textContent = data.today_returns || 0;
-                        document.getElementById('totalCustomers').textContent = data.total_customers || 0;
-                        document.getElementById('totalProducts').textContent = data.total_products || 0;
+                        const todaySales = 'KSh ' + (data.today_revenue || 0).toLocaleString();
+                        const todayOrders = data.today_orders || 0;
+                        const todayReturns = data.today_returns || 0;
+                        const totalCust = data.total_customers || 0;
+                        const totalProds = data.total_products || 0;
+                        
+                        document.getElementById('todaySales').textContent = todaySales;
+                        document.getElementById('todayOrders').textContent = todayOrders;
+                        document.getElementById('todayReturns').textContent = todayReturns;
+                        document.getElementById('totalCustomers').textContent = totalCust;
+                        document.getElementById('totalProducts').textContent = totalProds;
                     }
                 })
                 .catch(err => console.error('Stats error:', err));
+        }
+
+        // ============================================================
+        // SYNC FUNCTIONS - UPDATED TO VERSION 9
+        // ============================================================
+
+        function syncOfflineOrders() {
+            if (!navigator.onLine) {
+                showToast('📡 Offline - will sync when online', 'warning');
+                return;
+            }
+            
+            showToast('🔄 Syncing offline orders...', 'info');
+            
+            const request = indexedDB.open('PricePointDB', 9);
+            
+            request.onsuccess = function(event) {
+                const db = event.target.result;
+                
+                if (!db.objectStoreNames.contains('orders')) {
+                    console.log('❌ orders store not found!');
+                    db.close();
+                    showToast('❌ Orders store not found', 'error');
+                    return;
+                }
+                
+                const tx = db.transaction('orders', 'readonly');
+                const store = tx.objectStore('orders');
+                const index = store.index('synced');
+                const getAllRequest = index.getAll(false);
+                
+                getAllRequest.onsuccess = function() {
+                    const unsynced = getAllRequest.result;
+                    
+                    if (unsynced.length === 0) {
+                        console.log('✅ No offline orders to sync');
+                        db.close();
+                        showToast('✅ No offline orders to sync', 'success');
+                        checkUnsyncedOrders();
+                        return;
+                    }
+                    
+                    console.log(`📦 Found ${unsynced.length} offline order(s) to sync`);
+                    
+                    const cleanOrders = unsynced.map(order => ({
+                        order_id: order.order_id,
+                        items: Array.isArray(order.items) ? order.items : [],
+                        subtotal: Number(order.subtotal) || Number(order.total) || 0,
+                        shipping: Number(order.shipping) || 0,
+                        total: Number(order.total) || 0,
+                        status: order.status || 'confirmed',
+                        source: order.source || 'pos',
+                        created_at: order.created_at || new Date().toISOString(),
+                        customer_name: order.customer_name || 'Walk-in Customer',
+                        customer_email: order.customer_email || 'walkin@example.com',
+                        customer_phone: order.customer_phone || 'N/A',
+                        customer_address: order.customer_address || 'In-store purchase',
+                        customer: order.customer || {
+                            name: order.customer_name || 'Walk-in Customer',
+                            email: order.customer_email || 'walkin@example.com',
+                            phone: order.customer_phone || 'N/A',
+                            address: order.customer_address || 'In-store purchase'
+                        },
+                        user_id: order.user_id || 'unknown',
+                        user_name: order.user_name || 'Unknown User',
+                        user_role: order.user_role || 'user',
+                        staff_name: order.staff_name || order.user_name || 'Unknown User'
+                    }));
+                    
+                    fetch('/admin/api/sync-queue', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ orders: cleanOrders })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('✅ Sync result:', data);
+                        if (data.synced > 0) {
+                            const wtx = db.transaction('orders', 'readwrite');
+                            const wstore = wtx.objectStore('orders');
+                            unsynced.forEach(order => {
+                                order.synced = true;
+                                order.synced_at = new Date().toISOString();
+                                wstore.put(order);
+                            });
+                            console.log(`✅ Marked ${data.synced} orders as synced`);
+                            showToast(`✅ ${data.synced} orders synced!`, 'success');
+                            loadUserStats();
+                            loadSalesStats();
+                            checkUnsyncedOrders();
+                        }
+                        db.close();
+                    })
+                    .catch(err => {
+                        console.log('❌ Sync failed:', err);
+                        db.close();
+                        showToast('❌ Sync failed: ' + err.message, 'error');
+                    });
+                };
+                
+                getAllRequest.onerror = function() {
+                    console.error('❌ Error getting unsynced orders:', getAllRequest.error);
+                    db.close();
+                    showToast('❌ Error reading orders', 'error');
+                };
+            };
+            
+            request.onerror = function(event) {
+                console.error('❌ IndexedDB error:', event.target.error);
+                showToast('❌ IndexedDB error', 'error');
+            };
+        }
+
+        function checkUnsyncedOrders() {
+            const request = indexedDB.open('PricePointDB', 9);  // CHANGED FROM 5 TO 9
+            
+            request.onsuccess = function(event) {
+                const db = event.target.result;
+                
+                if (!db.objectStoreNames.contains('orders')) {
+                    console.log('⚠️ orders store not found');
+                    db.close();
+                    return;
+                }
+                
+                const tx = db.transaction('orders', 'readonly');
+                const store = tx.objectStore('orders');
+                const index = store.index('synced');
+                const getAllRequest = index.getAll(false);
+                
+                getAllRequest.onsuccess = function() {
+                    const unsynced = getAllRequest.result;
+                    const statusEl = document.getElementById('syncStatus');
+                    const countEl = document.getElementById('unsyncedCount');
+                    
+                    if (statusEl) {
+                        if (unsynced.length > 0) {
+                            statusEl.style.display = 'inline-flex';
+                            statusEl.className = 'has-orders';
+                            if (countEl) countEl.textContent = unsynced.length;
+                            statusEl.style.animation = 'pulse-badge 2s infinite';
+                            statusEl.title = unsynced.length + ' offline orders waiting to sync';
+                            
+                            if (navigator.onLine) {
+                                setTimeout(syncOfflineOrders, 1000);
+                            }
+                        } else {
+                            statusEl.style.display = 'none';
+                            statusEl.className = '';
+                            statusEl.style.animation = 'none';
+                        }
+                    }
+                    db.close();
+                };
+                
+                getAllRequest.onerror = function() {
+                    console.error('Error checking unsynced orders:', getAllRequest.error);
+                    db.close();
+                };
+            };
+        }
+
+        function manualSync() {
+            syncOfflineOrders();
         }
 
         // ============================================================
@@ -1492,14 +1214,15 @@ console.log('✅ Sync fix loaded!');
         // ============================================================
         function searchProducts(query) {
             const searchTerm = query.toLowerCase().trim();
-            const clearEl = document.getElementById('searchClear');
-            if (clearEl) clearEl.classList.toggle('hidden', searchTerm === '');
+            document.getElementById('searchClear').classList.toggle('hidden', searchTerm === '');
             
             if (searchTerm === '') {
                 if (currentCategory === 'all') {
                     filteredProducts = allProducts.slice(0, 50);
+                    document.getElementById('resultCount').textContent = `${filteredProducts.length} of ${allProducts.length} products`;
                 } else {
                     filteredProducts = allProducts.filter(p => p.category === currentCategory).slice(0, 50);
+                    document.getElementById('resultCount').textContent = `${filteredProducts.length} in "${currentCategory}"`;
                 }
             } else {
                 const results = allProducts.filter(p => {
@@ -1507,11 +1230,15 @@ console.log('✅ Sync fix loaded!');
                     const category = (p.category || '').toLowerCase();
                     const id = (p.id || '').toLowerCase();
                     const barcode = (p.barcode || '').toLowerCase();
-                    return name.includes(searchTerm) || category.includes(searchTerm) || id.includes(searchTerm) || barcode.includes(searchTerm);
+                    
+                    return name.includes(searchTerm) || 
+                           category.includes(searchTerm) || 
+                           id.includes(searchTerm) ||
+                           barcode.includes(searchTerm);
                 });
                 filteredProducts = results.slice(0, 100);
+                document.getElementById('resultCount').textContent = `${results.length} found${results.length > 100 ? ' (showing 100)' : ''}`;
             }
-            document.getElementById('resultCount').textContent = `${filteredProducts.length} of ${allProducts.length} products`;
             renderProducts();
         }
 
@@ -1531,8 +1258,6 @@ console.log('✅ Sync fix loaded!');
 
         function renderProducts() {
             const grid = document.getElementById('posProductGrid');
-            if (!grid) return;
-            
             if (filteredProducts.length === 0) {
                 grid.innerHTML = `
                     <div class="col-span-full search-hint">
@@ -1613,7 +1338,7 @@ console.log('✅ Sync fix loaded!');
                 posCart.push({ id: productId, name, price, image, stock, barcode, quantity: 1 });
             }
             updatePOSUI();
-            showToast('✅ Added: ' + name);
+            showToast('✅ Added: ' + name + ' (' + stock + ' left)');
         }
 
         function updatePOSQuantity(index, delta) {
@@ -1682,6 +1407,8 @@ console.log('✅ Sync fix loaded!');
             posCart.forEach((item, index) => {
                 const price = Number(item.price) || 0;
                 const quantity = Number(item.quantity) || 1;
+                const barcodeDisplay = item.barcode ? `<span class="text-[6px] text-gray-400 font-mono">${item.barcode}</span>` : '';
+                
                 html += `
                     <div class="pos-cart-item flex items-center gap-2 bg-gray-50 rounded-lg p-1.5 border border-gray-100 hover:border-green-200 transition-all">
                         <div class="w-8 h-8 rounded-lg overflow-hidden bg-white flex-shrink-0 flex items-center justify-center">
@@ -1690,6 +1417,7 @@ console.log('✅ Sync fix loaded!');
                         <div class="flex-1 min-w-0">
                             <p class="text-[10px] font-semibold truncate">${item.name || 'Product'}</p>
                             <p class="cart-item-price text-xs">KSh ${price.toLocaleString()}</p>
+                            ${barcodeDisplay}
                             <p class="text-[8px] text-gray-400">Stock: ${item.stock}</p>
                         </div>
                         <div class="flex items-center gap-0.5">
@@ -1732,6 +1460,7 @@ console.log('✅ Sync fix loaded!');
             const subtotal = posCart.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
             const discountAmount = type === 'percentage' ? (subtotal * value / 100) : value;
             const total = Math.max(0, subtotal - discountAmount);
+            
             document.getElementById('discountSubtotal').textContent = 'KSh ' + subtotal.toLocaleString();
             document.getElementById('discountNewTotal').textContent = 'KSh ' + total.toLocaleString();
         }
@@ -1749,8 +1478,9 @@ console.log('✅ Sync fix loaded!');
         // RETURNS
         // ============================================================
         function toggleReturnModal() {
-            document.getElementById('returnModal').classList.toggle('hidden');
-            if (!document.getElementById('returnModal').classList.contains('hidden')) {
+            const modal = document.getElementById('returnModal');
+            modal.classList.toggle('hidden');
+            if (!modal.classList.contains('hidden')) {
                 loadReturnItems();
             }
         }
@@ -1768,6 +1498,7 @@ console.log('✅ Sync fix loaded!');
                 document.getElementById('refundTotal').textContent = 'KSh 0';
                 return;
             }
+            
             returnItems = posCart.map((item, index) => ({ ...item, index, selected: true }));
             renderReturnItems();
         }
@@ -1776,20 +1507,25 @@ console.log('✅ Sync fix loaded!');
             const container = document.getElementById('returnItemsList');
             let html = '';
             let refundTotal = 0;
+            
             returnItems.forEach((item, idx) => {
                 const total = item.price * item.quantity;
                 if (item.selected) refundTotal += total;
+                
                 html += `
                     <div class="flex items-center gap-3 bg-gray-50 rounded-lg p-2 border border-gray-100 hover:border-rose-200 transition-all">
-                        <input type="checkbox" ${item.selected ? 'checked' : ''} onchange="toggleReturnItem(${idx})" class="w-4 h-4 accent-rose-500" />
+                        <input type="checkbox" ${item.selected ? 'checked' : ''} 
+                               onchange="toggleReturnItem(${idx})" class="w-4 h-4 accent-rose-500" />
                         <div class="flex-1 min-w-0">
                             <p class="text-sm font-semibold truncate">${item.name}</p>
                             <p class="text-xs text-gray-500">Qty: ${item.quantity} × KSh ${item.price.toLocaleString()}</p>
+                            ${item.barcode ? `<p class="text-[8px] text-gray-400 font-mono">${item.barcode}</p>` : ''}
                         </div>
                         <span class="font-bold text-rose-600 text-sm">KSh ${total.toLocaleString()}</span>
                     </div>
                 `;
             });
+            
             container.innerHTML = html;
             document.getElementById('refundTotal').textContent = 'KSh ' + refundTotal.toLocaleString();
         }
@@ -1805,8 +1541,10 @@ console.log('✅ Sync fix loaded!');
                 showToast('⚠️ Select at least one item to return', 'warning');
                 return;
             }
+            
             const refundTotal = selectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             const customerName = document.getElementById('posCustomer').value || 'Customer';
+            
             if (!confirm(`Process return for ${selectedItems.length} item(s) totaling KSh ${refundTotal.toLocaleString()}?`)) return;
             
             const returnData = {
@@ -1827,36 +1565,16 @@ console.log('✅ Sync fix loaded!');
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
             btn.disabled = true;
             
-            if (!navigator.onLine) {
-                showToast('📡 Offline - Return saved locally', 'warning');
-                selectedItems.forEach(item => {
-                    const product = allProducts.find(p => p.id === item.id);
-                    if (product) product.stock = (product.stock || 0) + item.quantity;
-                });
-                renderProducts();
-                posCart = posCart.filter(item => !selectedItems.map(i => i.id).includes(item.id));
-                closeReturnModal();
-                updatePOSUI();
-                showToast(`✅ Return processed offline! Refund: KSh ${refundTotal.toLocaleString()}`, 'success');
-                btn.innerHTML = originalText;
-                btn.disabled = false;
-                return;
-            }
-            
             fetch('/admin/api/process-return', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
                 body: JSON.stringify(returnData)
             })
-            .then(r => r.json())
+            .then(r => { if (!r.ok) throw new Error('Network error: ' + r.status); return r.json(); })
             .then(data => {
                 if (data.success) {
-                    selectedItems.forEach(item => {
-                        const product = allProducts.find(p => p.id === item.id);
-                        if (product) product.stock = (product.stock || 0) + item.quantity;
-                    });
-                    renderProducts();
-                    posCart = posCart.filter(item => !selectedItems.map(i => i.id).includes(item.id));
+                    const idsToRemove = selectedItems.map(item => item.id);
+                    posCart = posCart.filter(item => !idsToRemove.includes(item.id));
                     closeReturnModal();
                     updatePOSUI();
                     loadSalesStats();
@@ -1875,7 +1593,162 @@ console.log('✅ Sync fix loaded!');
         }
 
         // ============================================================
-        // PLACE ORDER - WITH INDEXEDDB
+        // INDEXEDDB FUNCTIONS - UPDATED TO VERSION 9
+        // ============================================================
+        const DB_NAME = 'PricePointDB';
+        const DB_VERSION = 9;  // UPDATED FROM 5 TO 9
+        const STORE_NAME = 'orders';
+        let db = null;
+
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                if (db) {
+                    resolve(db);
+                    return;
+                }
+                
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                
+                request.onupgradeneeded = function(event) {
+                    const database = event.target.result;
+                    if (!database.objectStoreNames.contains(STORE_NAME)) {
+                        const store = database.createObjectStore(STORE_NAME, { keyPath: 'order_id' });
+                        store.createIndex('synced', 'synced', { unique: false });
+                        store.createIndex('created_at', 'created_at', { unique: false });
+                        console.log('✅ IndexedDB: Orders store created (v9)');
+                    }
+                };
+                
+                request.onsuccess = function(event) {
+                    db = event.target.result;
+                    console.log('✅ IndexedDB: Connected (Version ' + DB_VERSION + ')');
+                    resolve(db);
+                };
+                
+                request.onerror = function(event) {
+                    console.error('❌ IndexedDB error:', event.target.error);
+                    reject(event.target.error);
+                };
+            });
+        }
+
+        function saveOrderToIndexedDB(order) {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const database = await openDB();
+                    const transaction = database.transaction(STORE_NAME, 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME);
+                    
+                    if (!order.synced) {
+                        order.synced = false;
+                    }
+                    if (!order.synced_at) {
+                        order.synced_at = null;
+                    }
+                    
+                    const request = store.put(order);
+                    
+                    request.onsuccess = function() {
+                        console.log('✅ Order saved to IndexedDB:', order.order_id);
+                        resolve(order);
+                    };
+                    
+                    request.onerror = function(event) {
+                        console.error('❌ IndexedDB save error:', event.target.error);
+                        reject(event.target.error);
+                    };
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        function getOrdersFromIndexedDB() {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const database = await openDB();
+                    const transaction = database.transaction(STORE_NAME, 'readonly');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const request = store.getAll();
+                    
+                    request.onsuccess = function() {
+                        console.log('✅ IndexedDB: Retrieved', request.result.length, 'orders');
+                        resolve(request.result);
+                    };
+                    
+                    request.onerror = function(event) {
+                        console.error('❌ IndexedDB get error:', event.target.error);
+                        reject(event.target.error);
+                    };
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        function getUnsyncedOrdersFromIndexedDB() {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const database = await openDB();
+                    const transaction = database.transaction(STORE_NAME, 'readonly');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const index = store.index('synced');
+                    const request = index.getAll(false);
+                    
+                    request.onsuccess = function() {
+                        console.log('✅ IndexedDB: Found', request.result.length, 'unsynced orders');
+                        resolve(request.result);
+                    };
+                    
+                    request.onerror = function(event) {
+                        reject(event.target.error);
+                    };
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        function markOrderSyncedInIndexedDB(orderId) {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const database = await openDB();
+                    const transaction = database.transaction(STORE_NAME, 'readwrite');
+                    const store = transaction.objectStore(STORE_NAME);
+                    
+                    const request = store.get(orderId);
+                    
+                    request.onsuccess = function() {
+                        const order = request.result;
+                        if (order) {
+                            order.synced = true;
+                            order.synced_at = new Date().toISOString();
+                            const updateRequest = store.put(order);
+                            
+                            updateRequest.onsuccess = function() {
+                                console.log('✅ Order marked synced in IndexedDB:', orderId);
+                                resolve(order);
+                            };
+                            
+                            updateRequest.onerror = function(event) {
+                                reject(event.target.error);
+                            };
+                        } else {
+                            resolve(null);
+                        }
+                    };
+                    
+                    request.onerror = function(event) {
+                        reject(event.target.error);
+                    };
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        // ============================================================
+        // PLACE ORDER - WITH VERSION 9 SUPPORT
         // ============================================================
         function placePOSOrder() {
             if (posCart.length === 0) { 
@@ -1884,7 +1757,7 @@ console.log('✅ Sync fix loaded!');
             }
             
             const select = document.getElementById('posCustomer');
-            const selectedOption = select ? select.options[select.selectedIndex] : null;
+            const selectedOption = select.options[select.selectedIndex];
             const customerName = selectedOption ? selectedOption.value : 'Walk-in Customer';
             const customerEmail = selectedOption ? selectedOption.dataset.email || 'walkin@example.com' : 'walkin@example.com';
             const customerPhone = selectedOption ? selectedOption.dataset.phone || 'N/A' : 'N/A';
@@ -1933,33 +1806,105 @@ console.log('✅ Sync fix loaded!');
             
             const btn = document.getElementById('posPlaceOrderBtn');
             const originalText = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
             btn.disabled = true;
             
-            // SAVE TO INDEXEDDB
-            saveOrder(orderData)
-                .then(() => {
-                    showToast(`✅ Order #${orderData.order_id} saved locally!`, 'success');
+            // ============================================================
+            // OFFLINE: Save to IndexedDB v9
+            // ============================================================
+            if (!navigator.onLine) {
+                console.log('📡 OFFLINE: Saving order to IndexedDB v9');
+                
+                const localOrderId = 'OFF-' + Date.now().toString(36).toUpperCase();
+                orderData.order_id = localOrderId;
+                orderData.synced = false;
+                orderData.synced_at = null;
+                
+                saveOrderToIndexedDB(orderData)
+                    .then(() => {
+                        showToast(`✅ Order #${localOrderId} saved offline! Will sync when online.`, 'warning');
+                        posCart = [];
+                        discountValue = 0;
+                        document.getElementById('discountDisplay').textContent = '0%';
+                        updatePOSUI();
+                        checkUnsyncedOrders();
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    })
+                    .catch(err => {
+                        console.error('❌ IndexedDB save error:', err);
+                        showToast('❌ Failed to save order offline', 'error');
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    });
+                return;
+            }
+            
+            // ============================================================
+            // ONLINE: Try Supabase first, fallback to IndexedDB v9
+            // ============================================================
+            console.log('📡 ONLINE: Saving order to Supabase');
+            
+            fetch('/admin/pos/place-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(orderData)
+            })
+            .then(r => {
+                if (!r.ok) throw new Error('Network error: ' + r.status);
+                return r.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    let message = '✅ Order placed! #' + data.order_id + ' | Total: KSh ' + total.toLocaleString();
+                    
+                    if (data.order) {
+                        data.order.synced = true;
+                        data.order.synced_at = new Date().toISOString();
+                        saveOrderToIndexedDB(data.order).catch(err => console.warn('⚠️ Backup save failed:', err));
+                    }
+                    
+                    showToast(message, 'success');
                     posCart = [];
                     discountValue = 0;
                     document.getElementById('discountDisplay').textContent = '0%';
                     updatePOSUI();
+                    loadSalesStats();
+                    loadUserStats();
                     
-                    // Try to sync immediately if online
-                    if (navigator.onLine) {
-                        setTimeout(syncNow, 1000);
-                    }
-                    
-                    btn.innerHTML = originalText;
-                    btn.disabled = false;
-                    checkUnsynced();
-                })
-                .catch(err => {
-                    console.error('❌ Error saving order:', err);
-                    showToast('❌ Failed to save order', 'error');
-                    btn.innerHTML = originalText;
-                    btn.disabled = false;
-                });
+                    setTimeout(checkUnsyncedOrders, 1000);
+                } else {
+                    showToast('❌ Error: ' + (data.message || 'Unknown error'), 'error');
+                }
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            })
+            .catch(err => {
+                console.warn('⚠️ Supabase failed, saving to IndexedDB v9:', err);
+                
+                const localOrderId = 'OFF-' + Date.now().toString(36).toUpperCase();
+                orderData.order_id = localOrderId;
+                orderData.synced = false;
+                orderData.synced_at = null;
+                
+                saveOrderToIndexedDB(orderData)
+                    .then(() => {
+                        showToast(`✅ Order #${localOrderId} saved offline! Will sync when online.`, 'warning');
+                        posCart = [];
+                        discountValue = 0;
+                        document.getElementById('discountDisplay').textContent = '0%';
+                        updatePOSUI();
+                        checkUnsyncedOrders();
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    })
+                    .catch(err2 => {
+                        console.error('❌ Both Supabase and IndexedDB failed:', err2);
+                        showToast('❌ Failed to save order. Please try again.', 'error');
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    });
+            });
         }
 
         // ============================================================
@@ -1970,7 +1915,7 @@ console.log('✅ Sync fix loaded!');
             heldOrders.push({
                 id: Date.now(),
                 items: [...posCart],
-                customer: document.getElementById('posCustomer')?.value || 'Customer',
+                customer: document.getElementById('posCustomer').value,
                 timestamp: new Date().toLocaleString()
             });
             posCart = [];
@@ -2085,6 +2030,46 @@ console.log('✅ Sync fix loaded!');
         }
 
         // ============================================================
+        // KEYBOARD SHORTCUTS
+        // ============================================================
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') { 
+                closeCustomerModal(); 
+                closeDiscountModal(); 
+                closeReturnModal(); 
+                closeBarcodeScanner();
+                closeBarcodeInputModal();
+            }
+            if (e.ctrlKey && e.key === 'Enter') { placePOSOrder(); e.preventDefault(); }
+            if (e.key === 'F1') { document.getElementById('posSearch').focus(); e.preventDefault(); }
+            if (e.key === 'F2') { toggleCustomerModal(); e.preventDefault(); }
+            if (e.key === 'F3') { toggleDiscountModal(); e.preventDefault(); }
+            if (e.key === 'F4') { toggleReturnModal(); e.preventDefault(); }
+            if (e.key === 'F5') { holdOrder(); e.preventDefault(); }
+            if (e.key === 'F6') { manualSync(); e.preventDefault(); }
+            if (e.key === 'F7') { 
+                e.preventDefault();
+                if (document.getElementById('barcodeModal').classList.contains('hidden')) {
+                    openBarcodeScanner();
+                } else {
+                    closeBarcodeScanner();
+                }
+            }
+            if (e.key === 'F8') { 
+                e.preventDefault();
+                if (document.getElementById('barcodeInputModal').classList.contains('hidden')) {
+                    openBarcodeInputModal();
+                } else {
+                    closeBarcodeInputModal();
+                }
+            }
+            if ((e.key === 'Delete' || e.key === 'Backspace') && document.activeElement.id !== 'posSearch') {
+                voidLastItem();
+                e.preventDefault();
+            }
+        });
+
+        // ============================================================
         // BARCODE SCANNER
         // ============================================================
         let html5QrCode = null;
@@ -2092,18 +2077,26 @@ console.log('✅ Sync fix loaded!');
         let scannerStarted = false;
 
         function openBarcodeScanner() {
-            document.getElementById('barcodeModal').classList.remove('hidden');
+            const modal = document.getElementById('barcodeModal');
+            modal.classList.remove('hidden');
+            
             document.getElementById('scannerResult').classList.add('hidden');
             document.getElementById('scannedValue').textContent = '';
+            
             const btn = document.getElementById('startScannerBtn');
             btn.style.display = 'block';
             btn.innerHTML = '<i class="fas fa-play"></i> Start Camera';
             btn.disabled = false;
+            
             if (html5QrCode) {
                 try {
-                    html5QrCode.stop().then(() => { html5QrCode.clear(); scannerStarted = false; }).catch(() => {});
+                    html5QrCode.stop().then(() => {
+                        html5QrCode.clear();
+                        scannerStarted = false;
+                    }).catch(() => {});
                 } catch(e) {}
             }
+            
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 showToast('⚠️ Camera not available on this device', 'warning');
                 btn.style.display = 'none';
@@ -2120,10 +2113,15 @@ console.log('✅ Sync fix loaded!');
         }
 
         function closeBarcodeScanner() {
-            document.getElementById('barcodeModal').classList.add('hidden');
+            const modal = document.getElementById('barcodeModal');
+            modal.classList.add('hidden');
+            
             if (html5QrCode && scannerStarted) {
                 try {
-                    html5QrCode.stop().then(() => { html5QrCode.clear(); scannerStarted = false; }).catch(() => {});
+                    html5QrCode.stop().then(() => {
+                        html5QrCode.clear();
+                        scannerStarted = false;
+                    }).catch(() => {});
                 } catch(e) {}
             }
             isScannerRunning = false;
@@ -2131,10 +2129,13 @@ console.log('✅ Sync fix loaded!');
 
         function startScanner() {
             if (isScannerRunning) return;
+            
             const btn = document.getElementById('startScannerBtn');
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
             btn.disabled = true;
+            
             document.getElementById('barcode-reader').innerHTML = '';
+            
             const config = {
                 fps: 10,
                 qrbox: { width: 250, height: 250 },
@@ -2157,43 +2158,95 @@ console.log('✅ Sync fix loaded!');
                     Html5QrcodeSupportedFormats.RSS_EXPANDED
                 ]
             };
+            
             try {
                 html5QrCode = new Html5Qrcode("barcode-reader");
-                html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, onScanError)
-                    .then(() => {
-                        scannerStarted = true;
-                        isScannerRunning = true;
-                        btn.innerHTML = '<i class="fas fa-pause"></i> Scanning...';
-                        btn.disabled = false;
-                    }).catch(err => {
-                        btn.innerHTML = '<i class="fas fa-camera"></i> Try Again';
-                        btn.disabled = false;
-                        showToast('⚠️ Could not access camera', 'error');
-                    });
+                
+                html5QrCode.start(
+                    { facingMode: "environment" },
+                    config,
+                    onScanSuccess,
+                    onScanError
+                ).then(() => {
+                    console.log('✅ Scanner started successfully');
+                    scannerStarted = true;
+                    isScannerRunning = true;
+                    btn.innerHTML = '<i class="fas fa-pause"></i> Scanning...';
+                    btn.disabled = false;
+                }).catch(err => {
+                    console.error('❌ Scanner start error:', err);
+                    btn.innerHTML = '<i class="fas fa-camera"></i> Try Again';
+                    btn.disabled = false;
+                    showToast('⚠️ Could not access camera: ' + err.message, 'error');
+                    
+                    document.getElementById('barcode-reader').innerHTML = `
+                        <div class="text-center py-8 text-gray-400">
+                            <i class="fas fa-camera-slash text-4xl block mb-3"></i>
+                            <p>Camera not accessible</p>
+                            <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="btn-primary mt-3" style="display:inline-block; padding: 8px 20px; width:auto; background: linear-gradient(135deg, #f59e0b, #d97706);">
+                                <i class="fas fa-keyboard"></i> Enter Manually
+                            </button>
+                        </div>
+                    `;
+                    btn.style.display = 'none';
+                });
             } catch(err) {
+                console.error('❌ Scanner init error:', err);
                 btn.innerHTML = '<i class="fas fa-camera"></i> Try Again';
                 btn.disabled = false;
-                showToast('⚠️ Scanner error', 'error');
+                showToast('⚠️ Scanner error: ' + err.message, 'error');
             }
         }
 
-        function onScanSuccess(decodedText) {
-            try { if (navigator.vibrate) navigator.vibrate(200); } catch(e) {}
+        function onScanSuccess(decodedText, decodedResult) {
+            console.log('📷 Barcode scanned:', decodedText);
+            
+            try {
+                if (navigator.vibrate) navigator.vibrate(200);
+            } catch(e) {}
+            
             document.getElementById('scannerResult').classList.remove('hidden');
             document.getElementById('scannedValue').textContent = decodedText;
+            
             if (html5QrCode && scannerStarted) {
-                try { html5QrCode.pause(); isScannerRunning = false; document.getElementById('startScannerBtn').innerHTML = '<i class="fas fa-play"></i> Resume'; } catch(e) {}
+                try {
+                    html5QrCode.pause();
+                    isScannerRunning = false;
+                    document.getElementById('startScannerBtn').innerHTML = '<i class="fas fa-play"></i> Resume';
+                } catch(e) {}
             }
+            
             searchProductByBarcode(decodedText);
         }
 
-        function onScanError(error) {}
+        function onScanError(error) {
+            // Ignore - called frequently
+        }
 
         function searchProductByBarcode(barcode) {
+            console.log('🔍 Searching for product with barcode:', barcode);
+            
             const searchTerm = String(barcode).trim();
-            let product = allProducts.find(p => String(p.barcode || '').trim() === searchTerm);
-            if (!product) product = allProducts.find(p => String(p.id || '').trim() === searchTerm);
-            if (!product) product = allProducts.find(p => String(p.name || '').toLowerCase().includes(searchTerm.toLowerCase()));
+            
+            let product = allProducts.find(p => {
+                const barcodeField = String(p.barcode || '').trim();
+                return barcodeField == searchTerm;
+            });
+            
+            if (!product) {
+                product = allProducts.find(p => {
+                    const id = String(p.id || '').trim();
+                    return id == searchTerm;
+                });
+            }
+            
+            if (!product) {
+                product = allProducts.find(p => {
+                    const name = String(p.name || '').toLowerCase();
+                    return name.includes(searchTerm.toLowerCase());
+                });
+            }
+            
             if (product) {
                 showToast(`✅ Found: ${product.name}`, 'success');
                 addToPOSCartByProduct(product);
@@ -2213,10 +2266,22 @@ console.log('✅ Sync fix loaded!');
         function addToPOSCartByProduct(product) {
             const existing = posCart.find(item => item.id === product.id);
             if (existing) {
-                if (existing.quantity < product.stock) { existing.quantity++; showToast(`✅ Added another ${product.name} (${existing.quantity} total)`, 'success'); } 
-                else { showToast(`⚠️ Not enough stock for ${product.name}`, 'warning'); }
+                if (existing.quantity < product.stock) {
+                    existing.quantity++;
+                    showToast(`✅ Added another ${product.name} (${existing.quantity} total)`, 'success');
+                } else {
+                    showToast(`⚠️ Not enough stock for ${product.name}`, 'warning');
+                }
             } else {
-                posCart.push({ id: product.id, name: product.name, price: product.price, image: product.image || '', stock: product.stock || 0, barcode: product.barcode || '', quantity: 1 });
+                posCart.push({
+                    id: product.id,
+                    name: product.name,
+                    price: product.price,
+                    image: product.image || '',
+                    stock: product.stock || 0,
+                    barcode: product.barcode || '',
+                    quantity: 1
+                });
                 showToast(`✅ Added: ${product.name}`, 'success');
             }
             updatePOSUI();
@@ -2224,7 +2289,9 @@ console.log('✅ Sync fix loaded!');
 
         function openBarcodeInputModal() {
             document.getElementById('barcodeInputModal').classList.remove('hidden');
-            setTimeout(() => document.getElementById('manualBarcode').focus(), 300);
+            setTimeout(() => {
+                document.getElementById('manualBarcode').focus();
+            }, 300);
         }
 
         function closeBarcodeInputModal() {
@@ -2234,79 +2301,44 @@ console.log('✅ Sync fix loaded!');
 
         function submitManualBarcode() {
             const barcode = document.getElementById('manualBarcode').value.trim();
-            if (!barcode) { showToast('⚠️ Please enter a barcode', 'warning'); return; }
+            if (!barcode) {
+                showToast('⚠️ Please enter a barcode', 'warning');
+                return;
+            }
             closeBarcodeInputModal();
             searchProductByBarcode(barcode);
         }
 
         // ============================================================
-        // KEYBOARD SHORTCUTS
-        // ============================================================
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') { closeCustomerModal(); closeDiscountModal(); closeReturnModal(); closeBarcodeScanner(); closeBarcodeInputModal(); }
-            if (e.ctrlKey && e.key === 'Enter') { placePOSOrder(); e.preventDefault(); }
-            if (e.key === 'F1') { document.getElementById('posSearch').focus(); e.preventDefault(); }
-            if (e.key === 'F2') { toggleCustomerModal(); e.preventDefault(); }
-            if (e.key === 'F3') { toggleDiscountModal(); e.preventDefault(); }
-            if (e.key === 'F4') { toggleReturnModal(); e.preventDefault(); }
-            if (e.key === 'F5') { holdOrder(); e.preventDefault(); }
-            if (e.key === 'F6') { syncNow(); e.preventDefault(); }
-            if (e.key === 'F7') { 
-                e.preventDefault();
-                if (document.getElementById('barcodeModal').classList.contains('hidden')) { openBarcodeScanner(); } 
-                else { closeBarcodeScanner(); }
-            }
-            if (e.key === 'F8') { 
-                e.preventDefault();
-                if (document.getElementById('barcodeInputModal').classList.contains('hidden')) { openBarcodeInputModal(); } 
-                else { closeBarcodeInputModal(); }
-            }
-            if ((e.key === 'Delete' || e.key === 'Backspace') && document.activeElement?.id !== 'posSearch') {
-                voidLastItem();
-                e.preventDefault();
-            }
-        });
-
-        // ============================================================
         // INIT
         // ============================================================
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('✅ POS Pro v5.0 initializing...');
+            console.log('✅ POS Pro v9.0 initialized with ' + allProducts.length + ' products');
+            console.log('📡 Status:', navigator.onLine ? 'Online' : 'Offline');
+            console.log('📦 IndexedDB Version:', DB_VERSION);
             
-            // Load products
-            filteredProducts = allProducts.slice(0, 50);
-            renderProducts();
-            document.getElementById('resultCount').textContent = `${filteredProducts.length} of ${allProducts.length} products`;
-            document.getElementById('productCount').textContent = `${allProducts.length} total`;
-            
+            document.getElementById('posProductGrid').innerHTML = `
+                <div class="col-span-full search-hint">
+                    <i class="fas fa-search"></i>
+                    <p>Search for products</p>
+                    <p class="text-xs text-gray-400">${allProducts.length} products available</p>
+                    <div class="shortcuts">⌨️ F1: Search | F2: Customer | F3: Discount | F4: Return | F5: Hold | F6: Sync | F7: Scan | F8: Manual Barcode | Ctrl+Enter: Checkout</div>
+                </div>
+            `;
+            document.getElementById('resultCount').textContent = `${allProducts.length} products available`;
             updatePOSUI();
+            loadSalesStats();
+            loadUserStats();
             
-            if (navigator.onLine) {
-                loadSalesStats();
-                loadUserStats();
-            }
-            
-            // Check for unsynced orders
-            setTimeout(checkUnsynced, 1000);
-            
-            // Auto-sync after load
+            // Check for unsynced orders after 2 seconds
             setTimeout(function() {
                 if (navigator.onLine) {
-                    console.log('🔄 Initial auto-sync after load...');
-                    syncNow();
+                    checkUnsyncedOrders();
+                    setTimeout(syncOfflineOrders, 3000);
                 }
-            }, 3000);
+            }, 2000);
             
-            // Periodic sync every 30 seconds
-            setInterval(function() {
-                if (navigator.onLine) {
-                    checkUnsynced();
-                }
-            }, 30000);
-            
-            console.log('📡 Status:', navigator.onLine ? 'Online' : 'Offline');
-            console.log('✅ POS Pro v5.0 initialized!');
-            console.log('💡 To manually sync, click the Sync button or press F6');
+            console.log('📋 Products with barcodes:', allProducts.filter(p => p.barcode).length);
         });
     </script>
 </body>
