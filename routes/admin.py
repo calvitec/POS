@@ -1,2405 +1,2144 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes" />
-    <title>POS Pro · Point of Sale</title>
-    
-    <!-- ===== PWA META TAGS ===== -->
-    <link rel="manifest" href="/manifest.json" crossorigin="use-credentials">
-    <meta name="theme-color" content="#059669">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
-    
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
-    <!-- Barcode Scanner Library -->
-    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-    
-    <!-- ===== SERVICE WORKER REGISTRATION ===== -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                    .then(reg => {
-                        console.log('✅ Service Worker registered successfully!', reg);
-                        
-                        reg.addEventListener('updatefound', () => {
-                            const newWorker = reg.installing;
-                            newWorker.addEventListener('statechange', () => {
-                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                    console.log('🔄 New update available!');
-                                    if (confirm('New version available! Refresh to update?')) {
-                                        window.location.reload();
-                                    }
-                                }
-                            });
-                        });
-                    })
-                    .catch(err => {
-                        console.error('❌ Service Worker registration failed:', err);
-                    });
-            });
+import sys
+import os
+import json
+
+# Add the project root to Python path so config can be found
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import traceback
+import uuid
+from datetime import datetime, timedelta
+from functools import wraps
+
+import requests
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for, send_from_directory
+from werkzeug.utils import secure_filename
+
+# Now this will work
+from config import Config
+from utils.data import get_cart, get_sales_analytics, load_bundles, load_orders, load_products, update_product_stock
+
+admin_bp = Blueprint('admin', __name__)
+
+# ============================================================
+# DETECT VERCEL ENVIRONMENT
+# ============================================================
+IS_VERCEL = os.environ.get('VERCEL') == '1' or os.environ.get('NOW_REGION') is not None
+print(f"🚀 Running on: {'Vercel' if IS_VERCEL else 'Local'}")
+
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in Config.ALLOWED_EXTENSIONS
+
+
+def is_admin():
+    user = session.get('user', {})
+    return user.get('role') == 'admin' or session.get('admin_logged_in')
+
+
+def is_logged_in():
+    return 'user' in session or session.get('admin_logged_in')
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not is_admin():
+            flash('Admin access required', 'danger')
+            return redirect(url_for('admin.user_login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not is_logged_in():
+            flash('Please login first', 'danger')
+            return redirect(url_for('admin.user_login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def seed_demo_products():
+    demo_products = [
+        {'id': 'PROD_1', 'name': 'Wireless Headphones', 'price': 2999, 'stock': 45, 'category': 'Electronics', 'image': '', 'description': 'Premium wireless headphones'},
+        {'id': 'PROD_2', 'name': 'USB-C Cable', 'price': 499, 'stock': 120, 'category': 'Accessories', 'image': ''},
+        {'id': 'PROD_3', 'name': 'Bluetooth Speaker', 'price': 1499, 'stock': 30, 'category': 'Electronics', 'image': ''},
+        {'id': 'PROD_4', 'name': 'Laptop Stand', 'price': 899, 'stock': 25, 'category': 'Furniture', 'image': ''},
+        {'id': 'PROD_5', 'name': 'Wireless Mouse', 'price': 699, 'stock': 60, 'category': 'Accessories', 'image': ''},
+        {'id': 'PROD_6', 'name': 'Mechanical Keyboard', 'price': 2499, 'stock': 15, 'category': 'Electronics', 'image': ''},
+        {'id': 'PROD_7', 'name': 'HDMI Cable', 'price': 299, 'stock': 80, 'category': 'Accessories', 'image': ''},
+        {'id': 'PROD_8', 'name': 'USB Hub', 'price': 1299, 'stock': 20, 'category': 'Accessories', 'image': ''},
+        {'id': 'PROD_9', 'name': 'Monitor 24"', 'price': 14999, 'stock': 8, 'category': 'Electronics', 'image': ''},
+        {'id': 'PROD_10', 'name': 'Desk Lamp', 'price': 599, 'stock': 35, 'category': 'Furniture', 'image': ''},
+    ]
+    return demo_products
+
+
+def get_default_users():
+    return [
+        {'id': 'admin_1', 'email': 'admin@pricepoint.com', 'password': 'electronics2026', 'name': 'Admin User', 'role': 'admin'},
+        {'id': 'manager_1', 'email': 'manager@pricepoint.com', 'password': 'electronics2026', 'name': 'Store Manager', 'role': 'manager'},
+        {'id': 'pos_1', 'email': 'pos@pricepoint.com', 'password': 'electronics2026', 'name': 'POS Operator', 'role': 'pos'},
+        {'id': 'user_1', 'email': 'user@pricepoint.com', 'password': 'electronics2026', 'name': 'Regular User', 'role': 'user'}
+    ]
+
+
+# ============================================================
+# AUTHENTICATION ROUTES
+# ============================================================
+
+@admin_bp.route('/login', methods=['GET', 'POST'])
+def user_login():
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '').strip()
+
+        if not email or not password:
+            flash('Please enter both email and password', 'danger')
+            return render_template('admin_login.html')
+
+        users_legacy = {
+            'admin@pricepoint.com': {
+                'password': 'electronics2026',
+                'name': 'Admin User',
+                'role': 'admin',
+                'redirect': '/admin'
+            },
+            'user@pricepoint.com': {
+                'password': 'electronics2026',
+                'name': 'John Doe',
+                'role': 'user',
+                'redirect': '/admin/pos'
+            },
+            'pos@pricepoint.com': {
+                'password': 'electronics2026',
+                'name': 'POS Operator',
+                'role': 'pos',
+                'redirect': '/admin/pos'
+            },
+            'manager@pricepoint.com': {
+                'password': 'electronics2026',
+                'name': 'Store Manager',
+                'role': 'manager',
+                'redirect': '/admin/pos'
+            }
         }
-    </script>
 
-    <!-- ============================================================
-         OFFLINE ORDER SYNC - POS (UPDATED TO VERSION 5)
-    ============================================================ -->
-    <script>
-        // Sync function - UPDATED TO VERSION 5
-        async function syncNow() {
-            console.log('🔍 Checking for offline orders...');
-            
-            const r = indexedDB.open('PricePointDB', 5); // CHANGED FROM 1 TO 5
-            r.onsuccess = function(e) {
-                const db = e.target.result;
-                const tx = db.transaction(['orders'], 'readonly');
-                const store = tx.objectStore('orders');
-                
-                store.getAll().onsuccess = function(r2) {
-                    const orders = r2.target.result;
-                    const unsynced = orders.filter(o => !o.synced);
-                    
-                    if (unsynced.length === 0) {
-                        console.log('✅ No offline orders to sync');
-                        db.close();
-                        return;
-                    }
-                    
-                    console.log(`📦 Found ${unsynced.length} offline order(s) to sync`);
-                    
-                    fetch('/admin/api/sync-queue', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ orders: unsynced })
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        console.log('✅ Sync result:', data);
-                        if (data.synced > 0) {
-                            const wtx = db.transaction(['orders'], 'readwrite');
-                            const wstore = wtx.objectStore('orders');
-                            unsynced.forEach(order => {
-                                order.synced = true;
-                                order.syncedAt = new Date().toISOString();
-                                wstore.put(order);
-                            });
-                            console.log(`✅ Marked ${data.synced} orders as synced`);
-                            showNotification(`✅ ${data.synced} orders synced!`);
-                        }
-                        db.close();
-                    })
-                    .catch(err => {
-                        console.log('❌ Sync failed:', err);
-                        db.close();
-                    });
-                };
-            };
-        }
+        username = request.form.get('username', '').strip()
+        if username == 'admin' and password == 'electronics2026':
+            session['admin_logged_in'] = True
+            session['user'] = {
+                'email': 'admin@pricepoint.com',
+                'name': 'Admin User',
+                'role': 'admin',
+                'id': 'legacy_admin'
+            }
+            flash('Welcome back, Admin!', 'success')
+            return redirect('/admin')
 
-        // Auto-sync when coming online
-        window.addEventListener('online', function() {
-            console.log('🌐 Back online - syncing offline orders...');
-            syncNow();
-        });
+        if email in users_legacy and users_legacy[email]['password'] == password:
+            session['user'] = {
+                'email': email,
+                'name': users_legacy[email]['name'],
+                'role': users_legacy[email]['role'],
+                'id': 'legacy_' + email
+            }
+            session['admin_logged_in'] = True
+            flash('Welcome, ' + users_legacy[email]['name'] + '!', 'success')
+            return redirect(users_legacy[email]['redirect'])
+        else:
+            flash('Invalid email or password', 'danger')
+            return render_template('admin_login.html')
 
-        // Auto-sync when page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(function() {
-                if (navigator.onLine) {
-                    syncNow();
+    return render_template('admin_login.html')
+
+
+@admin_bp.route('/logout')
+def user_logout():
+    session.pop('user', None)
+    session.pop('admin_logged_in', None)
+    flash('Logged out successfully', 'success')
+    return redirect(url_for('admin.user_login'))
+
+
+@admin_bp.route('/admin/login')
+def admin_login_redirect():
+    return redirect(url_for('admin.user_login'))
+
+
+@admin_bp.route('/admin/logout')
+def admin_logout():
+    session.pop('admin_logged_in', None)
+    flash('Logged out', 'success')
+    return redirect(url_for('admin.user_login'))
+
+
+# ============================================================
+# ADMIN DASHBOARD
+# ============================================================
+
+@admin_bp.route('/admin')
+@admin_required
+def admin_dashboard():
+    if not is_admin():
+        flash('Admin access required', 'danger')
+        return redirect(url_for('admin.user_login'))
+
+    try:
+        # ============================================================
+        # FIX: Clear cache on every request to get fresh data
+        # ============================================================
+        import utils.data
+        utils.data.orders_cache = []
+
+        user = session.get('user', {})
+        user_name = user.get('name', 'Admin User')
+        user_role = user.get('role', 'admin')
+
+        all_products = load_products()
+        all_orders = load_orders()
+        print(f"📡 Loaded: {len(all_products)} products, {len(all_orders)} orders")
+
+        if not all_products:
+            all_products = seed_demo_products()
+            try:
+                for product in all_products:
+                    requests.post(
+                        f"{Config.SUPABASE_URL}/rest/v1/products",
+                        headers=Config.SUPABASE_HEADERS,
+                        json=product,
+                        timeout=10
+                    )
+                print("🌱 Demo products seeded to Supabase")
+            except Exception as e:
+                print(f"⚠️ Could not seed demo products: {e}")
+
+        bundles = load_bundles()
+        cart = get_cart()
+        analytics = get_sales_analytics()
+
+        per_page = 10
+
+        products_page = request.args.get('products_page', 1, type=int)
+        orders_page = request.args.get('orders_page', 1, type=int)
+        customers_page = request.args.get('customers_page', 1, type=int)
+
+        customer_dict = {}
+        pos_count = 0
+        web_count = 0
+
+        for order in all_orders:
+            name = None
+            email = None
+            phone = None
+
+            if order.get('customer_name'):
+                name = order.get('customer_name')
+
+            if not name:
+                customer = order.get('customer', {})
+                if isinstance(customer, dict):
+                    name = customer.get('name')
+                    if not email:
+                        email = customer.get('email')
+                    if not phone:
+                        phone = customer.get('phone')
+                elif isinstance(customer, str):
+                    try:
+                        customer_obj = json.loads(customer)
+                        name = customer_obj.get('name')
+                        if not email:
+                            email = customer_obj.get('email')
+                        if not phone:
+                            phone = customer_obj.get('phone')
+                    except:
+                        pass
+
+            if not name:
+                email = order.get('customer_email', '')
+                if email and '@' in email:
+                    name = email.split('@')[0].replace('.', ' ').title()
+
+            if not name or name in ['Walk-in Customer', 'Web Customer', 'Customer', 'Unknown', '']:
+                continue
+
+            if not email or email == 'N/A':
+                email = order.get('customer_email', 'N/A')
+                if (not email or email == 'N/A') and isinstance(order.get('customer'), dict):
+                    email = order.get('customer', {}).get('email', 'N/A')
+
+            if not phone or phone == 'N/A':
+                phone = order.get('customer_phone', 'N/A')
+                if (not phone or phone == 'N/A') and isinstance(order.get('customer'), dict):
+                    phone = order.get('customer', {}).get('phone', 'N/A')
+
+            if order.get('source') == 'pos':
+                pos_count += 1
+            else:
+                web_count += 1
+
+            if name not in customer_dict:
+                customer_dict[name] = {
+                    'name': name,
+                    'email': email if email else 'N/A',
+                    'phone': phone if phone else 'N/A',
+                    'orders': 0,
+                    'total_spent': 0
                 }
-            }, 2000);
-        });
+            customer_dict[name]['orders'] += 1
+            customer_dict[name]['total_spent'] += order.get('total', 0)
 
-        // After placing an order, check for pending sync
-        function afterOrderPlaced() {
-            if (navigator.onLine) {
-                setTimeout(syncNow, 2000);
+        customers = list(customer_dict.values())
+        customers.sort(key=lambda x: x['orders'], reverse=True)
+        total_customers = len(customers)
+
+        total_orders = len([o for o in all_orders if o.get('status') != 'cancelled'])
+        total_revenue = sum(o.get('total', 0) for o in all_orders if o.get('status') != 'cancelled')
+        pending_orders = len([o for o in all_orders if o.get('status') == 'pending'])
+        low_stock_items = len([p for p in all_products if p.get('stock', 0) < 10])
+
+        now = datetime.utcnow()
+        today = now.date()
+        first_day_this_month = today.replace(day=1)
+
+        today_revenue = 0
+        today_orders = 0
+        yesterday_revenue = 0
+        month_revenue = 0
+        month_orders = 0
+        last_month_revenue = 0
+
+        if today.month == 1:
+            last_month_year = today.year - 1
+            last_month_month = 12
+        else:
+            last_month_year = today.year
+            last_month_month = today.month - 1
+
+        first_day_last_month = datetime(last_month_year, last_month_month, 1).date()
+        if today.month == 1:
+            last_day_last_month = datetime(last_month_year, 12, 31).date()
+        else:
+            last_day_last_month = datetime(today.year, today.month, 1).date() - timedelta(days=1)
+
+        for order in all_orders:
+            total = order.get('total', 0)
+            if isinstance(total, str):
+                try:
+                    total = float(total.replace(',', ''))
+                except:
+                    total = 0
+            total = float(total or 0)
+
+            if order.get('status') == 'cancelled':
+                continue
+
+            created_at = order.get('created_at', '')
+            if not created_at:
+                continue
+
+            try:
+                if isinstance(created_at, datetime):
+                    order_date = created_at.date()
+                elif isinstance(created_at, str):
+                    if 'T' in created_at:
+                        clean = created_at.replace('Z', '').replace('+00:00', '')
+                        if '.' in clean:
+                            order_date = datetime.fromisoformat(clean).date()
+                        else:
+                            order_date = datetime.strptime(clean[:10], '%Y-%m-%d').date()
+                    elif ' ' in created_at:
+                        order_date = datetime.strptime(created_at[:10], '%Y-%m-%d').date()
+                    else:
+                        order_date = datetime.strptime(created_at[:10], '%Y-%m-%d').date()
+                else:
+                    continue
+            except Exception as e:
+                print(f"Date parse error: {e}")
+                continue
+
+            if order_date == today:
+                today_revenue += total
+                today_orders += 1
+
+            if order_date == today - timedelta(days=1):
+                yesterday_revenue += total
+
+            if order_date >= first_day_this_month:
+                month_revenue += total
+                month_orders += 1
+
+            if first_day_last_month <= order_date <= last_day_last_month:
+                last_month_revenue += total
+
+        if yesterday_revenue > 0:
+            today_growth = round(((today_revenue - yesterday_revenue) / yesterday_revenue) * 100, 1)
+        else:
+            today_growth = 100.0 if today_revenue > 0 else 0
+
+        if last_month_revenue > 0:
+            month_growth = round(((month_revenue - last_month_revenue) / last_month_revenue) * 100, 1)
+        else:
+            month_growth = 100.0 if month_revenue > 0 else 0
+
+        total_customer_pages = (total_customers + per_page - 1) // per_page if total_customers > 0 else 1
+        if customers_page < 1:
+            customers_page = 1
+        elif customers_page > total_customer_pages and total_customer_pages > 0:
+            customers_page = total_customer_pages
+
+        customers_start = (customers_page - 1) * per_page
+        customers_end = customers_start + per_page
+        paginated_customers = customers[customers_start:customers_end] if customers else []
+
+        total_products = len(all_products)
+        total_product_pages = (total_products + per_page - 1) // per_page if total_products > 0 else 1
+        if products_page < 1:
+            products_page = 1
+        elif products_page > total_product_pages and total_product_pages > 0:
+            products_page = total_product_pages
+
+        products_start = (products_page - 1) * per_page
+        products_end = products_start + per_page
+        paginated_products = all_products[products_start:products_end] if all_products else []
+
+        sorted_orders = sorted(all_orders, key=lambda x: x.get('created_at', ''), reverse=True)
+        total_order_pages = (total_orders + per_page - 1) // per_page if total_orders > 0 else 1
+        if orders_page < 1:
+            orders_page = 1
+        elif orders_page > total_order_pages and total_order_pages > 0:
+            orders_page = total_order_pages
+
+        orders_start = (orders_page - 1) * per_page
+        orders_end = orders_start + per_page
+        paginated_orders = sorted_orders[orders_start:orders_end] if sorted_orders else []
+
+        recent_orders = sorted_orders[:3] if sorted_orders else []
+
+        stats = {
+            'total_products': total_products,
+            'total_bundles': len(bundles),
+            'total_cart_items': sum(cart.values()) if cart else 0,
+            'low_stock': low_stock_items,
+            'total_orders': total_orders,
+            'pending_orders': pending_orders,
+            'pos_orders': pos_count,
+            'web_orders': web_count,
+            'total_revenue': total_revenue,
+            'total_cost': analytics.get('total_cost', 0),
+            'total_profit': analytics.get('total_profit', 0),
+            'total_items_sold': analytics.get('total_items_sold', 0),
+            'total_customers': total_customers,
+            'today_revenue': today_revenue,
+            'today_orders': today_orders,
+            'yesterday_revenue': yesterday_revenue,
+            'month_revenue': month_revenue,
+            'month_orders': month_orders,
+            'last_month_revenue': last_month_revenue,
+            'today_growth_pct': today_growth,
+            'month_growth_pct': month_growth,
+            'db_mode': 'online',
+        }
+
+        return render_template('admin.html',
+            products=paginated_products,
+            all_products=all_products,
+            total_products=total_products,
+            product_page=products_page,
+            total_product_pages=total_product_pages,
+            orders=paginated_orders,
+            recent_orders=recent_orders,
+            total_orders=total_orders,
+            orders_page=orders_page,
+            total_order_pages=total_order_pages,
+            customers=paginated_customers,
+            total_customers=total_customers,
+            customers_page=customers_page,
+            total_customer_pages=total_customer_pages,
+            per_page=per_page,
+            bundles=bundles,
+            stats=stats,
+            pos_count=pos_count,
+            analytics=analytics,
+            DB_CONNECTED=True
+        )
+
+    except Exception as exc:
+        print(f'Admin dashboard error: {exc}')
+        traceback.print_exc()
+        flash('Error loading admin dashboard', 'danger')
+        return render_template('admin.html',
+            products=[],
+            bundles=[],
+            orders=[],
+            customers=[],
+            pos_count=0,
+            analytics={},
+            stats={
+                'total_products': 0,
+                'total_bundles': 0,
+                'total_cart_items': 0,
+                'low_stock': 0,
+                'total_orders': 0,
+                'pending_orders': 0,
+                'pos_orders': 0,
+                'web_orders': 0,
+                'total_revenue': 0,
+                'total_cost': 0,
+                'total_profit': 0,
+                'total_items_sold': 0,
+                'total_customers': 0,
+                'today_revenue': 0,
+                'today_orders': 0,
+                'yesterday_revenue': 0,
+                'month_revenue': 0,
+                'month_orders': 0,
+                'last_month_revenue': 0,
+                'today_growth_pct': 0,
+                'month_growth_pct': 0,
+                'db_mode': 'offline',
+            },
+            DB_CONNECTED=False
+        )
+
+# ============================================================
+# POS ROUTE
+# ============================================================
+
+@admin_bp.route('/admin/pos')
+def admin_pos():
+    if not session.get('admin_logged_in'):
+        flash('Please login first', 'danger')
+        return redirect(url_for('admin.user_login'))
+
+    all_products = load_products()
+    for product in all_products:
+        if 'price' not in product or product['price'] is None:
+            product['price'] = 0
+        if 'stock' not in product or product['stock'] is None:
+            product['stock'] = 0
+        if 'image' not in product:
+            product['image'] = ''
+        if 'name' not in product:
+            product['name'] = 'Product'
+        if 'id' not in product:
+            product['id'] = str(uuid.uuid4())
+
+    customers = []
+    try:
+        response = requests.get(
+            f"{Config.SUPABASE_URL}/rest/v1/customers",
+            headers=Config.SUPABASE_HEADERS,
+            timeout=10,
+        )
+        if response.status_code == 200:
+            customers_from_db = response.json()
+            for c in customers_from_db:
+                customers.append({
+                    'name': c.get('name', ''),
+                    'email': c.get('email', ''),
+                    'phone': c.get('phone', ''),
+                    'orders': 0,
+                    'total_spent': 0
+                })
+    except Exception as e:
+        print(f"⚠️ Error loading customers: {e}")
+
+    customers.sort(key=lambda x: x['name'])
+
+    return render_template('pos.html',
+        products=all_products,
+        customers=customers,
+        DB_CONNECTED=True
+    )
+
+
+# ============================================================
+# POS ORDER ROUTE
+# ============================================================
+
+@admin_bp.route('/admin/pos/place-order', methods=['POST'])
+def admin_pos_place_order():
+    if not session.get('admin_logged_in'):
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
+    try:
+        data = request.get_json()
+        if not data or not data.get('items'):
+            return jsonify({'success': False, 'message': 'No items in order'}), 400
+
+        user = session.get('user', {})
+        user_id = user.get('id', 'unknown')
+        user_name = user.get('name', 'Unknown User')
+        user_role = user.get('role', 'user')
+
+        order_id = f'POS-{uuid.uuid4().hex[:8].upper()}'
+
+        items = data.get('items', [])
+        subtotal = data.get('subtotal', 0)
+        shipping = data.get('shipping', 0)
+        total = subtotal + shipping
+
+        customer_name = data.get('customer_name', 'Walk-in Customer')
+        customer_email = data.get('customer_email', 'walkin@example.com')
+        customer_phone = data.get('customer_phone', 'N/A')
+        customer_address = data.get('customer_address', 'In-store purchase')
+
+        order_data = {
+            'order_id': order_id,
+            'items': items,
+            'subtotal': subtotal,
+            'shipping': shipping,
+            'total': total,
+            'status': 'confirmed',
+            'source': 'pos',
+            'created_at': datetime.utcnow().isoformat(),
+            'customer_name': customer_name,
+            'customer_email': customer_email,
+            'customer_phone': customer_phone,
+            'customer_address': customer_address,
+            'customer': {
+                'name': customer_name,
+                'email': customer_email,
+                'phone': customer_phone,
+                'address': customer_address,
+            },
+            'user_id': str(user_id),
+            'user_name': user_name,
+            'user_role': user_role,
+            'staff_name': user_name
+        }
+
+        print(f"📦 Order ID: {order_id}")
+        print(f"👤 User: {user_name}")
+        print(f"💰 Total: KSh {total}")
+
+        # Check stock
+        products_supabase = load_products()
+        product_lookup = {str(p.get('id')): p for p in products_supabase}
+
+        for item in items:
+            product_id = str(item.get('product_id'))
+            quantity = item.get('quantity', 1)
+            product = product_lookup.get(product_id)
+
+            if product:
+                current_stock = product.get('stock', 0)
+                if current_stock < quantity:
+                    return jsonify({
+                        'success': False,
+                        'message': f'Not enough stock for {product.get("name", "Product")}. Available: {current_stock}'
+                    }), 400
+
+        # Update stock
+        for item in items:
+            product_id = str(item.get('product_id'))
+            quantity = item.get('quantity', 1)
+            product = product_lookup.get(product_id)
+
+            if product:
+                current_stock = product.get('stock', 0)
+                new_stock = max(0, current_stock - quantity)
+                requests.patch(
+                    f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
+                    headers=Config.SUPABASE_HEADERS,
+                    json={'stock': new_stock},
+                    timeout=10
+                )
+                print(f"✅ Stock updated: {product_id} → {new_stock}")
+
+        # Add cost price
+        items_with_cost = []
+        for item in items:
+            product_id = str(item.get('product_id'))
+            product = product_lookup.get(product_id)
+            cost_price = product.get('cost_price', 0) if product else 0
+            item_with_cost = item.copy()
+            item_with_cost['cost_price'] = cost_price
+            items_with_cost.append(item_with_cost)
+        order_data['items'] = items_with_cost
+
+        # Save to Supabase
+        response = requests.post(
+            f"{Config.SUPABASE_URL}/rest/v1/orders",
+            headers=Config.SUPABASE_HEADERS,
+            json=order_data,
+            timeout=15
+        )
+
+        if response.status_code in [200, 201]:
+            print(f"✅ Order saved to Supabase: {order_id}")
+
+            import utils.data
+            utils.data.orders_cache = []
+
+            return jsonify({
+                'success': True,
+                'order_id': order_id,
+                'order': order_data,
+                'synced': True,
+                'message': f'✅ Order #{order_id} placed! Total: KSh {total:,.0f}',
+                'total': total
+            })
+        else:
+            print(f"❌ Supabase error: {response.status_code} - {response.text}")
+            return jsonify({
+                'success': False,
+                'message': f'Database error: {response.status_code}',
+                'supabase_error': response.text[:500]
+            }), 500
+
+    except Exception as exc:
+        print(f'❌ POS Order error: {exc}')
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(exc)}), 500
+
+
+# ============================================================
+# SYNC ORDER FROM INDEXEDDB TO SUPABASE
+# ============================================================
+
+@admin_bp.route('/admin/api/sync-order', methods=['POST'])
+def api_sync_order():
+    if not session.get('admin_logged_in'):
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
+    try:
+        data = request.get_json()
+        if not data or not data.get('order_id'):
+            return jsonify({'success': False, 'message': 'No order data provided'}), 400
+
+        order_id = data.get('order_id')
+        print(f"🔄 Syncing order from IndexedDB: {order_id}")
+
+        # Check if order already exists
+        check_response = requests.get(
+            f"{Config.SUPABASE_URL}/rest/v1/orders?order_id=eq.{order_id}",
+            headers=Config.SUPABASE_HEADERS,
+            timeout=10
+        )
+
+        if check_response.status_code == 200 and check_response.json():
+            return jsonify({'success': True, 'message': 'Order already exists'})
+
+        # Prepare order for Supabase
+        order_data = {
+            'order_id': data.get('order_id'),
+            'items': data.get('items', []),
+            'subtotal': float(data.get('subtotal', 0)),
+            'shipping': float(data.get('shipping', 0)),
+            'total': float(data.get('total', 0)),
+            'status': data.get('status', 'confirmed'),
+            'source': data.get('source', 'pos'),
+            'created_at': data.get('created_at', datetime.utcnow().isoformat()),
+            'customer_name': data.get('customer_name', 'Walk-in Customer'),
+            'customer_email': data.get('customer_email', 'walkin@example.com'),
+            'customer_phone': data.get('customer_phone', 'N/A'),
+            'customer_address': data.get('customer_address', 'In-store purchase'),
+            'customer': data.get('customer', {
+                'name': data.get('customer_name', 'Walk-in Customer'),
+                'email': data.get('customer_email', 'walkin@example.com'),
+                'phone': data.get('customer_phone', 'N/A'),
+                'address': data.get('customer_address', 'In-store purchase')
+            }),
+            'user_id': data.get('user_id', 'unknown'),
+            'user_name': data.get('user_name', 'Unknown User'),
+            'user_role': data.get('user_role', 'user'),
+            'staff_name': data.get('staff_name', data.get('user_name', 'Unknown User'))
+        }
+
+        # Ensure items is a list
+        if not isinstance(order_data['items'], list):
+            order_data['items'] = []
+
+        # Ensure each item has required fields
+        for item in order_data['items']:
+            if not isinstance(item, dict):
+                continue
+            if 'product_id' not in item:
+                item['product_id'] = str(uuid.uuid4())
+            if 'quantity' not in item:
+                item['quantity'] = 1
+            if 'price' not in item:
+                item['price'] = 0
+            if 'name' not in item:
+                item['name'] = 'Unknown Product'
+            if 'total' not in item:
+                item['total'] = float(item.get('price', 0)) * float(item.get('quantity', 1))
+
+        # Save to Supabase
+        response = requests.post(
+            f"{Config.SUPABASE_URL}/rest/v1/orders",
+            headers=Config.SUPABASE_HEADERS,
+            json=order_data,
+            timeout=15
+        )
+
+        if response.status_code in [200, 201]:
+            print(f"✅ Order synced to Supabase: {order_id}")
+            import utils.data
+            utils.data.orders_cache = []
+            return jsonify({'success': True, 'message': 'Order synced successfully'})
+        else:
+            print(f"❌ Sync failed: {response.status_code} - {response.text[:200]}")
+            return jsonify({
+                'success': False,
+                'message': f'Sync failed: {response.status_code}',
+                'supabase_error': response.text[:500]
+            }), 500
+
+    except Exception as e:
+        print(f'❌ Sync order error: {e}')
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+# ============================================================
+# SYNC QUEUED ORDERS
+# ============================================================
+
+@admin_bp.route('/admin/api/sync-queue', methods=['POST'])
+def api_sync_queue():
+    try:
+        # Check Supabase availability
+        try:
+            response = requests.get(
+                f"{Config.SUPABASE_URL}/rest/v1/products?limit=1",
+                headers=Config.SUPABASE_HEADERS,
+                timeout=5
+            )
+            if response.status_code not in [200, 401, 403]:
+                return jsonify({
+                    'success': True,
+                    'synced': 0,
+                    'failed': 0,
+                    'offline': True,
+                    'message': 'Supabase offline - orders will sync when online'
+                }), 200
+        except:
+            return jsonify({
+                'success': True,
+                'synced': 0,
+                'failed': 0,
+                'offline': True,
+                'message': 'Supabase offline - orders will sync when online'
+            }), 200
+
+        data = request.get_json()
+        if not data or not data.get('orders'):
+            return jsonify({
+                'success': True,
+                'synced': 0,
+                'failed': 0,
+                'message': 'No orders provided to sync'
+            })
+
+        orders_to_sync = data.get('orders', [])
+
+        print(f"🔄 Received {len(orders_to_sync)} orders to sync from IndexedDB")
+
+        synced = 0
+        failed = 0
+
+        for order in orders_to_sync:
+            try:
+                order_id = order.get('order_id', f'OFF-{uuid.uuid4().hex[:8].upper()}')
+
+                # Check if order already exists
+                check_response = requests.get(
+                    f"{Config.SUPABASE_URL}/rest/v1/orders?order_id=eq.{order_id}",
+                    headers=Config.SUPABASE_HEADERS,
+                    timeout=10
+                )
+
+                if check_response.status_code == 200 and check_response.json():
+                    print(f"⏭️ Order {order_id} already exists, skipping")
+                    synced += 1
+                    continue
+
+                order_data = {
+                    'order_id': order_id,
+                    'items': order.get('items', []),
+                    'subtotal': float(order.get('subtotal', 0)),
+                    'shipping': float(order.get('shipping', 0)),
+                    'total': float(order.get('total', 0)),
+                    'status': order.get('status', 'confirmed'),
+                    'source': order.get('source', 'pos'),
+                    'created_at': order.get('created_at', datetime.utcnow().isoformat()),
+                    'customer_name': order.get('customer_name', 'Walk-in Customer'),
+                    'customer_email': order.get('customer_email', 'walkin@example.com'),
+                    'customer_phone': order.get('customer_phone', 'N/A'),
+                    'customer_address': order.get('customer_address', 'In-store purchase'),
+                    'customer': order.get('customer', {
+                        'name': order.get('customer_name', 'Walk-in Customer'),
+                        'email': order.get('customer_email', 'walkin@example.com'),
+                        'phone': order.get('customer_phone', 'N/A'),
+                        'address': order.get('customer_address', 'In-store purchase')
+                    }),
+                    'user_id': order.get('user_id', 'unknown'),
+                    'user_name': order.get('user_name', 'Unknown User'),
+                    'user_role': order.get('user_role', 'user'),
+                    'staff_name': order.get('staff_name', order.get('user_name', 'Unknown User'))
+                }
+
+                if not isinstance(order_data['items'], list):
+                    order_data['items'] = []
+
+                for item in order_data['items']:
+                    if not isinstance(item, dict):
+                        continue
+                    if 'product_id' not in item:
+                        item['product_id'] = str(uuid.uuid4())
+                    if 'quantity' not in item:
+                        item['quantity'] = 1
+                    if 'price' not in item:
+                        item['price'] = 0
+                    if 'name' not in item:
+                        item['name'] = 'Unknown Product'
+                    if 'total' not in item:
+                        item['total'] = float(item.get('price', 0)) * float(item.get('quantity', 1))
+
+                response = requests.post(
+                    f"{Config.SUPABASE_URL}/rest/v1/orders",
+                    headers=Config.SUPABASE_HEADERS,
+                    json=order_data,
+                    timeout=15
+                )
+
+                if response.status_code in [200, 201]:
+                    print(f"✅ Synced: {order_id}")
+                    synced += 1
+                else:
+                    print(f"❌ Failed to sync: {order_id} - {response.status_code}")
+                    failed += 1
+
+            except Exception as e:
+                failed += 1
+                print(f"❌ Sync error for {order.get('order_id', 'unknown')}: {e}")
+
+        if synced > 0:
+            import utils.data
+            utils.data.orders_cache = []
+
+        return jsonify({
+            'success': True,
+            'synced': synced,
+            'failed': failed,
+            'message': f"Synced {synced} orders, {failed} failed"
+        })
+
+    except Exception as e:
+        print(f"❌ Sync queue error: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================
+# UNSYNCED ORDERS COUNT
+# ============================================================
+
+@admin_bp.route('/admin/api/unsynced-count', methods=['GET'])
+def api_unsynced_count():
+    try:
+        return jsonify({
+            'success': True,
+            'count': 0,
+            'orders': [],
+            'message': 'Check IndexedDB for unsynced orders'
+        })
+    except Exception as e:
+        print(f"❌ Unsynced count error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================
+# GET OFFLINE ORDERS
+# ============================================================
+
+@admin_bp.route('/admin/api/offline-orders', methods=['GET'])
+def api_offline_orders():
+    try:
+        return jsonify({
+            'success': True,
+            'message': 'Send offline orders via POST to /admin/api/sync-queue'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================
+# USER SALES STATS
+# ============================================================
+
+@admin_bp.route('/admin/api/user-stats', methods=['GET'])
+@login_required
+def api_user_stats():
+    try:
+        user = session.get('user', {})
+        user_id = user.get('id', 'unknown')
+        user_name = user.get('name', 'Unknown User')
+
+        all_orders = load_orders()
+
+        user_orders = []
+        for order in all_orders:
+            order_user_id = order.get('user_id', '')
+            order_user_name = order.get('user_name', '')
+            order_staff_name = order.get('staff_name', '')
+
+            if (str(order_user_id) == str(user_id) or
+                order_user_name == user_name or
+                order_staff_name == user_name):
+                user_orders.append(order)
+
+        today = datetime.utcnow().date()
+        today_revenue = 0
+        today_orders = 0
+        total_revenue = 0
+
+        for order in user_orders:
+            if order.get('status') == 'cancelled':
+                continue
+            total_revenue += order.get('total', 0)
+
+            created_at = order.get('created_at', '')
+            if created_at:
+                try:
+                    if isinstance(created_at, str):
+                        if 'T' in created_at:
+                            order_date = datetime.fromisoformat(created_at.replace('Z', '').replace('+00:00', '')).date()
+                        else:
+                            order_date = datetime.strptime(created_at[:10], '%Y-%m-%d').date()
+                    elif isinstance(created_at, datetime):
+                        order_date = created_at.date()
+                    else:
+                        continue
+
+                    if order_date == today:
+                        today_revenue += order.get('total', 0)
+                        today_orders += 1
+                except:
+                    pass
+
+        return jsonify({
+            'success': True,
+            'user': {
+                'id': user_id,
+                'name': user_name
+            },
+            'today_revenue': today_revenue,
+            'today_orders': today_orders,
+            'total_revenue': total_revenue,
+            'total_orders': len(user_orders)
+        })
+    except Exception as e:
+        print(f"❌ User stats error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================
+# API ROUTES
+# ============================================================
+
+@admin_bp.route('/admin/api/analytics')
+def admin_api_analytics():
+    if not session.get('admin_logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    orders = load_orders()
+    analytics = calculate_analytics_from_orders(orders)
+    return jsonify(analytics)
+
+
+@admin_bp.route('/admin/api/revenue')
+def admin_api_revenue():
+    if not session.get('admin_logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        orders = load_orders()
+
+        now = datetime.utcnow()
+        today = now.date()
+        first_day_this_month = today.replace(day=1)
+
+        if today.month == 1:
+            last_month_year = today.year - 1
+            last_month_month = 12
+        else:
+            last_month_year = today.year
+            last_month_month = today.month - 1
+
+        first_day_last_month = datetime(last_month_year, last_month_month, 1).date()
+        if today.month == 1:
+            last_day_last_month = datetime(last_month_year, 12, 31).date()
+        else:
+            last_day_last_month = datetime(today.year, today.month, 1).date() - timedelta(days=1)
+
+        today_revenue = 0
+        today_orders = 0
+        yesterday_revenue = 0
+        month_revenue = 0
+        month_orders = 0
+        last_month_revenue = 0
+
+        for order in orders:
+            total = order.get('total', 0)
+            if isinstance(total, str):
+                try:
+                    total = float(total.replace(',', ''))
+                except:
+                    total = 0
+            total = float(total or 0)
+
+            if order.get('status') == 'cancelled':
+                continue
+
+            created_at = order.get('created_at', '')
+            if not created_at:
+                continue
+
+            try:
+                if isinstance(created_at, datetime):
+                    order_date = created_at.date()
+                elif isinstance(created_at, str):
+                    if 'T' in created_at:
+                        clean = created_at.replace('Z', '').replace('+00:00', '')
+                        if '.' in clean:
+                            order_date = datetime.fromisoformat(clean).date()
+                        else:
+                            order_date = datetime.strptime(clean[:10], '%Y-%m-%d').date()
+                    elif ' ' in created_at:
+                        order_date = datetime.strptime(created_at[:10], '%Y-%m-%d').date()
+                    else:
+                        order_date = datetime.strptime(created_at[:10], '%Y-%m-%d').date()
+                else:
+                    continue
+            except Exception as e:
+                print(f"Date parse error: {e}")
+                continue
+
+            if order_date == today:
+                today_revenue += total
+                today_orders += 1
+
+            if order_date == today - timedelta(days=1):
+                yesterday_revenue += total
+
+            if order_date >= first_day_this_month:
+                month_revenue += total
+                month_orders += 1
+
+            if first_day_last_month <= order_date <= last_day_last_month:
+                last_month_revenue += total
+
+        if yesterday_revenue > 0:
+            today_growth = round(((today_revenue - yesterday_revenue) / yesterday_revenue) * 100, 1)
+        else:
+            today_growth = 100.0 if today_revenue > 0 else 0
+
+        if last_month_revenue > 0:
+            month_growth = round(((month_revenue - last_month_revenue) / last_month_revenue) * 100, 1)
+        else:
+            month_growth = 100.0 if month_revenue > 0 else 0
+
+        total_revenue = sum(order.get('total', 0) for order in orders if order.get('status') != 'cancelled')
+
+        return jsonify({
+            "total_revenue": total_revenue,
+            "total_cost": 0,
+            "total_profit": 0,
+            "total_orders": len(orders),
+            "total_items_sold": 0,
+            "today_revenue": today_revenue,
+            "today_orders": today_orders,
+            "yesterday_revenue": yesterday_revenue,
+            "month_revenue": month_revenue,
+            "month_orders": month_orders,
+            "last_month_revenue": last_month_revenue,
+            "today_growth_pct": today_growth,
+            "month_growth_pct": month_growth
+        })
+
+    except Exception as exc:
+        print(f'❌ Revenue API error: {exc}')
+        traceback.print_exc()
+        return jsonify({"error": str(exc)}), 500
+
+
+# ============================================================
+# CALCULATE ANALYTICS
+# ============================================================
+
+def calculate_analytics_from_orders(orders):
+    if not orders:
+        return {
+            'total_revenue': 0,
+            'total_cost': 0,
+            'total_profit': 0,
+            'total_orders': 0,
+            'total_items_sold': 0,
+            'pos_orders_count': 0,
+            'web_orders_count': 0,
+            'product_sales': {},
+            'category_sales': {},
+            'monthly_data': {}
+        }
+
+    products = load_products()
+    product_lookup = {str(p.get('id')): p for p in products if p and p.get('id')}
+
+    total_revenue = 0
+    total_cost = 0
+    total_profit = 0
+    total_items_sold = 0
+    pos_orders_count = 0
+    web_orders_count = 0
+    product_sales = {}
+    category_sales = {}
+    monthly_data = {}
+
+    for order in orders:
+        if order.get('status') == 'cancelled':
+            continue
+
+        if order.get('source') == 'pos':
+            pos_orders_count += 1
+        else:
+            web_orders_count += 1
+
+        created_at = order.get('created_at', '')
+        month_key = 'Unknown'
+        if created_at:
+            try:
+                if isinstance(created_at, str):
+                    if 'T' in created_at:
+                        clean = created_at.replace('Z', '').replace('+00:00', '')
+                        if '.' in clean:
+                            dt = datetime.fromisoformat(clean)
+                        else:
+                            dt = datetime.strptime(clean[:10], '%Y-%m-%d')
+                    elif ' ' in created_at:
+                        dt = datetime.strptime(created_at[:10], '%Y-%m-%d')
+                    else:
+                        dt = datetime.strptime(created_at[:10], '%Y-%m-%d')
+                elif isinstance(created_at, datetime):
+                    dt = created_at
+                else:
+                    dt = datetime.utcnow()
+                month_key = dt.strftime('%b %Y')
+            except:
+                month_key = 'Unknown'
+
+        if month_key not in monthly_data:
+            monthly_data[month_key] = {
+                'orders': 0,
+                'items': 0,
+                'revenue': 0,
+                'cost': 0,
+                'profit': 0,
+                'margin': 0
             }
+        monthly_data[month_key]['orders'] += 1
+
+        order_total = 0
+        order_cost = 0
+        order_items = 0
+
+        for item in order.get('items', []):
+            quantity = item.get('quantity', 1)
+            price = float(item.get('price', 0) or 0)
+            total_items_sold += quantity
+            order_items += quantity
+
+            item_total = price * quantity
+            order_total += item_total
+            total_revenue += item_total
+
+            cost_price = 0
+
+            if 'cost_price' in item:
+                try:
+                    cost_price = float(item.get('cost_price', 0) or 0)
+                except (ValueError, TypeError):
+                    cost_price = 0
+
+            if cost_price == 0:
+                product_id = item.get('product_id', '')
+                if product_id:
+                    product = product_lookup.get(product_id, {})
+                    if product:
+                        cost_price = float(product.get('cost_price', 0) or 0)
+
+            if cost_price == 0 and price > 0:
+                cost_price = price * 0.7
+
+            item_cost = cost_price * quantity
+            order_cost += item_cost
+            total_cost += item_cost
+            total_profit += (item_total - item_cost)
+
+            product_id = item.get('product_id', '')
+            category = 'Uncategorized'
+            if product_id:
+                product = product_lookup.get(product_id, {})
+                if product and product.get('category'):
+                    category = product.get('category')
+
+            product_name = item.get('name', 'Unknown Product')
+            if product_name not in product_sales:
+                product_sales[product_name] = {
+                    'quantity': 0,
+                    'revenue': 0,
+                    'cost': 0,
+                    'profit': 0,
+                    'margin': 0
+                }
+            product_sales[product_name]['quantity'] += quantity
+            product_sales[product_name]['revenue'] += item_total
+            product_sales[product_name]['cost'] += item_cost
+            product_sales[product_name]['profit'] += (item_total - item_cost)
+
+            if category not in category_sales:
+                category_sales[category] = {
+                    'quantity': 0,
+                    'revenue': 0,
+                    'cost': 0,
+                    'profit': 0,
+                    'margin': 0
+                }
+            category_sales[category]['quantity'] += quantity
+            category_sales[category]['revenue'] += item_total
+            category_sales[category]['cost'] += item_cost
+            category_sales[category]['profit'] += (item_total - item_cost)
+
+        monthly_data[month_key]['items'] += order_items
+        monthly_data[month_key]['revenue'] += order_total
+        monthly_data[month_key]['cost'] += order_cost
+        monthly_data[month_key]['profit'] += (order_total - order_cost)
+
+    for product in product_sales.values():
+        if product['revenue'] > 0:
+            product['margin'] = round((product['profit'] / product['revenue']) * 100, 1)
+
+    for category in category_sales.values():
+        if category['revenue'] > 0:
+            category['margin'] = round((category['profit'] / category['revenue']) * 100, 1)
+
+    for month in monthly_data.values():
+        if month['revenue'] > 0:
+            month['margin'] = round((month['profit'] / month['revenue']) * 100, 1)
+
+    sorted_products = sorted(
+        product_sales.items(),
+        key=lambda x: x[1]['profit'],
+        reverse=True
+    )
+    product_sales = dict(sorted_products)
+
+    return {
+        'total_revenue': total_revenue,
+        'total_cost': total_cost,
+        'total_profit': total_profit,
+        'total_orders': len(orders),
+        'total_items_sold': total_items_sold,
+        'pos_orders_count': pos_orders_count,
+        'web_orders_count': web_orders_count,
+        'product_sales': product_sales,
+        'category_sales': category_sales,
+        'monthly_data': monthly_data
+    }
+
+
+@admin_bp.route('/api/products/<product_id>', methods=['GET'])
+def api_get_product(product_id):
+    if not session.get('admin_logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        products = load_products()
+        for product in products:
+            if str(product.get('id')) == str(product_id):
+                return jsonify(product)
+        return jsonify({'error': 'Product not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/orders/<order_id>', methods=['GET'])
+def api_get_order(order_id):
+    if not session.get('admin_logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        orders = load_orders()
+
+        for order in orders:
+            if str(order.get('order_id')) == str(order_id):
+                customer = order.get('customer', {})
+                if isinstance(customer, str):
+                    try:
+                        customer = json.loads(customer) if customer else {}
+                    except:
+                        customer = {}
+                if isinstance(customer, list):
+                    customer = customer[0] if customer else {}
+                if not isinstance(customer, dict):
+                    customer = {}
+
+                items = order.get('items', [])
+                if isinstance(items, str):
+                    try:
+                        items = json.loads(items)
+                    except:
+                        items = []
+                if not isinstance(items, list):
+                    items = []
+
+                formatted_items = []
+                for item in items:
+                    if isinstance(item, dict):
+                        formatted_items.append({
+                            'name': item.get('name', 'Product'),
+                            'quantity': item.get('quantity', 1),
+                            'price': item.get('price', 0),
+                            'total': item.get('total', item.get('price', 0) * item.get('quantity', 1))
+                        })
+
+                return jsonify({
+                    'order_id': order.get('order_id', 'N/A'),
+                    'customer': {
+                        'name': customer.get('name', order.get('customer_name', 'Customer')),
+                        'email': customer.get('email', order.get('customer_email', 'N/A')),
+                        'phone': customer.get('phone', order.get('customer_phone', 'N/A')),
+                        'address': customer.get('address', order.get('customer_address', 'N/A')),
+                    },
+                    'items': formatted_items,
+                    'subtotal': order.get('subtotal', 0),
+                    'shipping': order.get('shipping', 0),
+                    'total': order.get('total', 0),
+                    'status': order.get('status', 'pending'),
+                    'created_at': order.get('created_at', ''),
+                    'source': order.get('source', 'web'),
+                })
+        return jsonify({'error': 'Order not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/admin/upload-image', methods=['POST'])
+def upload_image():
+    if not session.get('admin_logged_in'):
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    if 'image' not in request.files:
+        return jsonify({'success': False, 'message': 'No file uploaded'}), 400
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({'success': False, 'message': 'No file selected'}), 400
+    if file and allowed_file(file.filename):
+        filename = f"{uuid.uuid4().hex[:8]}_{secure_filename(file.filename)}"
+        os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
+        filepath = os.path.join(Config.UPLOAD_FOLDER, filename)
+        file.save(filepath)
+        image_url = f"/static/uploads/{filename}"
+        return jsonify({'success': True, 'url': image_url, 'message': 'Image uploaded successfully!'})
+    return jsonify({'success': False, 'message': 'Invalid file type'}), 400
+
+
+@admin_bp.route('/admin/products', methods=['POST'])
+def admin_products():
+    if not session.get('admin_logged_in'):
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
+    try:
+        if request.is_json:
+            data = request.get_json()
+        else:
+            data = {
+                'id': request.form.get('id', '').strip(),
+                'name': request.form.get('name', '').strip(),
+                'price': float(request.form.get('price', 0) or 0),
+                'cost_price': float(request.form.get('cost_price', 0) or 0),
+                'image': request.form.get('image', '').strip(),
+                'category': request.form.get('category', '').strip(),
+                'description': request.form.get('description', '').strip(),
+                'rating': float(request.form.get('rating', 4.0) or 4.0),
+                'reviews': int(request.form.get('reviews', 0) or 0),
+                'badge': request.form.get('badge', '').strip(),
+                'stock': int(request.form.get('stock', 0) or 0),
+                'original_price': float(request.form.get('original_price', 0) or 0) or None,
+                'specs': [s.strip() for s in request.form.get('specs', '').split(',') if s.strip()]
+            }
+
+        product_id = data.get('id', '').strip()
+        if not product_id:
+            return jsonify({'success': False, 'message': 'Product ID is required'}), 400
+
+        existing_products = load_products()
+        product_exists = False
+        for p in existing_products:
+            if p.get('id') == product_id:
+                product_exists = True
+                break
+
+        if product_exists:
+            response = requests.patch(
+                f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
+                headers=Config.SUPABASE_HEADERS,
+                json=data,
+                timeout=10,
+            )
+            if response.status_code in [200, 204]:
+                import utils.data
+                utils.data.products_cache = []
+                return jsonify({'success': True, 'message': 'Product updated successfully!', 'product': data})
+            else:
+                return jsonify({'success': False, 'message': f'Error updating product: {response.status_code}'}), 500
+
+        response = requests.post(
+            f"{Config.SUPABASE_URL}/rest/v1/products",
+            headers=Config.SUPABASE_HEADERS,
+            json=data,
+            timeout=10,
+        )
+
+        if response.status_code in [200, 201]:
+            import utils.data
+            utils.data.products_cache = []
+            return jsonify({'success': True, 'message': 'Product saved successfully!', 'product': data})
+        else:
+            return jsonify({'success': False, 'message': f'Error saving product: {response.status_code}'}), 500
+
+    except Exception as exc:
+        print(f'Product save error: {exc}')
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(exc)}), 500
+
+
+@admin_bp.route('/admin/products/<product_id>', methods=['DELETE'])
+def admin_delete_product(product_id):
+    if not session.get('admin_logged_in'):
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    try:
+        response = requests.delete(
+            f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
+            headers=Config.SUPABASE_HEADERS,
+            timeout=5,
+        )
+        if response.status_code in [200, 204]:
+            import utils.data
+            utils.data.products_cache = []
+            return jsonify({'success': True})
+        return jsonify({'success': False, 'message': 'Failed to delete'})
+    except Exception as exc:
+        return jsonify({'success': False, 'message': str(exc)})
+
+
+@admin_bp.route('/admin/orders/<order_id>/status', methods=['POST'])
+def admin_update_order_status(order_id):
+    if not session.get('admin_logged_in'):
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    try:
+        new_status = request.json.get('status')
+        if not new_status:
+            return jsonify({'success': False, 'message': 'Status required'}), 400
+        response = requests.patch(
+            f"{Config.SUPABASE_URL}/rest/v1/orders?order_id=eq.{order_id}",
+            headers=Config.SUPABASE_HEADERS,
+            json={'status': new_status},
+            timeout=5,
+        )
+        if response.status_code in [200, 204]:
+            return jsonify({'success': True})
+        return jsonify({'success': False, 'message': 'Failed to update status'})
+    except Exception as exc:
+        return jsonify({'success': False, 'message': str(exc)}), 500
+
+
+@admin_bp.route('/api/customers', methods=['GET'])
+def api_customers():
+    if not session.get('admin_logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        response = requests.get(
+            f"{Config.SUPABASE_URL}/rest/v1/customers",
+            headers=Config.SUPABASE_HEADERS,
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+            customers_from_db = response.json()
+            if customers_from_db:
+                result = []
+                for c in customers_from_db:
+                    result.append({
+                        'name': c.get('name', ''),
+                        'email': c.get('email', 'N/A'),
+                        'phone': c.get('phone', 'N/A'),
+                        'orders': 0,
+                        'total_spent': 0
+                    })
+                return jsonify(result)
+
+        orders = load_orders()
+        customer_dict = {}
+
+        for order in orders:
+            name = None
+
+            if order.get('customer_name'):
+                name = order.get('customer_name')
+
+            if not name:
+                customer = order.get('customer', {})
+                if isinstance(customer, dict):
+                    name = customer.get('name')
+                elif isinstance(customer, str):
+                    try:
+                        customer_obj = json.loads(customer)
+                        name = customer_obj.get('name')
+                    except:
+                        pass
+
+            if not name or name in ['Walk-in Customer', 'Web Customer', 'Customer', '']:
+                continue
+
+            email = order.get('customer_email', 'N/A')
+            phone = order.get('customer_phone', 'N/A')
+
+            if name not in customer_dict:
+                customer_dict[name] = {
+                    'name': name,
+                    'email': email,
+                    'phone': phone,
+                    'orders': 0,
+                    'total_spent': 0
+                }
+            customer_dict[name]['orders'] += 1
+            customer_dict[name]['total_spent'] += order.get('total', 0)
+
+        return jsonify(list(customer_dict.values()))
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/admin/api/sales-stats', methods=['GET'])
+def api_sales_stats():
+    if not session.get('admin_logged_in'):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    try:
+        orders = load_orders()
+        products = load_products()
+        today = datetime.utcnow().date()
+
+        today_revenue = 0
+        today_orders = 0
+        today_returns = 0
+        today_return_amount = 0
+        all_customers = set()
+
+        for order in orders:
+            created_at = order.get('created_at', '')
+            if not created_at:
+                continue
+
+            try:
+                order_date = None
+                if isinstance(created_at, str):
+                    if 'T' in created_at:
+                        clean = created_at.replace('Z', '').replace('+00:00', '')
+                        if '.' in clean:
+                            order_date = datetime.fromisoformat(clean).date()
+                        else:
+                            order_date = datetime.strptime(clean[:10], '%Y-%m-%d').date()
+                    elif ' ' in created_at:
+                        order_date = datetime.strptime(created_at[:10], '%Y-%m-%d').date()
+                    else:
+                        order_date = datetime.strptime(created_at[:10], '%Y-%m-%d').date()
+                elif isinstance(created_at, datetime):
+                    order_date = created_at.date()
+                else:
+                    continue
+
+                customer = order.get('customer', {})
+                customer_name = None
+                if isinstance(customer, dict):
+                    customer_name = customer.get('name', '')
+                elif isinstance(customer, str):
+                    try:
+                        c = json.loads(customer)
+                        customer_name = c.get('name', '')
+                    except:
+                        pass
+
+                if customer_name and customer_name not in ['Walk-in Customer', 'Web Customer', '']:
+                    all_customers.add(customer_name)
+
+                if order_date == today:
+                    status = order.get('status', '')
+                    total = float(order.get('total', 0))
+
+                    if status == 'returned':
+                        today_returns += 1
+                        today_return_amount += abs(total)
+                        today_revenue += total
+                    elif status != 'cancelled':
+                        today_revenue += total
+                        today_orders += 1
+
+            except Exception as e:
+                print(f"Error processing order: {e}")
+                continue
+
+        total_products = len(products)
+
+        return jsonify({
+            'success': True,
+            'today_revenue': today_revenue,
+            'today_orders': today_orders,
+            'today_returns': today_returns,
+            'today_return_amount': today_return_amount,
+            'total_customers': len(all_customers),
+            'total_products': total_products
+        })
+    except Exception as e:
+        print(f"❌ Sales stats error: {e}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@admin_bp.route('/admin/api/process-return', methods=['POST'])
+def api_process_return():
+    if not session.get('admin_logged_in'):
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({'success': False, 'message': 'No data provided'}), 400
+
+        items_to_return = data.get('items', [])
+        refund_total = data.get('refund_total', 0)
+        customer_name = data.get('customer_name', 'Customer')
+        reason = data.get('reason', 'Customer return')
+
+        if not items_to_return:
+            return jsonify({'success': False, 'message': 'No items to return'}), 400
+
+        return_items = []
+        for item in items_to_return:
+            item_price = float(item.get('price', 0))
+            item_qty = int(item.get('quantity', 1))
+            return_items.append({
+                'product_id': str(item.get('id', '')),
+                'name': item.get('name', 'Product'),
+                'price': item_price,
+                'quantity': item_qty,
+                'total': item_price * item_qty,
+                'type': 'return'
+            })
+
+        return_order_id = f'RET-{uuid.uuid4().hex[:8].upper()}'
+
+        return_order_data = {
+            'order_id': return_order_id,
+            'items': return_items,
+            'subtotal': refund_total,
+            'shipping': 0,
+            'total': -refund_total,
+            'status': 'returned',
+            'source': 'pos',
+            'created_at': datetime.utcnow().isoformat(),
+            'customer': {
+                'name': customer_name,
+                'email': 'return@example.com',
+                'phone': 'N/A',
+                'address': 'Return'
+            },
+            'customer_name': customer_name,
+            'customer_email': 'return@example.com',
+            'customer_phone': 'N/A',
+            'customer_address': 'Return',
+            'return_reason': reason,
+            'return_amount': refund_total
         }
 
-        // Notification helper
-        function showNotification(message) {
-            const toast = document.createElement('div');
-            toast.className = 'alert alert-success position-fixed top-0 end-0 m-3';
-            toast.style.zIndex = '9999';
-            toast.textContent = message;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 3000);
-        }
+        # Restock products
+        for item in items_to_return:
+            product_id = str(item.get('id', ''))
+            quantity = int(item.get('quantity', 1))
+            if product_id:
+                try:
+                    products = load_products()
+                    for p in products:
+                        if str(p.get('id')) == product_id:
+                            current_stock = int(p.get('stock', 0))
+                            new_stock = current_stock + quantity
+                            requests.patch(
+                                f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
+                                headers=Config.SUPABASE_HEADERS,
+                                json={'stock': new_stock},
+                                timeout=10
+                            )
+                            break
+                except Exception as e:
+                    print(f"⚠️ Error restocking product {product_id}: {e}")
 
-        console.log('✅ POS sync functions loaded');
-    </script>
-    
-    <style>
-        * { font-family: 'Inter', sans-serif; margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #f0f2f5; color: #0f172a; min-height: 100vh; }
+        response = requests.post(
+            f"{Config.SUPABASE_URL}/rest/v1/orders",
+            headers=Config.SUPABASE_HEADERS,
+            json=return_order_data,
+            timeout=10,
+        )
 
-        .pos-header {
-            background: linear-gradient(135deg, #0f172a, #1e293b);
-            padding: 10px 24px;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 8px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-        }
-        .pos-header .brand {
-            font-weight: 800;
-            font-size: 1.2rem;
-            color: white;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        .pos-header .brand span { color: #34d399; }
-        .pos-header .brand .badge {
-            background: #34d399;
-            color: #0f172a;
-            font-size: 0.45rem;
-            padding: 2px 10px;
-            border-radius: 9999px;
-            font-weight: 700;
-            animation: pulse-badge 2s infinite;
-        }
-        .pos-header .brand .badge.offline {
-            background: #f59e0b;
-            color: #0f172a;
-        }
-        .pos-header .brand .user-tag {
-            font-size: 0.6rem;
-            color: #94a3b8;
-            margin-left: 8px;
-            border-left: 1px solid rgba(255,255,255,0.1);
-            padding-left: 8px;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .pos-header .brand .user-tag .role {
-            color: #4d5069;
-            font-size: 0.5rem;
-        }
-        @keyframes pulse-badge {
-            0%,100% { opacity: 1; }
-            50% { opacity: 0.6; }
-        }
-        .pos-header .header-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-        .pos-header .header-actions .time { color: #94a3b8; font-size: 0.8rem; }
-        .pos-header .header-actions .stat-label { color: #94a3b8; font-size: 0.7rem; }
-        .pos-header .header-actions .stat-value { color: white; font-weight: 700; font-size: 0.85rem; }
-        .pos-header .header-btn {
-            color: #94a3b8;
-            text-decoration: none;
-            font-size: 0.75rem;
-            padding: 5px 12px;
-            border-radius: 8px;
-            transition: all 0.2s;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.05);
-        }
-        .pos-header .header-btn:hover { background: rgba(255,255,255,0.1); color: white; }
-        .pos-header .header-btn.logout-btn { color: #f87171; }
-        .pos-header .header-btn.logout-btn:hover { background: rgba(239,68,68,0.15); color: #fca5a5; }
+        if response.status_code in [200, 201]:
+            import utils.data
+            utils.data.orders_cache = []
 
-        /* ===== SYNC STATUS ===== */
-        #syncStatus {
-            background: #dc2626;
-            color: white;
-            padding: 4px 14px;
-            border-radius: 9999px;
-            font-size: 0.6rem;
-            font-weight: 600;
-            display: none;
-            align-items: center;
-            gap: 6px;
-            cursor: pointer;
-            transition: all 0.3s;
-            border: none;
-            margin-left: 8px;
-            animation: pulse-badge 2s infinite;
-        }
-        #syncStatus:hover { transform: scale(1.05); opacity: 0.9; }
-        #syncStatus.synced { background: #059669; animation: none; }
+            return jsonify({
+                'success': True,
+                'order_id': return_order_id,
+                'message': f'Return processed! Refund: KSh {refund_total:,.2f}',
+                'refund_total': refund_total,
+                'revenue_deducted': refund_total
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': f'Failed to process return: {response.status_code}'
+            }), 500
 
-        .stats-bar {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-            gap: 10px;
-            padding: 12px 24px;
-            background: white;
-            border-bottom: 1px solid #e2e8f0;
-        }
-        .stat-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            padding: 6px 10px;
-            border-radius: 10px;
-        }
-        .stat-item:hover {
-            transform: translateY(-3px) scale(1.02);
-            background: #f8fafc;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.04);
-        }
-        .stat-item .icon {
-            width: 36px; height: 36px; border-radius: 10px;
-            display: flex; align-items: center; justify-content: center; font-size: 0.9rem;
-            transition: all 0.3s;
-        }
-        .stat-item:hover .icon { transform: scale(1.05); }
-        .stat-item .icon.green { background: #dcfce7; color: #059669; }
-        .stat-item .icon.blue { background: #dbeafe; color: #2563eb; }
-        .stat-item .icon.rose { background: #fce4ec; color: #dc2626; }
-        .stat-item .icon.purple { background: #f3e8ff; color: #7c3aed; }
-        .stat-item .icon.amber { background: #fef3c7; color: #d97706; }
-        .stat-item .icon.teal { background: #ccfbf1; color: #0d9488; }
-        .stat-item .info .label { font-size: 0.55rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
-        .stat-item .info .value { font-size: 1.1rem; font-weight: 700; color: #0f172a; }
+    except Exception as e:
+        print(f'❌ Return error: {e}')
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(e)}), 500
 
-        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes cardPop { 0% { opacity: 0; transform: scale(0.95) translateY(10px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
-        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-        @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
-        .animate-float { animation: float 3s ease-in-out infinite; }
 
-        .product-pos-card {
-            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            animation: cardPop 0.3s ease-out forwards;
-            background: white;
-            border-radius: 12px;
-            border: 1px solid #eef2f6;
-            padding: 10px;
-            position: relative;
-            overflow: hidden;
-        }
-        .product-pos-card::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: linear-gradient(90deg, #059669, #34d399, #059669);
-            background-size: 200% 100%;
-            animation: shimmer 2s linear infinite;
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-        .product-pos-card:hover::after { opacity: 1; }
-        .product-pos-card:active { transform: scale(0.96); }
-        .product-pos-card:hover {
-            transform: translateY(-6px) scale(1.01);
-            box-shadow: 0 16px 48px rgba(0,0,0,0.08);
-            border-color: #34d399;
-        }
-        .product-pos-card .stock-badge {
-            font-size: 0.5rem;
-            padding: 1px 6px;
-            border-radius: 9999px;
-            position: absolute;
-            top: 4px;
-            right: 4px;
-        }
-        .product-pos-card .stock-badge.low { background: #fce4ec; color: #dc2626; }
-        .product-pos-card .stock-badge.medium { background: #fef3c7; color: #d97706; }
-        .product-pos-card .stock-badge.high { background: #dcfce7; color: #059669; }
-        .product-pos-card .stock-badge.out { background: #f1f5f9; color: #94a3b8; }
-        .product-pos-card .price-tag { color: #059669; font-weight: 700; font-size: 0.8rem; }
-        .product-pos-card .stock-count {
-            font-size: 0.6rem;
-            color: #94a3b8;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 4px;
-            margin-top: 2px;
-        }
-        .product-pos-card .stock-count .number { font-weight: 700; font-size: 0.65rem; }
-        .product-pos-card .stock-count .number.low { color: #dc2626; }
-        .product-pos-card .stock-count .number.medium { color: #d97706; }
-        .product-pos-card .stock-count .number.high { color: #059669; }
-        .product-pos-card .add-btn {
-            background: linear-gradient(135deg, #059669, #047857);
-            color: white;
-            border: none;
-            padding: 4px 0;
-            border-radius: 9999px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            width: 100%;
-            margin-top: 4px;
-        }
-        .product-pos-card .add-btn:hover { transform: scale(1.05); box-shadow: 0 4px 16px rgba(5,150,105,0.3); }
-        .product-pos-card .add-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+# ============================================================
+# AJAX PAGINATION API ENDPOINTS
+# ============================================================
 
-        .pos-cart-item { animation: slideUp 0.3s ease; }
+@admin_bp.route('/admin/api/products', methods=['GET'])
+@admin_required
+def api_products_paginated():
+    """Get paginated products for AJAX"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
+        
+        all_products = load_products()
+        
+        total = len(all_products)
+        start = (page - 1) * per_page
+        end = start + per_page
+        products = all_products[start:end]
+        
+        return jsonify({
+            'success': True,
+            'products': products,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': (total + per_page - 1) // per_page,
+            'start': start + 1 if products else 0,
+            'end': min(end, total)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
 
-        .toast {
-            position: fixed;
-            bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #1e293b;
-            color: white;
-            padding: 12px 28px;
-            border-radius: 14px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-            z-index: 9999;
-            animation: slideUp 0.4s ease-out;
-            font-weight: 500;
-            font-size: 0.85rem;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.05);
-        }
-        .toast.success { background: linear-gradient(135deg, #065f46, #047857); }
-        .toast.error { background: linear-gradient(135deg, #991b1b, #dc2626); }
-        .toast.info { background: linear-gradient(135deg, #1e3a5f, #2563eb); }
-        .toast.warning { background: linear-gradient(135deg, #78350f, #d97706); }
-        .toast.hidden { display: none; }
+@admin_bp.route('/admin/api/orders', methods=['GET'])
+@admin_required
+def api_orders_paginated():
+    """Get paginated orders for AJAX"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
+        
+        all_orders = load_orders()
+        all_orders.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        
+        total = len(all_orders)
+        start = (page - 1) * per_page
+        end = start + per_page
+        orders = all_orders[start:end]
+        
+        return jsonify({
+            'success': True,
+            'orders': orders,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': (total + per_page - 1) // per_page,
+            'start': start + 1 if orders else 0,
+            'end': min(end, total)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            backdrop-filter: blur(8px);
-            z-index: 9999;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            animation: fadeIn 0.2s ease;
-        }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        .modal-overlay.hidden { display: none; }
-        .modal-content {
-            background: white;
-            border-radius: 16px;
-            max-width: 500px;
-            width: 100%;
-            padding: 28px;
-            position: relative;
-            animation: slideUp 0.3s ease-out;
-            box-shadow: 0 30px 80px rgba(0,0,0,0.15);
-            max-height: 90vh;
-            overflow-y: auto;
-        }
-        .close-btn {
-            position: absolute;
-            top: 12px;
-            right: 16px;
-            background: none;
-            border: none;
-            font-size: 1.2rem;
-            color: #94a3b8;
-            cursor: pointer;
-            padding: 4px 8px;
-            border-radius: 8px;
-            transition: all 0.2s;
-        }
-        .close-btn:hover { background: #f1f5f9; color: #0f172a; }
 
-        .form-input {
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
-            padding: 8px 12px;
-            width: 100%;
-            color: #0f172a;
-            transition: all 0.3s;
-            background: white;
-            font-size: 0.85rem;
-        }
-        .form-input:focus {
-            outline: none;
-            border-color: #059669;
-            box-shadow: 0 0 0 4px rgba(5,150,105,0.08);
-        }
-        .form-label {
-            font-size: 0.65rem;
-            font-weight: 600;
-            color: #475569;
-            display: block;
-            margin-bottom: 3px;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-        .required { color: #ef4444; }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #059669, #047857);
-            color: white;
-            padding: 10px 18px;
-            border-radius: 9999px;
-            font-weight: 700;
-            border: none;
-            cursor: pointer;
-            transition: all 0.3s;
-            width: 100%;
-            font-size: 0.85rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(5,150,105,0.25); }
-        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
-        .btn-outline {
-            border: 2px solid #e2e8f0;
-            color: #475569;
-            background: transparent;
-            padding: 8px 14px;
-            border-radius: 9999px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            width: 100%;
-            font-size: 0.8rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-        }
-        .btn-outline:hover { border-color: #059669; color: #059669; background: #ecfdf5; }
-
-        .btn-gradient {
-            background: linear-gradient(135deg, #059669, #047857);
-            color: white;
-            padding: 6px 14px;
-            border-radius: 9999px;
-            font-weight: 600;
-            font-size: 0.75rem;
-            border: none;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .btn-gradient:hover { transform: scale(1.05); box-shadow: 0 4px 12px rgba(5,150,105,0.3); }
-        .btn-gradient.amber { background: linear-gradient(135deg, #f59e0b, #d97706); }
-        .btn-gradient.rose { background: linear-gradient(135deg, #ef4444, #dc2626); }
-        .btn-gradient.indigo { background: linear-gradient(135deg, #4f46e5, #6366f1); }
-        .btn-gradient.sync { background: linear-gradient(135deg, #2563eb, #4f46e5); }
-
-        .glass-card {
-            background: white;
-            border-radius: 14px;
-            padding: 16px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.02);
-            border: 1px solid #eef2f6;
-            transition: all 0.3s;
-        }
-        .glass-card:hover { border-color: rgba(5,150,105,0.1); box-shadow: 0 8px 32px rgba(0,0,0,0.04); }
-
-        .category-pill {
-            display: inline-block;
-            padding: 3px 12px;
-            border-radius: 9999px;
-            font-size: 0.65rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            border: 2px solid #e2e8f0;
-            color: #64748b;
-            background: white;
-            white-space: nowrap;
-        }
-        .category-pill:hover { border-color: #059669; color: #059669; transform: translateY(-1px); }
-        .category-pill.active { background: #059669; color: white; border-color: #059669; box-shadow: 0 4px 12px rgba(5,150,105,0.2); }
-
-        .cart-item-price { color: #059669; font-weight: 700; font-size: 0.8rem; }
-        .search-hint {
-            text-align: center;
-            padding: 40px 20px;
-            color: #94a3b8;
-            background: white;
-            border-radius: 12px;
-            border: 2px dashed #e2e8f0;
-        }
-        .search-hint i { font-size: 2rem; display: block; margin-bottom: 8px; color: #cbd5e1; }
-        .search-hint .shortcuts { font-size: 0.6rem; color: #cbd5e1; margin-top: 6px; background: #f8fafc; padding: 6px 12px; border-radius: 8px; display: inline-block; }
-
-        .cart-summary-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 3px 0;
-            font-size: 0.8rem;
-        }
-        .cart-summary-row.total { border-top: 2px solid #059669; padding-top: 8px; margin-top: 4px; font-weight: 700; font-size: 0.95rem; }
-
-        .quick-actions {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr);
-            gap: 5px;
-            margin-bottom: 10px;
-        }
-        .quick-action-btn {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 6px 4px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            font-size: 0.55rem;
-            font-weight: 600;
-            color: #64748b;
-        }
-        .quick-action-btn:hover { background: #ecfdf5; border-color: #059669; color: #059669; transform: translateY(-2px); }
-        .quick-action-btn i { display: block; font-size: 0.9rem; margin-bottom: 2px; }
-        .quick-action-btn.sync-btn { background: #dbeafe; border-color: #2563eb; color: #2563eb; }
-        .quick-action-btn.sync-btn:hover { background: #2563eb; color: white; }
-
-        .held-orders-panel {
-            background: white;
-            border-radius: 10px;
-            border: 1px solid #e2e8f0;
-            padding: 10px;
-            margin-top: 8px;
-            max-height: 120px;
-            overflow-y: auto;
-        }
-        .held-order-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 4px 8px;
-            border-bottom: 1px solid #f1f5f9;
-            font-size: 0.7rem;
-        }
-        .held-order-item:last-child { border-bottom: none; }
-        .held-order-item .restore-btn {
-            color: #059669;
-            cursor: pointer;
-            font-size: 0.6rem;
-            padding: 2px 8px;
-            border-radius: 4px;
-            background: #ecfdf5;
-            border: none;
-            transition: all 0.2s;
-        }
-        .held-order-item .restore-btn:hover { background: #d1fae5; transform: scale(1.05); }
-
-        .discount-preset {
-            padding: 4px 10px;
-            border-radius: 9999px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            border: 1px solid #e2e8f0;
-            background: white;
-            color: #64748b;
-        }
-        .discount-preset:hover { border-color: #f59e0b; color: #d97706; background: #fef3c7; }
-
-        @media (max-width: 768px) {
-            .stats-bar { grid-template-columns: repeat(2, 1fr); padding: 10px 16px; }
-            .pos-header { padding: 8px 16px; }
-            .pos-header .brand { font-size: 1rem; }
-            .quick-actions { grid-template-columns: repeat(4, 1fr); }
-            .product-pos-card .stock-count { font-size: 0.5rem; }
-            .pos-header .brand .user-tag { font-size: 0.5rem; margin-left: 4px; padding-left: 4px; }
-            .pos-header .brand .user-tag .role { display: none; }
-            #syncStatus { font-size: 0.5rem; padding: 3px 10px; }
-        }
-        @media (max-width: 480px) {
-            .stats-bar { grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px 12px; }
-            .stat-item .icon { width: 28px; height: 28px; font-size: 0.7rem; }
-            .stat-item .info .value { font-size: 0.85rem; }
-            .glass-card { padding: 10px; }
-            .product-pos-card .stock-count { font-size: 0.45rem; }
-            .product-pos-card .stock-count .number { font-size: 0.5rem; }
-            .pos-header .brand .user-tag { display: none; }
-            .quick-actions { grid-template-columns: repeat(3, 1fr); }
-        }
-    </style>
-</head>
-<body>
-
-    <!-- ===== POS HEADER ===== -->
-    <header class="pos-header">
-        <div class="brand">
-            <i class="fas fa-cash-register text-green-400 animate-float"></i>
-            Price<span>Point</span> POS
-            <span class="badge" id="onlineBadge">● LIVE</span>
-            {% if session.user %}
-            <span class="user-tag">
-                👤 {{ session.user.name }}
-                <span class="role">({{ session.user.role }})</span>
-            </span>
-            {% endif %}
-        </div>
-        <div class="header-actions">
-            <span class="time"><i class="far fa-clock"></i> <span id="clockDisplay"></span></span>
-            <!-- Sync Status -->
-            <span id="syncStatus" onclick="manualSync()">
-                <i class="fas fa-cloud-upload-alt"></i>
-                <span id="unsyncedCount">0</span> offline order(s)
-                <i class="fas fa-sync-alt" style="font-size: 0.5rem; opacity: 0.7;"></i>
-            </span>
-            <span class="stat-label">My Sales:</span>
-            <span class="stat-value" id="userTodaySales">KSh 0</span>
-            <span class="stat-label">My Orders:</span>
-            <span class="stat-value" id="userTodayOrders">0</span>
-            <a href="/admin" class="header-btn"><i class="fas fa-arrow-left"></i> Dashboard</a>
-            <a href="/logout" class="header-btn logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a>
-            <a href="/" target="_blank" class="header-btn"><i class="fas fa-store"></i> Store</a>
-        </div>
-    </header>
-
-    <!-- ===== STATS BAR ===== -->
-    <div class="stats-bar" id="statsBar">
-        <div class="stat-item">
-            <div class="icon green"><i class="fas fa-coins"></i></div>
-            <div class="info">
-                <div class="label">Today's Sales</div>
-                <div class="value" id="todaySales">KSh 0</div>
-            </div>
-        </div>
-        <div class="stat-item">
-            <div class="icon blue"><i class="fas fa-receipt"></i></div>
-            <div class="info">
-                <div class="label">Today's Orders</div>
-                <div class="value" id="todayOrders">0</div>
-            </div>
-        </div>
-        <div class="stat-item">
-            <div class="icon rose"><i class="fas fa-undo-alt"></i></div>
-            <div class="info">
-                <div class="label">Returns Today</div>
-                <div class="value" id="todayReturns">0</div>
-            </div>
-        </div>
-        <div class="stat-item">
-            <div class="icon purple"><i class="fas fa-users"></i></div>
-            <div class="info">
-                <div class="label">Customers</div>
-                <div class="value" id="totalCustomers">0</div>
-            </div>
-        </div>
-        <div class="stat-item">
-            <div class="icon amber"><i class="fas fa-box"></i></div>
-            <div class="info">
-                <div class="label">Products</div>
-                <div class="value" id="totalProducts">0</div>
-            </div>
-        </div>
-        <div class="stat-item">
-            <div class="icon teal"><i class="fas fa-shopping-cart"></i></div>
-            <div class="info">
-                <div class="label">Cart Items</div>
-                <div class="value" id="cartStats">0</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ===== POS SYSTEM ===== -->
-    <div class="max-w-7xl mx-auto px-3 py-3">
-        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <div>
-                <h2 class="text-xl font-extrabold text-[#0f172a]">
-                    <i class="fas fa-cash-register text-green-600 mr-2 animate-float"></i>Point of Sale
-                </h2>
-                <p class="text-gray-400 text-xs">Search, scan, or browse to add items</p>
-            </div>
-            <div class="flex gap-2 flex-wrap">
-                <button class="btn-gradient sync" onclick="manualSync()">
-                    <i class="fas fa-cloud-upload-alt"></i> Sync
-                </button>
-                <button class="btn-gradient" onclick="toggleCustomerModal()">
-                    <i class="fas fa-user-plus"></i> Customer
-                </button>
-                <button class="btn-gradient amber" onclick="toggleDiscountModal()">
-                    <i class="fas fa-percent"></i> Discount
-                </button>
-                <button class="btn-gradient rose" onclick="toggleReturnModal()">
-                    <i class="fas fa-undo-alt"></i> Return
-                </button>
-                <button class="btn-outline" onclick="clearCart()" style="width:auto; padding: 6px 12px; font-size:0.7rem;">
-                    <i class="fas fa-trash-alt"></i>
-                </button>
-            </div>
-        </div>
-
-        <!-- ===== QUICK ACTIONS ===== -->
-        <div class="quick-actions">
-            <div class="quick-action-btn" onclick="document.getElementById('posSearch').focus();">
-                <i class="fas fa-search"></i> Search
-            </div>
-            <div class="quick-action-btn" onclick="openBarcodeScanner()">
-                <i class="fas fa-barcode"></i> Scan
-            </div>
-            <div class="quick-action-btn" onclick="toggleDiscountModal()">
-                <i class="fas fa-percent"></i> Discount
-            </div>
-            <div class="quick-action-btn" onclick="voidLastItem()">
-                <i class="fas fa-undo"></i> Void Last            </div>
-            <div class="quick-action-btn" onclick="toggleReturnModal()">
-                <i class="fas fa-undo-alt"></i> Return
-            </div>
-            <div class="quick-action-btn" onclick="holdOrder()">
-                <i class="fas fa-pause"></i> Hold
-            </div>
-            <div class="quick-action-btn sync-btn" onclick="manualSync()">
-                <i class="fas fa-cloud-upload-alt"></i> Sync
-            </div>
-        </div>
-
-        <!-- ===== BARCODE SCANNER MODAL ===== -->
-        <div id="barcodeModal" class="modal-overlay hidden" onclick="closeBarcodeScanner()">
-            <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 500px;">
-                <button class="close-btn" onclick="closeBarcodeScanner()">&times;</button>
-                <h3 class="text-lg font-bold text-[#0f172a] mb-4 flex items-center gap-2">
-                    <i class="fas fa-barcode text-blue-500"></i> Scan Barcode
-                </h3>
-                <p class="text-sm text-gray-500 mb-3">Position the barcode in front of your camera</p>
-                <div id="scanner-container" style="width: 100%; max-width: 400px; margin: 0 auto;">
-                    <div id="barcode-reader" style="width: 100%;"></div>
-                </div>
-                <div class="mt-3 flex flex-wrap gap-2">
-                    <button onclick="startScanner()" class="btn-primary flex-1" id="startScannerBtn" style="background: linear-gradient(135deg, #2563eb, #4f46e5);">
-                        <i class="fas fa-play"></i> Start Camera
-                    </button>
-                    <button onclick="closeBarcodeScanner()" class="btn-outline flex-1">Cancel</button>
-                </div>
-                <div id="scannerResult" class="mt-3 p-3 bg-gray-50 rounded-lg hidden">
-                    <p class="text-sm font-semibold text-green-600">✅ Scanned:</p>
-                    <p id="scannedValue" class="text-sm font-mono break-all"></p>
-                </div>
-                <div class="mt-3 text-center">
-                    <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="text-blue-500 hover:text-blue-700 text-sm">
-                        <i class="fas fa-keyboard"></i> Or enter barcode manually
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- ===== BARCODE INPUT MODAL (Manual Entry) ===== -->
-        <div id="barcodeInputModal" class="modal-overlay hidden" onclick="closeBarcodeInputModal()">
-            <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 380px;">
-                <button class="close-btn" onclick="closeBarcodeInputModal()">&times;</button>
-                <h3 class="text-lg font-bold text-[#0f172a] mb-4 flex items-center gap-2">
-                    <i class="fas fa-keyboard text-amber-500"></i> Enter Barcode
-                </h3>
-                <p class="text-sm text-gray-500 mb-3">Type the product ID or barcode number</p>
-                <input type="text" id="manualBarcode" class="form-input" placeholder="Enter product ID or barcode..." autofocus>
-                <div class="mt-4 flex gap-3">
-                    <button onclick="submitManualBarcode()" class="btn-primary flex-1">
-                        <i class="fas fa-search"></i> Find Product
-                    </button>
-                    <button onclick="closeBarcodeInputModal()" class="btn-outline flex-1">Cancel</button>
-                </div>
-                <div class="mt-3 text-xs text-gray-400 text-center">
-                    💡 Tip: You can search by product ID, name, or barcode
-                </div>
-            </div>
-        </div>
-
-        <div class="grid lg:grid-cols-3 gap-4">
-            <!-- ===== LEFT: PRODUCTS ===== -->
-            <div class="lg:col-span-2">
-                <div class="mb-3">
-                    <div class="relative">
-                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                        <input type="text" id="posSearch" 
-                               placeholder="🔍 Search by name, category, barcode, or SKU..." 
-                               class="w-full pl-9 pr-10 py-2.5 rounded-xl border-2 border-gray-200 focus:border-green-500 focus:ring-4 focus:ring-green-100 transition outline-none text-sm"
-                               oninput="searchProducts(this.value)" />
-                        <span id="searchClear" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hidden" onclick="clearSearch()">
-                            <i class="fas fa-times-circle"></i>
-                        </span>
-                    </div>
-                </div>
-
-                <div class="mb-3 flex flex-wrap gap-1.5" id="categoryFilters">
-                    <span class="category-pill active" data-category="all" onclick="filterByCategory('all', this)">All</span>
-                    {% set categories = [] %}
-                    {% for product in products %}
-                        {% if product.category and product.category not in categories %}
-                            {% set _ = categories.append(product.category) %}
-                        {% endif %}
-                    {% endfor %}
-                    {% for cat in categories %}
-                    <span class="category-pill" data-category="{{ cat }}" onclick="filterByCategory('{{ cat }}', this)">{{ cat }}</span>
-                    {% endfor %}
-                </div>
-
-                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-[420px] overflow-y-auto p-1" id="posProductGrid"></div>
-
-                <div class="mt-2 flex items-center justify-between text-xs text-gray-400" id="productStatus">
-                    <span id="resultCount">Loading products...</span>
-                    <span id="productCount">{{ products|length }} total</span>
-                </div>
-            </div>
-
-            <!-- ===== RIGHT: CART ===== -->
-            <div class="lg:col-span-1">
-                <div class="glass-card sticky top-4">
-                    <div class="flex items-center justify-between mb-2">
-                        <h3 class="font-bold text-[#0f172a] text-sm flex items-center gap-2">
-                            <i class="fas fa-shopping-cart text-green-600"></i> Cart
-                            <span class="text-xs text-gray-400 ml-auto" id="itemCount">0 items</span>
-                        </h3>
-                        <span class="text-xs text-gray-400" id="cartTotalItems">0</span>
-                    </div>
-
-                    <div class="mb-2">
-                        <label class="form-label"><i class="fas fa-user"></i> Customer</label>
-                        <div class="flex gap-2">
-                            <select id="posCustomer" class="form-input flex-1 text-sm" onchange="selectCustomer()">
-                                <option value="Walk-in Customer" data-email="walkin@example.com" data-phone="N/A">Walk-in</option>
-                                {% for customer in customers %}
-                                <option value="{{ customer.name }}" data-email="{{ customer.email }}" data-phone="{{ customer.phone }}">
-                                    {{ customer.name }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                            <button onclick="toggleCustomerModal()" class="btn-outline text-sm px-3" style="width:auto; padding: 6px 10px;">
-                                <i class="fas fa-plus"></i>
-                            </button>
-                        </div>
-                        <input type="hidden" id="posCustomerEmail" value="walkin@example.com" />
-                        <input type="hidden" id="posCustomerPhone" value="N/A" />
-                    </div>
-
-                    <div class="max-h-40 overflow-y-auto space-y-1.5 mb-2" id="posCartItems">
-                        <div class="text-center text-gray-400 text-xs py-4" id="emptyCartMessage">
-                            <i class="fas fa-shopping-bag text-2xl block mb-2 text-gray-300"></i>
-                            No items added
-                        </div>
-                        <div id="posCartItemsList"></div>
-                    </div>
-
-                    <div class="mb-2 flex items-center gap-2">
-                        <span class="text-xs font-medium text-gray-500">Discount:</span>
-                        <span class="text-xs font-bold text-green-600" id="discountDisplay">0%</span>
-                        <button onclick="toggleDiscountModal()" class="text-xs text-blue-500 hover:text-blue-700 font-medium">Change</button>
-                    </div>
-
-                    <div class="border-t border-gray-200 pt-2">
-                        <div class="cart-summary-row">
-                            <span class="text-gray-500">Subtotal</span>
-                            <span class="font-semibold" id="posSubtotal">KSh 0</span>
-                        </div>
-                        <div class="cart-summary-row" id="discountRow">
-                            <span class="text-gray-500">Discount</span>
-                            <span class="font-semibold text-red-500" id="posDiscount">-KSh 0</span>
-                        </div>
-                        <div class="cart-summary-row total">
-                            <span>Total</span>
-                            <span class="text-green-600 text-lg" id="posTotal">KSh 0</span>
-                        </div>
-                    </div>
-
-                    <div class="mt-2 space-y-1.5">
-                        <button onclick="placePOSOrder()" class="btn-primary" id="posPlaceOrderBtn">
-                            <i class="fas fa-check-circle"></i> Complete Order
-                        </button>
-                        <button onclick="holdOrder()" class="btn-outline text-sm" style="border-color: #f59e0b; color: #d97706;">
-                            <i class="fas fa-pause"></i> Hold Order
-                        </button>
-                    </div>
-
-                    <div id="heldOrdersPanel" class="held-orders-panel hidden">
-                        <div class="text-xs font-semibold text-gray-500 mb-1">📋 Held Orders</div>
-                        <div id="heldOrdersList"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ===== MODALS ===== -->
-    <div id="customerModal" class="modal-overlay hidden" onclick="closeCustomerModal(event)">
-        <div class="modal-content" onclick="event.stopPropagation()">
-            <button class="close-btn" onclick="closeCustomerModal()">&times;</button>
-            <h3 class="text-lg font-bold text-[#0f172a] mb-4 flex items-center gap-2">
-                <i class="fas fa-user-plus text-green-500"></i> Add Customer
-            </h3>
-            <form id="customerForm" onsubmit="addCustomer(event)">
-                <div class="space-y-3">
-                    <div>
-                        <label class="form-label"><i class="fas fa-user"></i> Full Name <span class="required">*</span></label>
-                        <input type="text" id="custName" class="form-input" placeholder="John Doe" required>
-                    </div>
-                    <div>
-                        <label class="form-label"><i class="fas fa-envelope"></i> Email</label>
-                        <input type="email" id="custEmail" class="form-input" placeholder="john@example.com">
-                    </div>
-                    <div>
-                        <label class="form-label"><i class="fas fa-phone"></i> Phone</label>
-                        <input type="tel" id="custPhone" class="form-input" placeholder="+254 700 000 000">
-                    </div>
-                </div>
-                <div class="flex gap-3 mt-4 pt-4 border-t border-gray-100">
-                    <button type="submit" class="btn-primary flex-1">
-                        <i class="fas fa-save"></i> Add Customer
-                    </button>
-                    <button type="button" onclick="closeCustomerModal()" class="btn-outline flex-1">
-                        Cancel
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <div id="discountModal" class="modal-overlay hidden" onclick="closeDiscountModal(event)">
-        <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 380px;">
-            <button class="close-btn" onclick="closeDiscountModal()">&times;</button>
-            <h3 class="text-lg font-bold text-[#0f172a] mb-4 flex items-center gap-2">
-                <i class="fas fa-percent text-amber-500"></i> Apply Discount
-            </h3>
-            <div class="space-y-3">
-                <div>
-                    <label class="form-label">Discount Type</label>
-                    <select id="discountType" class="form-input" onchange="updateDiscountPreview()">
-                        <option value="percentage">Percentage (%)</option>
-                        <option value="fixed">Fixed Amount (KSh)</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="form-label">Discount Value</label>
-                    <input type="number" id="discountValue" class="form-input" placeholder="Enter discount value" value="0" min="0" oninput="updateDiscountPreview()">
-                </div>
-                <div class="flex gap-1 flex-wrap" id="discountPresets">
-                    <span class="discount-preset" onclick="setDiscountPreset(5)">5%</span>
-                    <span class="discount-preset" onclick="setDiscountPreset(10)">10%</span>
-                    <span class="discount-preset" onclick="setDiscountPreset(15)">15%</span>
-                    <span class="discount-preset" onclick="setDiscountPreset(20)">20%</span>
-                    <span class="discount-preset" onclick="setDiscountPreset(25)">25%</span>
-                    <span class="discount-preset" onclick="setDiscountPreset(50)">50%</span>
-                </div>
-                <div class="bg-gray-50 p-3 rounded-xl text-sm">
-                    <div class="flex justify-between"><span>Subtotal:</span> <span id="discountSubtotal">KSh 0</span></div>
-                    <div class="flex justify-between font-bold text-green-600"><span>New Total:</span> <span id="discountNewTotal">KSh 0</span></div>
-                </div>
-                <div class="flex gap-3">
-                    <button onclick="applyDiscount()" class="btn-primary flex-1" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
-                        <i class="fas fa-check"></i> Apply
-                    </button>
-                    <button onclick="closeDiscountModal()" class="btn-outline flex-1">Cancel</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div id="returnModal" class="modal-overlay hidden" onclick="closeReturnModal(event)">
-        <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 480px;">
-            <button class="close-btn" onclick="closeReturnModal()">&times;</button>
-            <h3 class="text-lg font-bold text-[#0f172a] mb-4 flex items-center gap-2">
-                <i class="fas fa-undo-alt text-rose-500"></i> Customer Return
-            </h3>
-            <p class="text-xs text-gray-500 mb-3">Select items to return. This will refund and restock inventory.</p>
-            <div class="space-y-2 max-h-60 overflow-y-auto" id="returnItemsList"></div>
-            <div class="mt-4 pt-4 border-t border-gray-100">
-                <div class="flex justify-between font-bold text-lg">
-                    <span>Refund Total:</span>
-                    <span class="text-rose-600" id="refundTotal">KSh 0</span>
-                </div>
-                <div class="flex gap-3 mt-3">
-                    <button onclick="processReturn()" class="btn-primary flex-1" style="background: linear-gradient(135deg, #ef4444, #dc2626);">
-                        <i class="fas fa-check"></i> Process Return
-                    </button>
-                    <button onclick="closeReturnModal()" class="btn-outline flex-1">Cancel</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ===== TOAST ===== -->
-    <div id="toast" class="toast hidden">
-        <span id="toastMessage">Added to cart!</span>
-    </div>
-
-    <script>
-        // ============================================================
-        // DATA
-        // ============================================================
-        const allProducts = {{ products | tojson | safe }};
-        let filteredProducts = [];
-        let currentCategory = 'all';
-        let posCart = [];
-        let discountValue = 0;
-        let discountType = 'percentage';
-        let returnItems = [];
-        let heldOrders = [];
-        let totalDiscount = 0;
-
-        // ============================================================
-        // CLOCK
-        // ============================================================
-        function updateClock() {
-            document.getElementById('clockDisplay').textContent = new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        }
-        setInterval(updateClock, 1000);
-        updateClock();
-
-        // ============================================================
-        // ONLINE/OFFLINE STATUS
-        // ============================================================
-        function updateOnlineStatusUI() {
-            const badge = document.getElementById('onlineBadge');
-            const isOnline = navigator.onLine;
+@admin_bp.route('/admin/api/customers', methods=['GET'])
+@admin_required
+def api_customers_paginated():
+    """Get paginated customers for AJAX"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
+        
+        all_orders = load_orders()
+        
+        customer_dict = {}
+        for order in all_orders:
+            if order.get('status') == 'cancelled':
+                continue
+                
+            name = order.get('customer_name')
+            if not name:
+                customer = order.get('customer', {})
+                if isinstance(customer, dict):
+                    name = customer.get('name')
+                elif isinstance(customer, str):
+                    try:
+                        name = json.loads(customer).get('name')
+                    except:
+                        pass
             
-            if (isOnline) {
-                badge.textContent = '● LIVE';
-                badge.className = 'badge';
-                badge.style.background = '#34d399';
-                badge.style.color = '#0f172a';
-            } else {
-                badge.textContent = '● OFFLINE';
-                badge.className = 'badge offline';
-                badge.style.background = '#f59e0b';
-                badge.style.color = '#0f172a';
-            }
-        }
+            if not name or name in ['Walk-in Customer', 'Web Customer', 'Customer', 'Unknown', '']:
+                continue
+            
+            if name not in customer_dict:
+                customer_dict[name] = {
+                    'name': name,
+                    'email': order.get('customer_email', 'N/A'),
+                    'phone': order.get('customer_phone', 'N/A'),
+                    'orders': 0,
+                    'total_spent': 0
+                }
+            customer_dict[name]['orders'] += 1
+            customer_dict[name]['total_spent'] += order.get('total', 0)
+        
+        customers = list(customer_dict.values())
+        customers.sort(key=lambda x: x['orders'], reverse=True)
+        
+        total = len(customers)
+        start = (page - 1) * per_page
+        end = start + per_page
+        paginated = customers[start:end]
+        
+        return jsonify({
+            'success': True,
+            'customers': paginated,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': (total + per_page - 1) // per_page,
+            'start': start + 1 if paginated else 0,
+            'end': min(end, total)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-        // Update on status change
-        window.addEventListener('online', function() {
-            updateOnlineStatusUI();
-            showToast('🔄 Back online! Syncing orders...', 'info');
-            setTimeout(syncOfflineOrders, 1000);
-            setTimeout(checkUnsyncedOrders, 500);
-        });
 
-        window.addEventListener('offline', function() {
-            updateOnlineStatusUI();
-            showToast('📡 You are offline. Orders will be saved locally.', 'warning');
-        });
-
-        updateOnlineStatusUI();
-
-        // ============================================================
-        // LOAD USER STATS
-        // ============================================================
-        function loadUserStats() {
-            fetch('/admin/api/user-stats')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.success) {
-                        const todaySales = 'KSh ' + (data.today_revenue || 0).toLocaleString();
-                        const todayOrders = data.today_orders || 0;
-                        
-                        document.getElementById('userTodaySales').textContent = todaySales;
-                        document.getElementById('userTodayOrders').textContent = todayOrders;
+@admin_bp.route('/admin/api/order/<order_id>', methods=['GET'])
+@admin_required
+def api_get_order_details(order_id):
+    """Get single order details for modal"""
+    try:
+        all_orders = load_orders()
+        
+        for order in all_orders:
+            if str(order.get('order_id')) == str(order_id):
+                items = order.get('items', [])
+                if isinstance(items, str):
+                    try:
+                        items = json.loads(items)
+                    except:
+                        items = []
+                
+                customer = order.get('customer', {})
+                if isinstance(customer, str):
+                    try:
+                        customer = json.loads(customer)
+                    except:
+                        customer = {}
+                
+                return jsonify({
+                    'success': True,
+                    'order': {
+                        'order_id': order.get('order_id'),
+                        'items': items,
+                        'subtotal': order.get('subtotal', 0),
+                        'shipping': order.get('shipping', 0),
+                        'total': order.get('total', 0),
+                        'status': order.get('status', 'pending'),
+                        'source': order.get('source', 'web'),
+                        'created_at': order.get('created_at', ''),
+                        'customer_name': order.get('customer_name', 'Customer'),
+                        'customer_email': order.get('customer_email', ''),
+                        'customer_phone': order.get('customer_phone', ''),
+                        'customer_address': order.get('customer_address', ''),
+                        'customer': customer
                     }
                 })
-                .catch(err => console.error('User stats error:', err));
-        }
+        
+        return jsonify({'success': False, 'error': 'Order not found'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-        // ============================================================
-        // LOAD SALES STATS
-        // ============================================================
-        function loadSalesStats() {
-            fetch('/admin/api/sales-stats')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.success) {
-                        const todaySales = 'KSh ' + (data.today_revenue || 0).toLocaleString();
-                        const todayOrders = data.today_orders || 0;
-                        const todayReturns = data.today_returns || 0;
-                        const totalCust = data.total_customers || 0;
-                        const totalProds = data.total_products || 0;
-                        
-                        document.getElementById('todaySales').textContent = todaySales;
-                        document.getElementById('todayOrders').textContent = todayOrders;
-                        document.getElementById('todayReturns').textContent = todayReturns;
-                        document.getElementById('totalCustomers').textContent = totalCust;
-                        document.getElementById('totalProducts').textContent = totalProds;
-                    }
-                })
-                .catch(err => console.error('Stats error:', err));
-        }
 
-        // ============================================================
-        // SYNC FUNCTIONS
-        // ============================================================
+@admin_bp.route('/admin/api/product/<product_id>', methods=['GET'])
+@admin_required
+def api_get_product_details(product_id):
+    """Get single product details for editing"""
+    try:
+        all_products = load_products()
+        
+        for product in all_products:
+            if str(product.get('id')) == str(product_id):
+                return jsonify({'success': True, 'product': product})
+        
+        return jsonify({'success': False, 'error': 'Product not found'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-        function syncOfflineOrders() {
-            if (!navigator.onLine) {
-                showToast('📡 Offline - will sync when online', 'warning');
-                return;
-            }
-            
-            showToast('🔄 Syncing offline orders...', 'info');
-            
-            fetch('/admin/api/sync-queue', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    if (data.synced > 0) {
-                        showToast(`✅ Synced ${data.synced} offline orders to cloud!`, 'success');
-                        loadUserStats();
-                        loadSalesStats();
-                        checkUnsyncedOrders();
-                    } else if (data.failed > 0) {
-                        showToast(`⚠️ ${data.failed} orders failed to sync. Check connection.`, 'warning');
-                    } else {
-                        showToast('✅ All orders are synced!', 'success');
-                    }
-                } else {
-                    showToast('❌ Sync failed: ' + (data.message || 'Unknown error'), 'error');
-                }
-            })
-            .catch(err => {
-                console.error('Sync error:', err);
-                showToast('❌ Sync error: ' + err.message, 'error');
-            });
-        }
 
-        function checkUnsyncedOrders() {
-            fetch('/admin/api/unsynced-count')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.success) {
-                        const statusEl = document.getElementById('syncStatus');
-                        const countEl = document.getElementById('unsyncedCount');
-                        
-                        if (statusEl) {
-                            if (data.count > 0) {
-                                statusEl.style.display = 'inline-flex';
-                                statusEl.className = '';
-                                if (countEl) countEl.textContent = data.count;
-                                let orderIds = data.orders || [];
-                                let tooltip = orderIds.length > 0 ? 'Orders: ' + orderIds.join(', ') : '';
-                                statusEl.title = tooltip;
-                            } else {
-                                statusEl.style.display = 'none';
-                            }
-                        }
-                    }
-                })
-                .catch(err => console.error('Error checking sync status:', err));
-        }
+@admin_bp.route('/admin/api/product/<product_id>', methods=['PUT'])
+@admin_required
+def api_update_product(product_id):
+    """Update a product"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': 'No data provided'}), 400
+        
+        # Check if online
+        try:
+            requests.get(
+                f"{Config.SUPABASE_URL}/rest/v1/",
+                headers=Config.SUPABASE_HEADERS,
+                timeout=3
+            )
+        except:
+            return jsonify({
+                'success': False, 
+                'message': 'You are offline. Please connect to the internet to update products.',
+                'offline': True
+            }), 503
+        
+        response = requests.patch(
+            f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
+            headers=Config.SUPABASE_HEADERS,
+            json=data,
+            timeout=10
+        )
+        
+        if response.status_code in [200, 204]:
+            import utils.data
+            utils.data.products_cache = []
+            return jsonify({'success': True, 'message': 'Product updated successfully'})
+        else:
+            return jsonify({'success': False, 'message': f'Failed to update: {response.status_code}'}), 500
+    except requests.exceptions.ConnectionError:
+        return jsonify({
+            'success': False, 
+            'message': 'You are offline. Please connect to the internet to update products.',
+            'offline': True
+        }), 503
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
-        function manualSync() {
-            syncOfflineOrders();
-        }
 
-        // ============================================================
-        // SEARCH & FILTER - UPDATED WITH BARCODE SUPPORT
-        // ============================================================
-        function searchProducts(query) {
-            const searchTerm = query.toLowerCase().trim();
-            document.getElementById('searchClear').classList.toggle('hidden', searchTerm === '');
-            
-            if (searchTerm === '') {
-                if (currentCategory === 'all') {
-                    filteredProducts = allProducts.slice(0, 50);
-                    document.getElementById('resultCount').textContent = `${filteredProducts.length} of ${allProducts.length} products`;
-                } else {
-                    filteredProducts = allProducts.filter(p => p.category === currentCategory).slice(0, 50);
-                    document.getElementById('resultCount').textContent = `${filteredProducts.length} in "${currentCategory}"`;
-                }
-            } else {
-                const results = allProducts.filter(p => {
-                    const name = (p.name || '').toLowerCase();
-                    const category = (p.category || '').toLowerCase();
-                    const id = (p.id || '').toLowerCase();
-                    const barcode = (p.barcode || '').toLowerCase();
-                    const sku = (p.sku || '').toLowerCase();
-                    
-                    return name.includes(searchTerm) || 
-                           category.includes(searchTerm) || 
-                           id.includes(searchTerm) ||
-                           barcode.includes(searchTerm) ||
-                           sku.includes(searchTerm);
-                });
-                filteredProducts = results.slice(0, 100);
-                document.getElementById('resultCount').textContent = `${results.length} found${results.length > 100 ? ' (showing 100)' : ''}`;
-            }
-            renderProducts();
-        }
+@admin_bp.route('/admin/api/product/<product_id>', methods=['DELETE'])
+@admin_required
+def api_delete_product(product_id):
+    """Delete a product"""
+    try:
+        # Check if online
+        try:
+            requests.get(
+                f"{Config.SUPABASE_URL}/rest/v1/",
+                headers=Config.SUPABASE_HEADERS,
+                timeout=3
+            )
+        except:
+            return jsonify({
+                'success': False, 
+                'message': 'You are offline. Please connect to the internet to delete products.',
+                'offline': True
+            }), 503
+        
+        response = requests.delete(
+            f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
+            headers=Config.SUPABASE_HEADERS,
+            timeout=10
+        )
+        
+        if response.status_code in [200, 204]:
+            import utils.data
+            utils.data.products_cache = []
+            return jsonify({'success': True, 'message': 'Product deleted successfully'})
+        else:
+            return jsonify({'success': False, 'message': f'Failed to delete: {response.status_code}'}), 500
+    except requests.exceptions.ConnectionError:
+        return jsonify({
+            'success': False, 
+            'message': 'You are offline. Please connect to the internet to delete products.',
+            'offline': True
+        }), 503
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
-        function filterByCategory(category, element) {
-            document.querySelectorAll('.category-pill').forEach(p => p.classList.remove('active'));
-            if (element) element.classList.add('active');
-            currentCategory = category;
-            const searchInput = document.getElementById('posSearch');
-            if (searchInput.value.trim() === '') {
-                filteredProducts = category === 'all' ? allProducts.slice(0, 50) : allProducts.filter(p => p.category === category).slice(0, 50);
-                document.getElementById('resultCount').textContent = `${filteredProducts.length} products${category !== 'all' ? ' in "' + category + '"' : ''}`;
-                renderProducts();
-            } else {
-                searchProducts(searchInput.value);
-            }
-        }
 
-        function renderProducts() {
-            const grid = document.getElementById('posProductGrid');
-            if (filteredProducts.length === 0) {
-                grid.innerHTML = `
-                    <div class="col-span-full search-hint">
-                        <i class="fas fa-search"></i>
-                        <p>No products found</p>
-                        <p class="text-xs text-gray-400">Try a different search term</p>
-                        <div class="shortcuts">💡 Tip: Scan barcode or search by name</div>
-                    </div>
-                `;
-                return;
-            }
-            
-            let html = '';
-            filteredProducts.forEach(product => {
-                const price = Number(product.price) || 0;
-                const stock = Number(product.stock) || 0;
-                const image = product.image || '';
-                const stockClass = stock <= 0 ? 'out' : stock < 10 ? 'low' : stock < 30 ? 'medium' : 'high';
-                const stockLabel = stock <= 0 ? 'Out' : stock < 10 ? 'Low' : stock < 30 ? 'Med' : 'In Stock';
-                const stockNumberClass = stock <= 0 ? 'low' : stock < 10 ? 'low' : stock < 30 ? 'medium' : 'high';
-                const isOutOfStock = stock <= 0;
-                const barcodeDisplay = product.barcode ? `<span class="text-[6px] text-gray-400 font-mono">${product.barcode}</span>` : '';
-                
-                html += `
-                    <div class="product-pos-card group" data-id="${product.id || ''}" data-name="${product.name || ''}" data-price="${price}" data-stock="${stock}" data-image="${image}" data-barcode="${product.barcode || ''}" onclick="${isOutOfStock ? '' : 'addToPOSCart(this)'}">
-                        <div class="relative">
-                            <div class="h-14 w-full bg-gray-50 rounded-lg overflow-hidden mb-1">
-                                ${image ? `<img src="${image}" alt="${product.name}" class="w-full h-full object-contain p-1" onerror="this.style.display='none'">` : `<div class="w-full h-full flex items-center justify-center text-gray-300"><i class="fas fa-box text-2xl"></i></div>`}
-                            </div>
-                            <span class="stock-badge ${stockClass}">${stockLabel}</span>
-                            ${isOutOfStock ? '<span class="absolute inset-0 bg-white/60 flex items-center justify-center text-xs font-bold text-red-500">OUT OF STOCK</span>' : ''}
-                            ${barcodeDisplay ? `<span class="absolute bottom-0 left-0 right-0 text-center text-[6px] text-gray-400 bg-white/80 py-0.5 font-mono">${product.barcode}</span>` : ''}
-                        </div>
-                        <p class="text-[9px] font-semibold text-[#0f172a] truncate">${product.name || 'Product'}</p>
-                        <p class="price-tag">KSh ${price.toLocaleString()}</p>
-                        <div class="stock-count">
-                            <i class="fas fa-boxes"></i>
-                            <span class="number ${stockNumberClass}">${stock}</span>
-                            <span class="text-[8px] text-gray-400">in stock</span>
-                        </div>
-                        <button class="add-btn" ${isOutOfStock ? 'disabled' : ''}>
-                            ${isOutOfStock ? 'Out of Stock' : '<i class="fas fa-plus"></i> Add'}
-                        </button>
-                    </div>
-                `;
-            });
-            grid.innerHTML = html;
-        }
+# ============================================================
+# PWA ROUTES - PUBLIC
+# ============================================================
 
-        function clearSearch() {
-            document.getElementById('posSearch').value = '';
-            document.getElementById('searchClear').classList.add('hidden');
-            searchProducts('');
-        }
+@admin_bp.route('/offline.html')
+def offline_page():
+    try:
+        return render_template('offline.html')
+    except Exception as e:
+        print(f"❌ Error serving offline.html: {e}")
+        return "Offline page not found", 404
 
-        // ============================================================
-        // CART FUNCTIONS
-        // ============================================================
-        function addToPOSCart(element) {
-            const card = element.closest ? element.closest('.product-pos-card') : element;
-            if (!card) { showToast('❌ Product not found'); return; }
-            
-            const productId = String(card.dataset.id || '').trim();
-            const name = String(card.dataset.name || 'Product').trim();
-            const price = parseFloat(card.dataset.price) || 0;
-            const stock = parseInt(card.dataset.stock) || 0;
-            const image = String(card.dataset.image || '').trim();
-            const barcode = String(card.dataset.barcode || '').trim();
-            
-            if (!productId || price <= 0) { showToast('❌ Invalid product'); return; }
-            if (stock <= 0) { showToast('⚠️ Out of stock!'); return; }
-            
-            const existing = posCart.find(item => item.id === productId);
-            if (existing) {
-                if (existing.quantity < stock) { existing.quantity++; } 
-                else { showToast('⚠️ Not enough stock!'); return; }
-            } else {
-                posCart.push({ id: productId, name, price, image, stock, barcode, quantity: 1 });
-            }
-            updatePOSUI();
-            showToast('✅ Added: ' + name + ' (' + stock + ' left)');
-        }
 
-        function updatePOSQuantity(index, delta) {
-            if (!posCart[index]) return;
-            const newQty = posCart[index].quantity + delta;
-            if (newQty <= 0) { posCart.splice(index, 1); } 
-            else if (newQty <= posCart[index].stock) { posCart[index].quantity = newQty; } 
-            else { showToast('⚠️ Not enough stock!'); return; }
-            updatePOSUI();
-        }
+@admin_bp.route('/sw.js')
+def service_worker():
+    try:
+        return send_from_directory('static', 'sw.js', mimetype='application/javascript')
+    except Exception as e:
+        print(f"❌ Error serving sw.js: {e}")
+        return "Service Worker not found", 404
 
-        function removePOSItem(index) {
-            posCart.splice(index, 1);
-            updatePOSUI();
-            showToast('🗑️ Removed');
-        }
 
-        function voidLastItem() {
-            if (posCart.length === 0) { showToast('⚠️ Cart is empty', 'warning'); return; }
-            const removed = posCart.pop();
-            updatePOSUI();
-            showToast('↩️ Voided: ' + removed.name, 'info');
-        }
+@admin_bp.route('/manifest.json')
+def manifest():
+    try:
+        return send_from_directory('static', 'manifest.json', mimetype='application/manifest+json')
+    except Exception as e:
+        print(f"❌ Error serving manifest.json: {e}")
+        return "Manifest not found", 404
 
-        function clearCart() {
-            if (posCart.length > 0 && !confirm('Clear all items?')) return;
-            posCart = [];
-            discountValue = 0;
-            document.getElementById('discountDisplay').textContent = '0%';
-            updatePOSUI();
-            showToast('🔄 Cart cleared');
-        }
 
-        function updatePOSUI() {
-            const itemsList = document.getElementById('posCartItemsList');
-            const emptyMessage = document.getElementById('emptyCartMessage');
-            const subtotalEl = document.getElementById('posSubtotal');
-            const totalEl = document.getElementById('posTotal');
-            const discountEl = document.getElementById('posDiscount');
-            const itemCountEl = document.getElementById('itemCount');
-            const cartStatsEl = document.getElementById('cartStats');
-            const placeBtn = document.getElementById('posPlaceOrderBtn');
-            
-            let subtotal = posCart.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
-            const discountAmount = discountType === 'percentage' ? (subtotal * discountValue / 100) : discountValue;
-            const total = Math.max(0, subtotal - discountAmount);
-            
-            if (subtotalEl) subtotalEl.textContent = 'KSh ' + subtotal.toLocaleString();
-            if (discountEl) discountEl.textContent = '-KSh ' + discountAmount.toLocaleString();
-            if (totalEl) totalEl.textContent = 'KSh ' + total.toLocaleString();
-            
-            const totalQty = posCart.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
-            if (itemCountEl) itemCountEl.textContent = totalQty + ' items';
-            if (cartStatsEl) cartStatsEl.textContent = totalQty;
-            
-            if (placeBtn) {
-                placeBtn.disabled = posCart.length === 0;
-                placeBtn.style.opacity = posCart.length === 0 ? '0.5' : '1';
-            }
-            
-            if (emptyMessage) emptyMessage.style.display = posCart.length === 0 ? 'block' : 'none';
-            if (!itemsList) return;
-            if (posCart.length === 0) { itemsList.innerHTML = ''; return; }
-            
-            let html = '';
-            posCart.forEach((item, index) => {
-                const price = Number(item.price) || 0;
-                const quantity = Number(item.quantity) || 1;
-                const barcodeDisplay = item.barcode ? `<span class="text-[6px] text-gray-400 font-mono">${item.barcode}</span>` : '';
-                
-                html += `
-                    <div class="pos-cart-item flex items-center gap-2 bg-gray-50 rounded-lg p-1.5 border border-gray-100 hover:border-green-200 transition-all">
-                        <div class="w-8 h-8 rounded-lg overflow-hidden bg-white flex-shrink-0 flex items-center justify-center">
-                            ${item.image ? `<img src="${item.image}" class="w-full h-full object-contain p-1" onerror="this.style.display='none'">` : '<span class="text-lg">📱</span>'}
-                        </div>
-                        <div class="flex-1 min-w-0">
-                            <p class="text-[10px] font-semibold truncate">${item.name || 'Product'}</p>
-                            <p class="cart-item-price text-xs">KSh ${price.toLocaleString()}</p>
-                            ${barcodeDisplay}
-                            <p class="text-[8px] text-gray-400">Stock: ${item.stock}</p>
-                        </div>
-                        <div class="flex items-center gap-0.5">
-                            <button onclick="updatePOSQuantity(${index}, -1)" class="w-5 h-5 rounded-full bg-gray-200 hover:bg-gray-300 text-[10px] font-bold transition-all">-</button>
-                            <span class="text-xs font-bold w-5 text-center">${quantity}</span>
-                            <button onclick="updatePOSQuantity(${index}, 1)" class="w-5 h-5 rounded-full bg-gray-200 hover:bg-gray-300 text-[10px] font-bold transition-all">+</button>
-                            <button onclick="removePOSItem(${index})" class="text-red-400 hover:text-red-600 text-xs ml-0.5 p-1 transition-all">
-                                <i class="fas fa-times"></i>
-                            </button>
-                        </div>
-                    </div>
-                `;
-            });
-            itemsList.innerHTML = html;
-        }
+@admin_bp.route('/favicon.ico')
+def favicon():
+    try:
+        return send_from_directory('static/icons', 'favicon.ico', mimetype='image/x-icon')
+    except Exception as e:
+        print(f"⚠️ Favicon not found: {e}")
+        return "", 204
 
-        // ============================================================
-        // DISCOUNT
-        // ============================================================
-        function toggleDiscountModal() {
-            document.getElementById('discountModal').classList.toggle('hidden');
-            updateDiscountPreview();
-        }
 
-        function closeDiscountModal(event) {
-            if (!event || event.target.classList.contains('modal-overlay') || event.target.classList.contains('close-btn')) {
-                document.getElementById('discountModal').classList.add('hidden');
-            }
-        }
-
-        function setDiscountPreset(value) {
-            document.getElementById('discountType').value = 'percentage';
-            document.getElementById('discountValue').value = value;
-            updateDiscountPreview();
-        }
-
-        function updateDiscountPreview() {
-            const type = document.getElementById('discountType').value;
-            const value = parseFloat(document.getElementById('discountValue').value) || 0;
-            const subtotal = posCart.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
-            const discountAmount = type === 'percentage' ? (subtotal * value / 100) : value;
-            const total = Math.max(0, subtotal - discountAmount);
-            
-            document.getElementById('discountSubtotal').textContent = 'KSh ' + subtotal.toLocaleString();
-            document.getElementById('discountNewTotal').textContent = 'KSh ' + total.toLocaleString();
-        }
-
-        function applyDiscount() {
-            discountType = document.getElementById('discountType').value;
-            discountValue = parseFloat(document.getElementById('discountValue').value) || 0;
-            document.getElementById('discountDisplay').textContent = discountType === 'percentage' ? discountValue + '%' : 'KSh ' + discountValue.toLocaleString();
-            closeDiscountModal();
-            updatePOSUI();
-            showToast('✅ Discount applied!', 'success');
-        }
-
-        // ============================================================
-        // RETURNS
-        // ============================================================
-        function toggleReturnModal() {
-            const modal = document.getElementById('returnModal');
-            modal.classList.toggle('hidden');
-            if (!modal.classList.contains('hidden')) {
-                loadReturnItems();
-            }
-        }
-
-        function closeReturnModal(event) {
-            if (!event || event.target.classList.contains('modal-overlay') || event.target.classList.contains('close-btn')) {
-                document.getElementById('returnModal').classList.add('hidden');
-            }
-        }
-
-        function loadReturnItems() {
-            const container = document.getElementById('returnItemsList');
-            if (posCart.length === 0) {
-                container.innerHTML = `<p class="text-center text-gray-400 text-sm py-4">No items in cart to return</p>`;
-                document.getElementById('refundTotal').textContent = 'KSh 0';
-                return;
-            }
-            
-            returnItems = posCart.map((item, index) => ({ ...item, index, selected: true }));
-            renderReturnItems();
-        }
-
-        function renderReturnItems() {
-            const container = document.getElementById('returnItemsList');
-            let html = '';
-            let refundTotal = 0;
-            
-            returnItems.forEach((item, idx) => {
-                const total = item.price * item.quantity;
-                if (item.selected) refundTotal += total;
-                
-                html += `
-                    <div class="flex items-center gap-3 bg-gray-50 rounded-lg p-2 border border-gray-100 hover:border-rose-200 transition-all">
-                        <input type="checkbox" ${item.selected ? 'checked' : ''} 
-                               onchange="toggleReturnItem(${idx})" class="w-4 h-4 accent-rose-500" />
-                        <div class="flex-1 min-w-0">
-                            <p class="text-sm font-semibold truncate">${item.name}</p>
-                            <p class="text-xs text-gray-500">Qty: ${item.quantity} × KSh ${item.price.toLocaleString()}</p>
-                            ${item.barcode ? `<p class="text-[8px] text-gray-400 font-mono">${item.barcode}</p>` : ''}
-                        </div>
-                        <span class="font-bold text-rose-600 text-sm">KSh ${total.toLocaleString()}</span>
-                    </div>
-                `;
-            });
-            
-            container.innerHTML = html;
-            document.getElementById('refundTotal').textContent = 'KSh ' + refundTotal.toLocaleString();
-        }
-
-        function toggleReturnItem(index) {
-            returnItems[index].selected = !returnItems[index].selected;
-            renderReturnItems();
-        }
-
-        function processReturn() {
-            const selectedItems = returnItems.filter(item => item.selected);
-            if (selectedItems.length === 0) {
-                showToast('⚠️ Select at least one item to return', 'warning');
-                return;
-            }
-            
-            const refundTotal = selectedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const customerName = document.getElementById('posCustomer').value || 'Customer';
-            
-            if (!confirm(`Process return for ${selectedItems.length} item(s) totaling KSh ${refundTotal.toLocaleString()}?`)) return;
-            
-            const returnData = {
-                items: selectedItems.map(item => ({
-                    id: item.id,
-                    name: item.name,
-                    price: item.price,
-                    quantity: item.quantity,
-                    barcode: item.barcode || ''
-                })),
-                refund_total: refundTotal,
-                customer_name: customerName,
-                reason: 'Customer return'
-            };
-            
-            const btn = document.querySelector('#returnModal .btn-primary');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
-            btn.disabled = true;
-            
-            fetch('/admin/api/process-return', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                body: JSON.stringify(returnData)
-            })
-            .then(r => { if (!r.ok) throw new Error('Network error: ' + r.status); return r.json(); })
-            .then(data => {
-                if (data.success) {
-                    const idsToRemove = selectedItems.map(item => item.id);
-                    posCart = posCart.filter(item => !idsToRemove.includes(item.id));
-                    closeReturnModal();
-                    updatePOSUI();
-                    loadSalesStats();
-                    showToast(`✅ Return processed! Refund: KSh ${refundTotal.toLocaleString()}`, 'success');
-                } else {
-                    showToast('❌ Error: ' + (data.message || 'Failed to process return'), 'error');
-                }
-                btn.innerHTML = originalText;
-                btn.disabled = false;
-            })
-            .catch(err => {
-                showToast('❌ Error: ' + err.message, 'error');
-                btn.innerHTML = originalText;
-                btn.disabled = false;
-            });
-        }
-
-        // ============================================================
-        // INDEXEDDB FUNCTIONS - UPDATED TO VERSION 5
-        // ============================================================
-        const DB_NAME = 'PricePointDB';
-        const DB_VERSION = 5;  // CHANGED FROM 1 TO 5
-        const STORE_NAME = 'orders';
-        let db = null;
-
-        function openDB() {
-            return new Promise((resolve, reject) => {
-                if (db) {
-                    resolve(db);
-                    return;
-                }
-                
-                const request = indexedDB.open(DB_NAME, DB_VERSION);
-                
-                request.onupgradeneeded = function(event) {
-                    const database = event.target.result;
-                    if (!database.objectStoreNames.contains(STORE_NAME)) {
-                        const store = database.createObjectStore(STORE_NAME, { keyPath: 'order_id' });
-                        store.createIndex('synced', 'synced', { unique: false });
-                        store.createIndex('created_at', 'created_at', { unique: false });
-                        console.log('✅ IndexedDB: Orders store created (v5)');
-                    }
-                };
-                
-                request.onsuccess = function(event) {
-                    db = event.target.result;
-                    console.log('✅ IndexedDB: Connected (Version ' + DB_VERSION + ')');
-                    resolve(db);
-                };
-                
-                request.onerror = function(event) {
-                    console.error('❌ IndexedDB error:', event.target.error);
-                    reject(event.target.error);
-                };
-            });
-        }
-
-        function saveOrderToIndexedDB(order) {
-            return new Promise(async (resolve, reject) => {
-                try {
-                    const database = await openDB();
-                    const transaction = database.transaction(STORE_NAME, 'readwrite');
-                    const store = transaction.objectStore(STORE_NAME);
-                    
-                    if (!order.synced) {
-                        order.synced = false;
-                    }
-                    if (!order.synced_at) {
-                        order.synced_at = null;
-                    }
-                    
-                    const request = store.put(order);
-                    
-                    request.onsuccess = function() {
-                        console.log('✅ Order saved to IndexedDB:', order.order_id);
-                        resolve(order);
-                    };
-                    
-                    request.onerror = function(event) {
-                        console.error('❌ IndexedDB save error:', event.target.error);
-                        reject(event.target.error);
-                    };
-                } catch (error) {
-                    reject(error);
-                }
-            });
-        }
-
-        function getOrdersFromIndexedDB() {
-            return new Promise(async (resolve, reject) => {
-                try {
-                    const database = await openDB();
-                    const transaction = database.transaction(STORE_NAME, 'readonly');
-                    const store = transaction.objectStore(STORE_NAME);
-                    const request = store.getAll();
-                    
-                    request.onsuccess = function() {
-                        console.log('✅ IndexedDB: Retrieved', request.result.length, 'orders');
-                        resolve(request.result);
-                    };
-                    
-                    request.onerror = function(event) {
-                        console.error('❌ IndexedDB get error:', event.target.error);
-                        reject(event.target.error);
-                    };
-                } catch (error) {
-                    reject(error);
-                }
-            });
-        }
-
-        function getUnsyncedOrdersFromIndexedDB() {
-            return new Promise(async (resolve, reject) => {
-                try {
-                    const database = await openDB();
-                    const transaction = database.transaction(STORE_NAME, 'readonly');
-                    const store = transaction.objectStore(STORE_NAME);
-                    const index = store.index('synced');
-                    const request = index.getAll(false);
-                    
-                    request.onsuccess = function() {
-                        console.log('✅ IndexedDB: Found', request.result.length, 'unsynced orders');
-                        resolve(request.result);
-                    };
-                    
-                    request.onerror = function(event) {
-                        reject(event.target.error);
-                    };
-                } catch (error) {
-                    reject(error);
-                }
-            });
-        }
-
-        function markOrderSyncedInIndexedDB(orderId) {
-            return new Promise(async (resolve, reject) => {
-                try {
-                    const database = await openDB();
-                    const transaction = database.transaction(STORE_NAME, 'readwrite');
-                    const store = transaction.objectStore(STORE_NAME);
-                    
-                    const request = store.get(orderId);
-                    
-                    request.onsuccess = function() {
-                        const order = request.result;
-                        if (order) {
-                            order.synced = true;
-                            order.synced_at = new Date().toISOString();
-                            const updateRequest = store.put(order);
-                            
-                            updateRequest.onsuccess = function() {
-                                console.log('✅ Order marked synced in IndexedDB:', orderId);
-                                resolve(order);
-                            };
-                            
-                            updateRequest.onerror = function(event) {
-                                reject(event.target.error);
-                            };
-                        } else {
-                            resolve(null);
-                        }
-                    };
-                    
-                    request.onerror = function(event) {
-                        reject(event.target.error);
-                    };
-                } catch (error) {
-                    reject(error);
-                }
-            });
-        }
-
-        // ============================================================
-        // PLACE ORDER - FIXED FOR OFFLINE
-        // ============================================================
-        function placePOSOrder() {
-            if (posCart.length === 0) { 
-                showToast('⚠️ Add items first!', 'warning'); 
-                return; 
-            }
-            
-            const select = document.getElementById('posCustomer');
-            const selectedOption = select.options[select.selectedIndex];
-            const customerName = selectedOption ? selectedOption.value : 'Walk-in Customer';
-            const customerEmail = selectedOption ? selectedOption.dataset.email || 'walkin@example.com' : 'walkin@example.com';
-            const customerPhone = selectedOption ? selectedOption.dataset.phone || 'N/A' : 'N/A';
-            
-            const subtotal = posCart.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
-            const discountAmount = discountType === 'percentage' ? (subtotal * discountValue / 100) : discountValue;
-            const total = Math.max(0, subtotal - discountAmount);
-            
-            const orderItems = posCart.map(item => ({
-                product_id: item.id,
-                name: item.name || 'Product',
-                price: Number(item.price) || 0,
-                quantity: Number(item.quantity) || 1,
-                total: (Number(item.price) || 0) * (Number(item.quantity) || 1),
-                type: 'product',
-                barcode: item.barcode || ''  // Include barcode in order items
-            }));
-            
-            const orderData = {
-                order_id: 'POS-' + Date.now().toString(36).toUpperCase(),
-                items: orderItems,
-                subtotal: subtotal,
-                shipping: 0,
-                total: total,
-                status: 'confirmed',
-                source: 'pos',
-                created_at: new Date().toISOString(),
-                customer_name: customerName,
-                customer_email: customerEmail,
-                customer_phone: customerPhone,
-                customer_address: 'In-store purchase',
-                customer: {
-                    name: customerName,
-                    email: customerEmail,
-                    phone: customerPhone,
-                    address: 'In-store purchase'
-                },
-                user_id: '{{ session.user.id if session.user else "unknown" }}',
-                user_name: '{{ session.user.name if session.user else "Unknown User" }}',
-                user_role: '{{ session.user.role if session.user else "user" }}',
-                staff_name: '{{ session.user.name if session.user else "Unknown User" }}',
-                synced: false,
-                synced_at: null,
-                barcodes: posCart.map(item => item.barcode).filter(b => b)  // Collect all barcodes
-            };
-            
-            const btn = document.getElementById('posPlaceOrderBtn');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
-            btn.disabled = true;
-            
-            // ============================================================
-            // CHECK IF ONLINE
-            // ============================================================
-            if (!navigator.onLine) {
-                // ============================================================
-                // OFFLINE: Save to IndexedDB only
-                // ============================================================
-                console.log('📡 OFFLINE: Saving order to IndexedDB');
-                
-                const localOrderId = 'OFF-' + Date.now().toString(36).toUpperCase();
-                orderData.order_id = localOrderId;
-                orderData.synced = false;
-                orderData.synced_at = null;
-                
-                saveOrderToIndexedDB(orderData)
-                    .then(() => {
-                        showToast(`✅ Order #${localOrderId} saved offline! Will sync when online.`, 'warning');
-                        posCart = [];
-                        discountValue = 0;
-                        document.getElementById('discountDisplay').textContent = '0%';
-                        updatePOSUI();
-                        checkUnsyncedOrders();
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
-                    })
-                    .catch(err => {
-                        console.error('❌ IndexedDB save error:', err);
-                        showToast('❌ Failed to save order offline', 'error');
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
-                    });
-                return;
-            }
-            
-            // ============================================================
-            // ONLINE: Try Supabase first, fallback to IndexedDB
-            // ============================================================
-            console.log('📡 ONLINE: Saving order to Supabase');
-            
-            fetch('/admin/pos/place-order', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(orderData)
-            })
-            .then(r => {
-                if (!r.ok) throw new Error('Network error: ' + r.status);
-                return r.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    let message = '✅ Order placed! #' + data.order_id + ' | Total: KSh ' + total.toLocaleString();
-                    
-                    // Save to IndexedDB as backup
-                    if (data.order) {
-                        data.order.synced = true;
-                        data.order.synced_at = new Date().toISOString();
-                        saveOrderToIndexedDB(data.order).catch(err => console.warn('⚠️ Backup save failed:', err));
-                    }
-                    
-                    showToast(message, 'success');
-                    posCart = [];
-                    discountValue = 0;
-                    document.getElementById('discountDisplay').textContent = '0%';
-                    updatePOSUI();
-                    loadSalesStats();
-                    loadUserStats();
-                } else {
-                    showToast('❌ Error: ' + (data.message || 'Unknown error'), 'error');
-                }
-                btn.innerHTML = originalText;
-                btn.disabled = false;
-            })
-            .catch(err => {
-                // ============================================================
-                // ONLINE BUT FAILED: Save to IndexedDB as fallback
-                // ============================================================
-                console.warn('⚠️ Supabase failed, saving to IndexedDB:', err);
-                
-                const localOrderId = 'OFF-' + Date.now().toString(36).toUpperCase();
-                orderData.order_id = localOrderId;
-                orderData.synced = false;
-                orderData.synced_at = null;
-                
-                saveOrderToIndexedDB(orderData)
-                    .then(() => {
-                        showToast(`✅ Order #${localOrderId} saved offline! Will sync when online.`, 'warning');
-                        posCart = [];
-                        discountValue = 0;
-                        document.getElementById('discountDisplay').textContent = '0%';
-                        updatePOSUI();
-                        checkUnsyncedOrders();
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
-                    })
-                    .catch(err2 => {
-                        console.error('❌ Both Supabase and IndexedDB failed:', err2);
-                        showToast('❌ Failed to save order. Please try again.', 'error');
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
-                    });
-            });
-        }
-
-        // ============================================================
-        // HOLD ORDERS
-        // ============================================================
-        function holdOrder() {
-            if (posCart.length === 0) { showToast('⚠️ Cart is empty', 'warning'); return; }
-            heldOrders.push({
-                id: Date.now(),
-                items: [...posCart],
-                customer: document.getElementById('posCustomer').value,
-                timestamp: new Date().toLocaleString()
-            });
-            posCart = [];
-            discountValue = 0;
-            document.getElementById('discountDisplay').textContent = '0%';
-            updatePOSUI();
-            renderHeldOrders();
-            showToast(`⏸️ Order held! (${heldOrders.length} held orders)`, 'info');
-        }
-
-        function renderHeldOrders() {
-            const panel = document.getElementById('heldOrdersPanel');
-            const list = document.getElementById('heldOrdersList');
-            if (heldOrders.length === 0) {
-                panel.classList.add('hidden');
-                return;
-            }
-            panel.classList.remove('hidden');
-            let html = '';
-            heldOrders.forEach((order, idx) => {
-                const total = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                html += `
-                    <div class="held-order-item">
-                        <span>${order.customer} - KSh ${total.toLocaleString()}</span>
-                        <div>
-                            <button class="restore-btn" onclick="restoreOrder(${idx})">Restore</button>
-                            <button class="restore-btn" onclick="removeHeldOrder(${idx})" style="color:#dc2626;background:#fce4ec;">✕</button>
-                        </div>
-                    </div>
-                `;
-            });
-            list.innerHTML = html;
-        }
-
-        function restoreOrder(index) {
-            if (posCart.length > 0 && !confirm('Current cart has items. Replace with held order?')) return;
-            posCart = heldOrders[index].items;
-            document.getElementById('posCustomer').value = heldOrders[index].customer;
-            heldOrders.splice(index, 1);
-            discountValue = 0;
-            document.getElementById('discountDisplay').textContent = '0%';
-            updatePOSUI();
-            renderHeldOrders();
-            showToast('✅ Order restored!', 'success');
-        }
-
-        function removeHeldOrder(index) {
-            heldOrders.splice(index, 1);
-            renderHeldOrders();
-            showToast('🗑️ Held order removed');
-        }
-
-        // ============================================================
-        // CUSTOMER MODAL
-        // ============================================================
-        function toggleCustomerModal() { document.getElementById('customerModal').classList.toggle('hidden'); }
-        function closeCustomerModal(event) {
-            if (!event || event.target.classList.contains('modal-overlay') || event.target.classList.contains('close-btn')) {
-                document.getElementById('customerModal').classList.add('hidden');
-            }
-        }
-
-        function addCustomer(event) {
-            event.preventDefault();
-            const name = document.getElementById('custName')?.value.trim();
-            const email = document.getElementById('custEmail')?.value.trim();
-            const phone = document.getElementById('custPhone')?.value.trim();
-            if (!name) { showToast('⚠️ Please enter a name', 'warning'); return; }
-            
-            const select = document.getElementById('posCustomer');
-            if (select) {
-                const existing = Array.from(select.options).some(opt => opt.value === name);
-                if (existing) { showToast('⚠️ Customer already exists!', 'warning'); return; }
-                const option = document.createElement('option');
-                option.value = name;
-                option.textContent = name;
-                option.dataset.email = email || '';
-                option.dataset.phone = phone || '';
-                select.appendChild(option);
-                select.value = name;
-            }
-            document.getElementById('posCustomerEmail').value = email || '';
-            document.getElementById('posCustomerPhone').value = phone || '';
-            closeCustomerModal();
-            showToast('✅ Customer added: ' + name);
-            document.getElementById('customerForm').reset();
-            loadSalesStats();
-        }
-
-        function selectCustomer() {
-            const select = document.getElementById('posCustomer');
-            const selectedOption = select.options[select.selectedIndex];
-            if (selectedOption) {
-                document.getElementById('posCustomerEmail').value = selectedOption.dataset.email || '';
-                document.getElementById('posCustomerPhone').value = selectedOption.dataset.phone || '';
-            }
-        }
-
-        // ============================================================
-        // TOAST
-        // ============================================================
-        function showToast(message, type = 'success') {
-            const toast = document.getElementById('toast');
-            const toastMessage = document.getElementById('toastMessage');
-            if (toast && toastMessage) {
-                toast.className = 'toast ' + type;
-                toastMessage.textContent = message;
-                toast.classList.remove('hidden');
-                clearTimeout(window.toastTimeout);
-                window.toastTimeout = setTimeout(() => toast.classList.add('hidden'), 4000);
-            } else { alert(message); }
-        }
-
-        // ============================================================
-        // KEYBOARD SHORTCUTS
-        // ============================================================
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') { 
-                closeCustomerModal(); 
-                closeDiscountModal(); 
-                closeReturnModal(); 
-                closeBarcodeScanner();
-                closeBarcodeInputModal();
-            }
-            if (e.ctrlKey && e.key === 'Enter') { placePOSOrder(); e.preventDefault(); }
-            if (e.key === 'F1') { document.getElementById('posSearch').focus(); e.preventDefault(); }
-            if (e.key === 'F2') { toggleCustomerModal(); e.preventDefault(); }
-            if (e.key === 'F3') { toggleDiscountModal(); e.preventDefault(); }
-            if (e.key === 'F4') { toggleReturnModal(); e.preventDefault(); }
-            if (e.key === 'F5') { holdOrder(); e.preventDefault(); }
-            if (e.key === 'F6') { manualSync(); e.preventDefault(); }
-            if (e.key === 'F7') { 
-                e.preventDefault();
-                if (document.getElementById('barcodeModal').classList.contains('hidden')) {
-                    openBarcodeScanner();
-                } else {
-                    closeBarcodeScanner();
-                }
-            }
-            if (e.key === 'F8') { 
-                e.preventDefault();
-                if (document.getElementById('barcodeInputModal').classList.contains('hidden')) {
-                    openBarcodeInputModal();
-                } else {
-                    closeBarcodeInputModal();
-                }
-            }
-            if ((e.key === 'Delete' || e.key === 'Backspace') && document.activeElement.id !== 'posSearch') {
-                voidLastItem();
-                e.preventDefault();
-            }
-        });
-
-        // ============================================================
-        // BARCODE SCANNER - Complete Implementation
-        // ============================================================
-
-        let html5QrCode = null;
-        let isScannerRunning = false;
-        let scannerStarted = false;
-
-        // ============================================================
-        // OPEN BARCODE SCANNER
-        // ============================================================
-        function openBarcodeScanner() {
-            const modal = document.getElementById('barcodeModal');
-            modal.classList.remove('hidden');
-            
-            // Reset scanner state
-            document.getElementById('scannerResult').classList.add('hidden');
-            document.getElementById('scannedValue').textContent = '';
-            
-            // Show start button
-            const btn = document.getElementById('startScannerBtn');
-            btn.style.display = 'block';
-            btn.innerHTML = '<i class="fas fa-play"></i> Start Camera';
-            btn.disabled = false;
-            
-            // Reset scanner
-            if (html5QrCode) {
-                try {
-                    html5QrCode.stop().then(() => {
-                        html5QrCode.clear();
-                        scannerStarted = false;
-                    }).catch(() => {});
-                } catch(e) {}
-            }
-            
-            // Check if camera is available
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                showToast('⚠️ Camera not available on this device', 'warning');
-                btn.style.display = 'none';
-                document.getElementById('barcode-reader').innerHTML = `
-                    <div class="text-center py-8 text-gray-400">
-                        <i class="fas fa-camera-slash text-4xl block mb-3"></i>
-                        <p>Camera not available</p>
-                        <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="btn-primary mt-3" style="display:inline-block; padding: 8px 20px; width:auto; background: linear-gradient(135deg, #f59e0b, #d97706);">
-                            <i class="fas fa-keyboard"></i> Enter Manually
-                        </button>
-                    </div>
-                `;
-            }
-        }
-
-        // ============================================================
-        // CLOSE BARCODE SCANNER
-        // ============================================================
-        function closeBarcodeScanner() {
-            const modal = document.getElementById('barcodeModal');
-            modal.classList.add('hidden');
-            
-            // Stop scanner
-            if (html5QrCode && scannerStarted) {
-                try {
-                    html5QrCode.stop().then(() => {
-                        html5QrCode.clear();
-                        scannerStarted = false;
-                    }).catch(() => {});
-                } catch(e) {}
-            }
-            isScannerRunning = false;
-        }
-
-        // ============================================================
-        // START SCANNER
-        // ============================================================
-        function startScanner() {
-            if (isScannerRunning) return;
-            
-            const btn = document.getElementById('startScannerBtn');
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
-            btn.disabled = true;
-            
-            // Clear previous content
-            document.getElementById('barcode-reader').innerHTML = '';
-            
-            const config = {
-                fps: 10,
-                qrbox: { width: 250, height: 250 },
-                aspectRatio: 1.0,
-                formatsToSupport: [
-                    Html5QrcodeSupportedFormats.QR_CODE,
-                    Html5QrcodeSupportedFormats.CODE_128,
-                    Html5QrcodeSupportedFormats.CODE_39,
-                    Html5QrcodeSupportedFormats.EAN_13,
-                    Html5QrcodeSupportedFormats.EAN_8,
-                    Html5QrcodeSupportedFormats.UPC_A,
-                    Html5QrcodeSupportedFormats.UPC_E,
-                    Html5QrcodeSupportedFormats.DATA_MATRIX,
-                    Html5QrcodeSupportedFormats.AZTEC,
-                    Html5QrcodeSupportedFormats.CODE_93,
-                    Html5QrcodeSupportedFormats.CODABAR,
-                    Html5QrcodeSupportedFormats.MAXICODE,
-                    Html5QrcodeSupportedFormats.PDF417,
-                    Html5QrcodeSupportedFormats.RSS_14,
-                    Html5QrcodeSupportedFormats.RSS_EXPANDED
-                ]
-            };
-            
-            try {
-                html5QrCode = new Html5Qrcode("barcode-reader");
-                
-                html5QrCode.start(
-                    { facingMode: "environment" },
-                    config,
-                    onScanSuccess,
-                    onScanError
-                ).then(() => {
-                    console.log('✅ Scanner started successfully');
-                    scannerStarted = true;
-                    isScannerRunning = true;
-                    btn.innerHTML = '<i class="fas fa-pause"></i> Scanning...';
-                    btn.disabled = false;
-                }).catch(err => {
-                    console.error('❌ Scanner start error:', err);
-                    btn.innerHTML = '<i class="fas fa-camera"></i> Try Again';
-                    btn.disabled = false;
-                    showToast('⚠️ Could not access camera: ' + err.message, 'error');
-                    
-                    document.getElementById('barcode-reader').innerHTML = `
-                        <div class="text-center py-8 text-gray-400">
-                            <i class="fas fa-camera-slash text-4xl block mb-3"></i>
-                            <p>Camera not accessible</p>
-                            <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="btn-primary mt-3" style="display:inline-block; padding: 8px 20px; width:auto; background: linear-gradient(135deg, #f59e0b, #d97706);">
-                                <i class="fas fa-keyboard"></i> Enter Manually
-                            </button>
-                        </div>
-                    `;
-                    btn.style.display = 'none';
-                });
-            } catch(err) {
-                console.error('❌ Scanner init error:', err);
-                btn.innerHTML = '<i class="fas fa-camera"></i> Try Again';
-                btn.disabled = false;
-                showToast('⚠️ Scanner error: ' + err.message, 'error');
-            }
-        }
-
-        // ============================================================
-        // ON SCAN SUCCESS
-        // ============================================================
-        function onScanSuccess(decodedText, decodedResult) {
-            console.log('📷 Barcode scanned:', decodedText);
-            
-            // Vibrate if supported
-            try {
-                if (navigator.vibrate) navigator.vibrate(200);
-            } catch(e) {}
-            
-            // Show result
-            document.getElementById('scannerResult').classList.remove('hidden');
-            document.getElementById('scannedValue').textContent = decodedText;
-            
-            // Stop scanner
-            if (html5QrCode && scannerStarted) {
-                try {
-                    html5QrCode.pause();
-                    isScannerRunning = false;
-                    document.getElementById('startScannerBtn').innerHTML = '<i class="fas fa-play"></i> Resume';
-                } catch(e) {}
-            }
-            
-            // Search for product
-            searchProductByBarcode(decodedText);
-        }
-
-        function onScanError(error) {
-            // Ignore - called frequently
-        }
-
-        // ============================================================
-        // SEARCH PRODUCT BY BARCODE - FIXED VERSION
-        // ============================================================
-        function searchProductByBarcode(barcode) {
-            console.log('🔍 Searching for product with barcode:', barcode);
-            
-            // Convert to string for comparison
-            const searchTerm = String(barcode).trim();
-            console.log('📋 Search term:', searchTerm);
-            
-            // Log all products with barcodes for debugging
-            const productsWithBarcodes = allProducts.filter(p => p.barcode);
-            console.log('📦 Products with barcodes:', productsWithBarcodes.length);
-            
-            // FIRST: Try exact barcode match (using == for loose equality)
-            let product = allProducts.find(p => {
-                const barcodeField = String(p.barcode || '').trim();
-                return barcodeField == searchTerm;
-            });
-            
-            // SECOND: Try exact ID match
-            if (!product) {
-                product = allProducts.find(p => {
-                    const id = String(p.id || '').trim();
-                    return id == searchTerm;
-                });
-            }
-            
-            // THIRD: Try name contains match
-            if (!product) {
-                product = allProducts.find(p => {
-                    const name = String(p.name || '').toLowerCase();
-                    return name.includes(searchTerm.toLowerCase());
-                });
-            }
-            
-            // FOURTH: Try barcode contains match
-            if (!product) {
-                product = allProducts.find(p => {
-                    const barcodeField = String(p.barcode || '').toLowerCase();
-                    return barcodeField.includes(searchTerm.toLowerCase());
-                });
-            }
-            
-            if (product) {
-                console.log('✅ Found product:', product.name);
-                showToast(`✅ Found: ${product.name}`, 'success');
-                addToPOSCartByProduct(product);
-                setTimeout(closeBarcodeScanner, 1000);
-            } else {
-                console.log('❌ No product found for barcode:', barcode);
-                showToast(`❌ Product not found for: ${barcode}`, 'error');
-                // Ask if user wants to search by name
-                setTimeout(() => {
-                    if (confirm(`Product not found for "${barcode}".\n\nSearch by name instead?`)) {
-                        closeBarcodeScanner();
-                        document.getElementById('posSearch').value = barcode;
-                        searchProducts(barcode);
-                    }
-                }, 500);
-            }
-        }
-
-        // ============================================================
-        // ADD PRODUCT TO CART FROM SCANNER
-        // ============================================================
-        function addToPOSCartByProduct(product) {
-            const existing = posCart.find(item => item.id === product.id);
-            if (existing) {
-                if (existing.quantity < product.stock) {
-                    existing.quantity++;
-                    showToast(`✅ Added another ${product.name} (${existing.quantity} total)`, 'success');
-                } else {
-                    showToast(`⚠️ Not enough stock for ${product.name}`, 'warning');
-                }
-            } else {
-                posCart.push({
-                    id: product.id,
-                    name: product.name,
-                    price: product.price,
-                    image: product.image || '',
-                    stock: product.stock || 0,
-                    barcode: product.barcode || '',
-                    quantity: 1
-                });
-                showToast(`✅ Added: ${product.name}`, 'success');
-            }
-            updatePOSUI();
-        }
-
-        // ============================================================
-        // MANUAL BARCODE INPUT
-        // ============================================================
-        function openBarcodeInputModal() {
-            document.getElementById('barcodeInputModal').classList.remove('hidden');
-            setTimeout(() => {
-                document.getElementById('manualBarcode').focus();
-            }, 300);
-        }
-
-        function closeBarcodeInputModal() {
-            document.getElementById('barcodeInputModal').classList.add('hidden');
-            document.getElementById('manualBarcode').value = '';
-        }
-
-        function submitManualBarcode() {
-            const barcode = document.getElementById('manualBarcode').value.trim();
-            if (!barcode) {
-                showToast('⚠️ Please enter a barcode', 'warning');
-                return;
-            }
-            closeBarcodeInputModal();
-            searchProductByBarcode(barcode);
-        }
-
-        // ============================================================
-        // INIT
-        // ============================================================
-        document.addEventListener('DOMContentLoaded', function() {
-            document.getElementById('posProductGrid').innerHTML = `
-                <div class="col-span-full search-hint">
-                    <i class="fas fa-search"></i>
-                    <p>Search for products</p>
-                    <p class="text-xs text-gray-400">${allProducts.length} products available</p>
-                    <div class="shortcuts">⌨️ F1: Search | F2: Customer | F3: Discount | F4: Return | F5: Hold | F6: Sync | F7: Scan | F8: Manual Barcode | Ctrl+Enter: Checkout</div>
-                </div>
-            `;
-            document.getElementById('resultCount').textContent = `${allProducts.length} products available`;
-            updatePOSUI();
-            loadSalesStats();
-            loadUserStats();
-            
-            // Check for unsynced orders after 2 seconds
-            setTimeout(function() {
-                if (navigator.onLine) {
-                    checkUnsyncedOrders();
-                    // Auto-sync after 3 seconds if online
-                    setTimeout(syncOfflineOrders, 3000);
-                }
-            }, 2000);
-            
-            console.log('✅ POS Pro v3.0 initialized with ' + allProducts.length + ' products');
-            console.log('📡 Status:', navigator.onLine ? 'Online' : 'Offline');
-            console.log('📋 Products with barcodes:', allProducts.filter(p => p.barcode).length);
-            
-            // Log barcodes for debugging
-            allProducts.forEach(p => {
-                if (p.barcode) {
-                    console.log(`📦 ${p.name}: ${p.barcode}`);
-                }
-            });
-        });
-    </script>
-</body>
-</html>
+@admin_bp.route('/static/<path:filename>')
+def static_files(filename):
+    try:
+        return send_from_directory('static', filename)
+    except Exception as e:
+        print(f"❌ Error serving static file: {e}")
+        return "File not found", 404
