@@ -992,106 +992,6 @@
             }
         }
 
-        // Update on status change
-        window.addEventListener('online', function() {
-            updateOnlineStatusUI();
-            showToast('🔄 Back online! Syncing orders...', 'info');
-            setTimeout(syncOfflineOrders, 1000);
-            setTimeout(checkUnsyncedOrders, 500);
-        });
-
-        window.addEventListener('offline', function() {
-            updateOnlineStatusUI();
-            showToast('📡 You are offline. Orders will be saved locally.', 'warning');
-        });
-
-        updateOnlineStatusUI();
-
-        // ============================================================
-        // ENHANCED AUTO-SYNC SYSTEM
-        // ============================================================
-
-        // Auto-sync on page load/refresh
-        function autoSyncOnLoad() {
-            if (navigator.onLine) {
-                console.log('🔄 Auto-syncing on page load/refresh...');
-                
-                // Check for unsynced orders
-                checkUnsyncedOrders();
-                
-                // Sync after 2 seconds
-                setTimeout(function() {
-                    syncNow();
-                }, 2000);
-                
-                // Second sync after 5 seconds for any pending orders
-                setTimeout(function() {
-                    syncNow();
-                }, 5000);
-            } else {
-                console.log('📡 Offline - will sync when online');
-            }
-        }
-
-        // Auto-sync when tab becomes visible
-        function setupVisibilitySync() {
-            document.addEventListener('visibilitychange', function() {
-                if (!document.hidden && navigator.onLine) {
-                    console.log('👁️ Tab visible - auto-syncing...');
-                    
-                    // Check for unsynced orders
-                    checkUnsyncedOrders();
-                    
-                    // Sync after 1 second
-                    setTimeout(function() {
-                        syncNow();
-                    }, 1000);
-                }
-            });
-        }
-
-        // Periodic auto-sync (every 30 seconds)
-        function setupPeriodicSync() {
-            setInterval(function() {
-                if (navigator.onLine) {
-                    console.log('⏰ Periodic auto-sync check...');
-                    checkUnsyncedOrders();
-                    
-                    // Only sync if there are unsynced orders
-                    const statusEl = document.getElementById('syncStatus');
-                    if (statusEl && statusEl.style.display !== 'none') {
-                        console.log('🔄 Syncing pending orders...');
-                        syncNow();
-                    }
-                }
-            }, 30000); // 30 seconds
-        }
-
-        // Enhanced online event handler
-        function setupOnlineHandler() {
-            window.addEventListener('online', function() {
-                console.log('📡 Back online - auto-syncing...');
-                updateOnlineStatusUI();
-                showToast('🔄 Back online! Syncing orders...', 'info');
-                
-                // Check and sync
-                setTimeout(function() {
-                    checkUnsyncedOrders();
-                    setTimeout(function() {
-                        syncNow();
-                    }, 1000);
-                }, 500);
-            });
-        }
-
-        // Enhanced offline event handler
-        function setupOfflineHandler() {
-            window.addEventListener('offline', function() {
-                updateOnlineStatusUI();
-                showToast('📡 You are offline. Orders will be saved locally.', 'warning');
-            });
-        }
-
         // ============================================================
         // LOAD USER STATS
         // ============================================================
@@ -1135,16 +1035,16 @@
         }
 
         // ============================================================
-        // SYNC FUNCTIONS
+        // SYNC FUNCTIONS - CLEANED
         // ============================================================
 
         // ============================================================
-        // IMPORTANT: syncNow uses version 3 to match existing database
+        // syncNow uses version 3 to match existing database
         // ============================================================
         function syncNow() {
             console.log('🔍 Checking for offline orders...');
             
-            const r = indexedDB.open('PricePointDB', 3);  // ← FIXED: Using version 3
+            const r = indexedDB.open('PricePointDB', 3);
             
             r.onsuccess = function(e) {
                 const db = e.target.result;
@@ -1181,6 +1081,8 @@
                             });
                             console.log(`✅ Marked ${data.synced} orders as synced`);
                             showNotification(`✅ ${data.synced} orders synced!`);
+                            // Update UI
+                            checkUnsyncedOrders();
                         }
                         db.close();
                     })
@@ -1192,27 +1094,56 @@
             };
         }
 
-        // Auto-sync when coming online
+        // Auto-sync when coming online - IMMEDIATE
         window.addEventListener('online', function() {
-            console.log('🌐 Back online - syncing offline orders...');
-            syncNow();
+            console.log('🌐 Back online - IMMEDIATE SYNC!');
+            updateOnlineStatusUI();
+            showToast('🔄 Back online! Syncing pending orders...', 'info');
+            
+            // Check and sync immediately
+            checkUnsyncedOrders();
+            
+            // Sync after 1 second
+            setTimeout(function() {
+                syncNow();
+            }, 500);
         });
 
         // Auto-sync when page loads
         document.addEventListener('DOMContentLoaded', function() {
             setTimeout(function() {
                 if (navigator.onLine) {
-                    syncNow();
+                    checkUnsyncedOrders();
+                    setTimeout(function() {
+                        syncNow();
+                    }, 2000);
                 }
-            }, 2000);
+            }, 1000);
         });
 
-        // After placing an order, check for pending sync
-        function afterOrderPlaced() {
-            if (navigator.onLine) {
-                setTimeout(syncNow, 2000);
+        // Auto-sync when tab becomes visible
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden && navigator.onLine) {
+                console.log('👁️ Tab visible - checking for pending sync...');
+                setTimeout(function() {
+                    checkUnsyncedOrders();
+                    syncNow();
+                }, 500);
             }
-        }
+        });
+
+        // Periodic sync check every 30 seconds
+        setInterval(function() {
+            if (navigator.onLine) {
+                const statusEl = document.getElementById('syncStatus');
+                if (statusEl && statusEl.style.display !== 'none') {
+                    console.log('⏰ Periodic sync...');
+                    syncNow();
+                } else {
+                    checkUnsyncedOrders();
+                }
+            }
+        }, 30000);
 
         // Notification helper
         function showNotification(message) {
@@ -1224,8 +1155,6 @@
             setTimeout(() => toast.remove(), 3000);
         }
 
-        console.log('✅ POS sync functions loaded');
-        
         function checkUnsyncedOrders() {
             fetch('/admin/api/unsynced-count')
                 .then(r => r.json())
@@ -1243,8 +1172,16 @@
                                     statusEl.style.animation = 'pulse-badge 2s infinite';
                                 }
                                 let orderIds = data.orders || [];
-                                let tooltip = orderIds.length > 0 ? 'Orders: ' + orderIds.join(', ') : '';
+                                let tooltip = orderIds.length > 0 ? 'Orders: ' + orderIds.join(', ') : data.count + ' offline orders waiting to sync';
                                 statusEl.title = tooltip;
+                                
+                                // Auto-sync if online
+                                if (navigator.onLine) {
+                                    console.log(`🔄 ${data.count} offline orders found - auto-syncing...`);
+                                    setTimeout(function() {
+                                        syncNow();
+                                    }, 1000);
+                                }
                             } else {
                                 statusEl.style.display = 'none';
                                 statusEl.style.animation = 'none';
@@ -1268,16 +1205,16 @@
                 syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
                 syncBtn.className = 'syncing';
                 
-                syncOfflineOrders();
+                syncNow();
                 
-                // Reset after 5 seconds
                 setTimeout(function() {
                     syncBtn.innerHTML = originalText;
                     syncBtn.className = '';
                     checkUnsyncedOrders();
+                    showToast('✅ Sync completed!', 'success');
                 }, 5000);
             } else {
-                syncOfflineOrders();
+                syncNow();
             }
         }
 
@@ -1288,36 +1225,11 @@
             }
             
             showToast('🔄 Syncing offline orders...', 'info');
-            
-            fetch('/admin/api/sync-queue', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    if (data.synced > 0) {
-                        showToast(`✅ Synced ${data.synced} offline orders to cloud!`, 'success');
-                        loadUserStats();
-                        loadSalesStats();
-                        checkUnsyncedOrders();
-                    } else if (data.failed > 0) {
-                        showToast(`⚠️ ${data.failed} orders failed to sync. Check connection.`, 'warning');
-                    } else {
-                        showToast('✅ All orders are synced!', 'success');
-                    }
-                } else {
-                    showToast('❌ Sync failed: ' + (data.message || 'Unknown error'), 'error');
-                }
-            })
-            .catch(err => {
-                console.error('Sync error:', err);
-                showToast('❌ Sync error: ' + err.message, 'error');
-            });
+            syncNow();
         }
 
         // ============================================================
-        // SEARCH & FILTER - UPDATED WITH BARCODE SUPPORT
+        // SEARCH & FILTER
         // ============================================================
         function searchProducts(query) {
             const searchTerm = query.toLowerCase().trim();
@@ -1337,13 +1249,11 @@
                     const category = (p.category || '').toLowerCase();
                     const id = (p.id || '').toLowerCase();
                     const barcode = (p.barcode || '').toLowerCase();
-                    const sku = (p.sku || '').toLowerCase();
                     
                     return name.includes(searchTerm) || 
                            category.includes(searchTerm) || 
                            id.includes(searchTerm) ||
-                           barcode.includes(searchTerm) ||
-                           sku.includes(searchTerm);
+                           barcode.includes(searchTerm);
                 });
                 filteredProducts = results.slice(0, 100);
                 document.getElementById('resultCount').textContent = `${results.length} found${results.length > 100 ? ' (showing 100)' : ''}`;
@@ -1702,10 +1612,10 @@
         }
 
         // ============================================================
-        // INDEXEDDB FUNCTIONS - FIXED: VERSION 3
+        // INDEXEDDB FUNCTIONS - VERSION 3
         // ============================================================
         const DB_NAME = 'PricePointDB';
-        const DB_VERSION = 3;  // ← FIXED: Changed from 1 to 3
+        const DB_VERSION = 3;
         const STORE_NAME = 'orders';
         let db = null;
 
@@ -1764,90 +1674,6 @@
                     
                     request.onerror = function(event) {
                         console.error('❌ IndexedDB save error:', event.target.error);
-                        reject(event.target.error);
-                    };
-                } catch (error) {
-                    reject(error);
-                }
-            });
-        }
-
-        function getOrdersFromIndexedDB() {
-            return new Promise(async (resolve, reject) => {
-                try {
-                    const database = await openDB();
-                    const transaction = database.transaction(STORE_NAME, 'readonly');
-                    const store = transaction.objectStore(STORE_NAME);
-                    const request = store.getAll();
-                    
-                    request.onsuccess = function() {
-                        console.log('✅ IndexedDB: Retrieved', request.result.length, 'orders');
-                        resolve(request.result);
-                    };
-                    
-                    request.onerror = function(event) {
-                        console.error('❌ IndexedDB get error:', event.target.error);
-                        reject(event.target.error);
-                    };
-                } catch (error) {
-                    reject(error);
-                }
-            });
-        }
-
-        function getUnsyncedOrdersFromIndexedDB() {
-            return new Promise(async (resolve, reject) => {
-                try {
-                    const database = await openDB();
-                    const transaction = database.transaction(STORE_NAME, 'readonly');
-                    const store = transaction.objectStore(STORE_NAME);
-                    const index = store.index('synced');
-                    const request = index.getAll(false);
-                    
-                    request.onsuccess = function() {
-                        console.log('✅ IndexedDB: Found', request.result.length, 'unsynced orders');
-                        resolve(request.result);
-                    };
-                    
-                    request.onerror = function(event) {
-                        reject(event.target.error);
-                    };
-                } catch (error) {
-                    reject(error);
-                }
-            });
-        }
-
-        function markOrderSyncedInIndexedDB(orderId) {
-            return new Promise(async (resolve, reject) => {
-                try {
-                    const database = await openDB();
-                    const transaction = database.transaction(STORE_NAME, 'readwrite');
-                    const store = transaction.objectStore(STORE_NAME);
-                    
-                    const request = store.get(orderId);
-                    
-                    request.onsuccess = function() {
-                        const order = request.result;
-                        if (order) {
-                            order.synced = true;
-                            order.synced_at = new Date().toISOString();
-                            const updateRequest = store.put(order);
-                            
-                            updateRequest.onsuccess = function() {
-                                console.log('✅ Order marked synced in IndexedDB:', orderId);
-                                resolve(order);
-                            };
-                            
-                            updateRequest.onerror = function(event) {
-                                reject(event.target.error);
-                            };
-                        } else {
-                            resolve(null);
-                        }
-                    };
-                    
-                    request.onerror = function(event) {
                         reject(event.target.error);
                     };
                 } catch (error) {
@@ -1922,9 +1748,7 @@
             // CHECK IF ONLINE
             // ============================================================
             if (!navigator.onLine) {
-                // ============================================================
                 // OFFLINE: Save to IndexedDB only
-                // ============================================================
                 console.log('📡 OFFLINE: Saving order to IndexedDB');
                 
                 const localOrderId = 'OFF-' + Date.now().toString(36).toUpperCase();
@@ -1952,9 +1776,7 @@
                 return;
             }
             
-            // ============================================================
             // ONLINE: Try Supabase first, fallback to IndexedDB
-            // ============================================================
             console.log('📡 ONLINE: Saving order to Supabase');
             
             fetch('/admin/pos/place-order', {
@@ -1970,7 +1792,6 @@
                 if (data.success) {
                     let message = '✅ Order placed! #' + data.order_id + ' | Total: KSh ' + total.toLocaleString();
                     
-                    // Save to IndexedDB as backup
                     if (data.order) {
                         data.order.synced = true;
                         data.order.synced_at = new Date().toISOString();
@@ -1984,14 +1805,6 @@
                     updatePOSUI();
                     loadSalesStats();
                     loadUserStats();
-                    
-                    // Auto-sync after order placement
-                    setTimeout(function() {
-                        if (navigator.onLine) {
-                            console.log('🔄 Auto-syncing after order placement...');
-                            syncOfflineOrders();
-                        }
-                    }, 1500);
                 } else {
                     showToast('❌ Error: ' + (data.message || 'Unknown error'), 'error');
                 }
@@ -1999,9 +1812,7 @@
                 btn.disabled = false;
             })
             .catch(err => {
-                // ============================================================
                 // ONLINE BUT FAILED: Save to IndexedDB as fallback
-                // ============================================================
                 console.warn('⚠️ Supabase failed, saving to IndexedDB:', err);
                 
                 const localOrderId = 'OFF-' + Date.now().toString(36).toUpperCase();
@@ -2199,24 +2010,18 @@
         let isScannerRunning = false;
         let scannerStarted = false;
 
-        // ============================================================
-        // OPEN BARCODE SCANNER
-        // ============================================================
         function openBarcodeScanner() {
             const modal = document.getElementById('barcodeModal');
             modal.classList.remove('hidden');
             
-            // Reset scanner state
             document.getElementById('scannerResult').classList.add('hidden');
             document.getElementById('scannedValue').textContent = '';
             
-            // Show start button
             const btn = document.getElementById('startScannerBtn');
             btn.style.display = 'block';
             btn.innerHTML = '<i class="fas fa-play"></i> Start Camera';
             btn.disabled = false;
             
-            // Reset scanner
             if (html5QrCode) {
                 try {
                     html5QrCode.stop().then(() => {
@@ -2226,7 +2031,6 @@
                 } catch(e) {}
             }
             
-            // Check if camera is available
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 showToast('⚠️ Camera not available on this device', 'warning');
                 btn.style.display = 'none';
@@ -2242,14 +2046,10 @@
             }
         }
 
-        // ============================================================
-        // CLOSE BARCODE SCANNER
-        // ============================================================
         function closeBarcodeScanner() {
             const modal = document.getElementById('barcodeModal');
             modal.classList.add('hidden');
             
-            // Stop scanner
             if (html5QrCode && scannerStarted) {
                 try {
                     html5QrCode.stop().then(() => {
@@ -2261,9 +2061,6 @@
             isScannerRunning = false;
         }
 
-        // ============================================================
-        // START SCANNER
-        // ============================================================
         function startScanner() {
             if (isScannerRunning) return;
             
@@ -2271,7 +2068,6 @@
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
             btn.disabled = true;
             
-            // Clear previous content
             document.getElementById('barcode-reader').innerHTML = '';
             
             const config = {
@@ -2336,22 +2132,16 @@
             }
         }
 
-        // ============================================================
-        // ON SCAN SUCCESS
-        // ============================================================
         function onScanSuccess(decodedText, decodedResult) {
             console.log('📷 Barcode scanned:', decodedText);
             
-            // Vibrate if supported
             try {
                 if (navigator.vibrate) navigator.vibrate(200);
             } catch(e) {}
             
-            // Show result
             document.getElementById('scannerResult').classList.remove('hidden');
             document.getElementById('scannedValue').textContent = decodedText;
             
-            // Stop scanner
             if (html5QrCode && scannerStarted) {
                 try {
                     html5QrCode.pause();
@@ -2360,181 +2150,23 @@
                 } catch(e) {}
             }
             
-            // Search for product
             searchProductByBarcode(decodedText);
         }
 
         function onScanError(error) {
             // Ignore - called frequently
         }
-        // ============================================================
-// AUTO-SYNC WHEN COMING ONLINE - IMMEDIATE
-// ============================================================
 
-// Enhanced online event - sync immediately when coming online
-window.addEventListener('online', function() {
-    console.log('🌐 Back online - IMMEDIATE SYNC!');
-    updateOnlineStatusUI();
-    showToast('🔄 Back online! Syncing pending orders...', 'info');
-    
-    // Check and sync immediately
-    checkUnsyncedOrders();
-    
-    // Sync after 1 second (ensures everything is ready)
-    setTimeout(function() {
-        syncNow();
-    }, 500);
-    
-    // Second sync after 3 seconds for any stragglers
-    setTimeout(function() {
-        checkUnsyncedOrders();
-        syncNow();
-    }, 3000);
-});
-
-// Also sync when page becomes visible (user returns to app)
-document.addEventListener('visibilitychange', function() {
-    if (!document.hidden && navigator.onLine) {
-        console.log('👁️ Tab visible - checking for pending sync...');
-        setTimeout(function() {
-            checkUnsyncedOrders();
-            syncNow();
-        }, 500);
-    }
-});
-
-// Periodic sync check every 15 seconds (instead of 30)
-setInterval(function() {
-    if (navigator.onLine) {
-        const statusEl = document.getElementById('syncStatus');
-        if (statusEl && statusEl.style.display !== 'none') {
-            console.log('⏰ Periodic sync...');
-            syncNow();
-        } else {
-            // Still check for unsynced orders
-            checkUnsyncedOrders();
-        }
-    }
-}, 15000); // 15 seconds
-
-// ============================================================
-// MANUAL SYNC BUTTON - Enhanced
-// ============================================================
-
-function manualSync() {
-    if (!navigator.onLine) {
-        showToast('📡 You are offline. Please connect to sync.', 'warning');
-        return;
-    }
-    
-    const syncBtn = document.querySelector('#syncStatus');
-    if (syncBtn) {
-        const originalText = syncBtn.innerHTML;
-        syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
-        syncBtn.className = 'syncing';
-        
-        // Check and sync
-        checkUnsyncedOrders();
-        
-        syncOfflineOrders();
-        
-        // Reset after 5 seconds
-        setTimeout(function() {
-            syncBtn.innerHTML = originalText;
-            syncBtn.className = '';
-            checkUnsyncedOrders();
-            showToast('✅ Sync completed!', 'success');
-        }, 5000);
-    } else {
-        syncOfflineOrders();
-    }
-}
-
-// ============================================================
-// ENHANCED CHECK UNSYNCED ORDERS
-// ============================================================
-
-function checkUnsyncedOrders() {
-    fetch('/admin/api/unsynced-count')
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                const statusEl = document.getElementById('syncStatus');
-                const countEl = document.getElementById('unsyncedCount');
-                
-                if (statusEl) {
-                    if (data.count > 0) {
-                        statusEl.style.display = 'inline-flex';
-                        statusEl.className = 'has-orders';
-                        if (countEl) {
-                            countEl.textContent = data.count;
-                            statusEl.style.animation = 'pulse-badge 2s infinite';
-                        }
-                        let orderIds = data.orders || [];
-                        let tooltip = orderIds.length > 0 ? 'Orders: ' + orderIds.join(', ') : data.count + ' offline orders waiting to sync';
-                        statusEl.title = tooltip;
-                        
-                        // If online, auto-sync immediately
-                        if (navigator.onLine) {
-                            console.log(`🔄 ${data.count} offline orders found - auto-syncing...`);
-                            setTimeout(function() {
-                                syncNow();
-                            }, 1000);
-                        } else {
-                            console.log(`📡 ${data.count} offline orders - waiting for connection`);
-                        }
-                    } else {
-                        statusEl.style.display = 'none';
-                        statusEl.style.animation = 'none';
-                        statusEl.className = '';
-                    }
-                }
-            }
-        })
-        .catch(err => console.error('Error checking sync status:', err));
-}
-
-// ============================================================
-// AUTO-SYNC ON PAGE LOAD (if online)
-// ============================================================
-
-// Add to your DOMContentLoaded
-document.addEventListener('DOMContentLoaded', function() {
-    // ... your existing initialization code ...
-    
-    // Check for pending orders immediately
-    setTimeout(function() {
-        if (navigator.onLine) {
-            checkUnsyncedOrders();
-            // Sync after 2 seconds
-            setTimeout(function() {
-                syncNow();
-            }, 2000);
-        }
-    }, 1000);
-});
-
-        // ============================================================
-        // SEARCH PRODUCT BY BARCODE - FIXED VERSION
-        // ============================================================
         function searchProductByBarcode(barcode) {
             console.log('🔍 Searching for product with barcode:', barcode);
             
-            // Convert to string for comparison
             const searchTerm = String(barcode).trim();
-            console.log('📋 Search term:', searchTerm);
             
-            // Log all products with barcodes for debugging
-            const productsWithBarcodes = allProducts.filter(p => p.barcode);
-            console.log('📦 Products with barcodes:', productsWithBarcodes.length);
-            
-            // FIRST: Try exact barcode match (using == for loose equality)
             let product = allProducts.find(p => {
                 const barcodeField = String(p.barcode || '').trim();
                 return barcodeField == searchTerm;
             });
             
-            // SECOND: Try exact ID match
             if (!product) {
                 product = allProducts.find(p => {
                     const id = String(p.id || '').trim();
@@ -2542,7 +2174,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             }
             
-            // THIRD: Try name contains match
             if (!product) {
                 product = allProducts.find(p => {
                     const name = String(p.name || '').toLowerCase();
@@ -2550,23 +2181,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             }
             
-            // FOURTH: Try barcode contains match
-            if (!product) {
-                product = allProducts.find(p => {
-                    const barcodeField = String(p.barcode || '').toLowerCase();
-                    return barcodeField.includes(searchTerm.toLowerCase());
-                });
-            }
-            
             if (product) {
-                console.log('✅ Found product:', product.name);
                 showToast(`✅ Found: ${product.name}`, 'success');
                 addToPOSCartByProduct(product);
                 setTimeout(closeBarcodeScanner, 1000);
             } else {
-                console.log('❌ No product found for barcode:', barcode);
                 showToast(`❌ Product not found for: ${barcode}`, 'error');
-                // Ask if user wants to search by name
                 setTimeout(() => {
                     if (confirm(`Product not found for "${barcode}".\n\nSearch by name instead?`)) {
                         closeBarcodeScanner();
@@ -2577,9 +2197,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        // ============================================================
-        // ADD PRODUCT TO CART FROM SCANNER
-        // ============================================================
         function addToPOSCartByProduct(product) {
             const existing = posCart.find(item => item.id === product.id);
             if (existing) {
@@ -2604,9 +2221,6 @@ document.addEventListener('DOMContentLoaded', function() {
             updatePOSUI();
         }
 
-        // ============================================================
-        // MANUAL BARCODE INPUT
-        // ============================================================
         function openBarcodeInputModal() {
             document.getElementById('barcodeInputModal').classList.remove('hidden');
             setTimeout(() => {
@@ -2630,13 +2244,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         // ============================================================
-        // INIT WITH ENHANCED AUTO-SYNC
+        // INIT
         // ============================================================
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('✅ POS Pro v3.0 initializing with enhanced auto-sync...');
+            console.log('✅ POS Pro v3.0 initializing...');
             console.log('📦 IndexedDB Version:', DB_VERSION);
             
-            // Initialize UI
             document.getElementById('posProductGrid').innerHTML = `
                 <div class="col-span-full search-hint">
                     <i class="fas fa-search"></i>
@@ -2650,55 +2263,18 @@ document.addEventListener('DOMContentLoaded', function() {
             loadSalesStats();
             loadUserStats();
             
-            // ============================================================
-            // AUTO-SYNC ON LOAD
-            // ============================================================
-            setTimeout(autoSyncOnLoad, 500);
-            
-            // ============================================================
-            // SETUP ALL AUTO-SYNC HANDLERS
-            // ============================================================
-            setupVisibilitySync();
-            setupPeriodicSync();
-            setupOnlineHandler();
-            setupOfflineHandler();
-            
-            // ============================================================
-            // CHECK FOR OFFLINE ORDERS AFTER 2 SECONDS
-            // ============================================================
+            // Check for unsynced orders
             setTimeout(function() {
                 if (navigator.onLine) {
                     checkUnsyncedOrders();
+                    setTimeout(function() {
+                        syncNow();
+                    }, 2000);
                 }
-            }, 2000);
-            
-            // ============================================================
-            // AUTO-SYNC AFTER 3 SECONDS IF ONLINE
-            // ============================================================
-            setTimeout(function() {
-                if (navigator.onLine) {
-                    console.log('🔄 Initial auto-sync after load...');
-                    syncOfflineOrders();
-                }
-            }, 3000);
-            
-            // ============================================================
-            // SECOND CHECK FOR PENDING ORDERS
-            // ============================================================
-            setTimeout(function() {
-                checkUnsyncedOrders();
-            }, 5000);
+            }, 1000);
             
             console.log('📡 Status:', navigator.onLine ? 'Online' : 'Offline');
             console.log('📋 Products with barcodes:', allProducts.filter(p => p.barcode).length);
-            console.log('⏰ Auto-sync enabled: On load, on tab switch, every 30s, and on online event');
-            
-            // Log barcodes for debugging
-            allProducts.forEach(p => {
-                if (p.barcode) {
-                    console.log(`📦 ${p.name}: ${p.barcode}`);
-                }
-            });
         });
     </script>
 </body>
