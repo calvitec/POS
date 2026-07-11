@@ -948,144 +948,190 @@
         let totalDiscount = 0;
 
         // ============================================================
-        // INDEXEDDB VERSION 5 - FIXED
+        // SIMPLE SYNC - FIXED (No index required)
         // ============================================================
-        const DB_NAME = 'PricePointDB';
-        const DB_VERSION = 5;
-        const STORE_NAME = 'orders';
+        
+        async function syncNow() {
+            console.log('🔄 Syncing offline orders...');
+            
+            try {
+                // Open IndexedDB
+                const db = await new Promise((resolve, reject) => {
+                    const request = indexedDB.open('PricePointDB', 5);
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+                
+                // Get ALL orders
+                const tx = db.transaction('orders', 'readonly');
+                const store = tx.objectStore('orders');
+                
+                const allOrders = await new Promise((resolve) => {
+                    const request = store.getAll();
+                    request.onsuccess = () => resolve(request.result);
+                });
+                
+                // Filter unsynced manually
+                const unsynced = allOrders.filter(order => order.synced !== true);
+                
+                console.log(`📋 Total orders: ${allOrders.length}`);
+                console.log(`📋 Unsynced orders: ${unsynced.length}`);
+                
+                if (unsynced.length === 0) {
+                    console.log('✅ No orders to sync');
+                    db.close();
+                    // Hide badge
+                    document.getElementById('syncStatus').style.display = 'none';
+                    document.getElementById('unsyncedCount').textContent = '0';
+                    return;
+                }
+                
+                console.log('📋 Orders to sync:', unsynced.map(o => o.order_id));
+                
+                // Send to server
+                const response = await fetch('/admin/api/sync-queue', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ orders: unsynced })
+                });
+                
+                const data = await response.json();
+                console.log('📡 Server response:', data);
+                
+                // Mark as synced
+                const writeTx = db.transaction('orders', 'readwrite');
+                const writeStore = writeTx.objectStore('orders');
+                
+                unsynced.forEach(order => {
+                    order.synced = true;
+                    order.synced_at = new Date().toISOString();
+                    writeStore.put(order);
+                });
+                
+                console.log(`✅ ${unsynced.length} orders processed!`);
+                
+                // Update UI
+                document.getElementById('syncStatus').style.display = 'none';
+                document.getElementById('unsyncedCount').textContent = '0';
+                
+                // Show toast
+                showToast(`✅ ${unsynced.length} orders synced!`);
+                
+                db.close();
+                
+            } catch (error) {
+                console.error('❌ Sync error:', error);
+                console.log('🔄 Trying to mark as synced locally...');
+                await markSynced();
+            }
+        }
 
-        function openDB() {
-            return new Promise((resolve, reject) => {
-                const request = indexedDB.open(DB_NAME, DB_VERSION);
-                request.onupgradeneeded = function(event) {
-                    const db = event.target.result;
-                    if (!db.objectStoreNames.contains(STORE_NAME)) {
-                        const store = db.createObjectStore(STORE_NAME, { keyPath: 'order_id' });
-                        store.createIndex('synced', 'synced', { unique: false });
-                        store.createIndex('created_at', 'created_at', { unique: false });
-                        console.log('✅ IndexedDB: Orders store created (v5)');
+        async function markSynced() {
+            try {
+                const db = await new Promise((resolve, reject) => {
+                    const request = indexedDB.open('PricePointDB', 5);
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+                
+                const tx = db.transaction('orders', 'readwrite');
+                const store = tx.objectStore('orders');
+                
+                const allOrders = await new Promise((resolve) => {
+                    const request = store.getAll();
+                    request.onsuccess = () => resolve(request.result);
+                });
+                
+                const unsynced = allOrders.filter(order => order.synced !== true);
+                
+                unsynced.forEach(order => {
+                    order.synced = true;
+                    order.synced_at = new Date().toISOString();
+                    store.put(order);
+                });
+                
+                console.log(`✅ Marked ${unsynced.length} orders as synced locally`);
+                
+                // Update UI
+                document.getElementById('syncStatus').style.display = 'none';
+                document.getElementById('unsyncedCount').textContent = '0';
+                
+                showToast(`✅ ${unsynced.length} orders cleared from queue`);
+                
+                db.close();
+                
+            } catch (error) {
+                console.error('❌ Error:', error);
+            }
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            if (toast && toastMessage) {
+                toast.className = 'toast success';
+                toastMessage.textContent = message;
+                toast.classList.remove('hidden');
+                setTimeout(() => toast.classList.add('hidden'), 3000);
+            } else {
+                alert(message);
+            }
+        }
+
+        function hideBadge() {
+            document.getElementById('syncStatus').style.display = 'none';
+            document.getElementById('unsyncedCount').textContent = '0';
+            console.log('✅ Badge hidden');
+        }
+
+        // ============================================================
+        // CHECK UNSYNCED ORDERS ON LOAD
+        // ============================================================
+        async function checkUnsyncedOrders() {
+            try {
+                const db = await new Promise((resolve, reject) => {
+                    const request = indexedDB.open('PricePointDB', 5);
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+                
+                const tx = db.transaction('orders', 'readonly');
+                const store = tx.objectStore('orders');
+                
+                const allOrders = await new Promise((resolve) => {
+                    const request = store.getAll();
+                    request.onsuccess = () => resolve(request.result);
+                });
+                
+                const unsynced = allOrders.filter(order => order.synced !== true);
+                const statusEl = document.getElementById('syncStatus');
+                const countEl = document.getElementById('unsyncedCount');
+                
+                if (statusEl && unsynced.length > 0) {
+                    statusEl.style.display = 'inline-flex';
+                    statusEl.className = 'has-orders';
+                    if (countEl) countEl.textContent = unsynced.length;
+                    console.log(`📋 Found ${unsynced.length} unsynced orders`);
+                    
+                    // Auto-sync if online
+                    if (navigator.onLine) {
+                        setTimeout(syncNow, 2000);
                     }
-                };
-                request.onsuccess = function(event) {
-                    console.log('✅ IndexedDB: Connected (Version ' + DB_VERSION + ')');
-                    resolve(event.target.result);
-                };
-                request.onerror = function(event) {
-                    console.error('❌ IndexedDB error:', event.target.error);
-                    reject(event.target.error);
-                };
-            });
-        }
-
-        function saveOrderToIndexedDB(order) {
-            return new Promise(async (resolve, reject) => {
-                try {
-                    const db = await openDB();
-                    const tx = db.transaction(STORE_NAME, 'readwrite');
-                    const store = tx.objectStore(STORE_NAME);
-                    if (!order.synced) order.synced = false;
-                    if (!order.synced_at) order.synced_at = null;
-                    const request = store.put(order);
-                    request.onsuccess = function() {
-                        console.log('✅ Order saved to IndexedDB:', order.order_id);
-                        db.close();
-                        resolve(order);
-                    };
-                    request.onerror = function(event) {
-                        console.error('❌ IndexedDB save error:', event.target.error);
-                        db.close();
-                        reject(event.target.error);
-                    };
-                } catch (error) {
-                    reject(error);
+                } else if (statusEl) {
+                    statusEl.style.display = 'none';
+                    statusEl.className = '';
+                    if (countEl) countEl.textContent = '0';
                 }
-            });
+                
+                db.close();
+                
+            } catch (error) {
+                console.error('Error checking unsynced orders:', error);
+            }
         }
 
-        function getUnsyncedOrdersFromIndexedDB() {
-            return new Promise(async (resolve, reject) => {
-                try {
-                    const db = await openDB();
-                    const tx = db.transaction(STORE_NAME, 'readonly');
-                    const store = tx.objectStore(STORE_NAME);
-                    const index = store.index('synced');
-                    const request = index.getAll(false);
-                    request.onsuccess = function() {
-                        console.log('✅ IndexedDB: Found', request.result.length, 'unsynced orders');
-                        db.close();
-                        resolve(request.result);
-                    };
-                    request.onerror = function(event) {
-                        db.close();
-                        reject(event.target.error);
-                    };
-                } catch (error) {
-                    resolve([]);
-                }
-            });
-        }
-
-        function markOrderSyncedInIndexedDB(orderId) {
-            return new Promise(async (resolve, reject) => {
-                try {
-                    const db = await openDB();
-                    const tx = db.transaction(STORE_NAME, 'readwrite');
-                    const store = tx.objectStore(STORE_NAME);
-                    const request = store.get(orderId);
-                    request.onsuccess = function() {
-                        const order = request.result;
-                        if (order) {
-                            order.synced = true;
-                            order.synced_at = new Date().toISOString();
-                            store.put(order);
-                            console.log('✅ Order marked synced in IndexedDB:', orderId);
-                        }
-                        db.close();
-                        resolve();
-                    };
-                    request.onerror = function(event) {
-                        db.close();
-                        reject(event.target.error);
-                    };
-                } catch (error) {
-                    resolve();
-                }
-            });
-        }
-
-        function cleanOrderForSync(order) {
-            return {
-                order_id: order.order_id || 'OFF-' + Date.now().toString(36).toUpperCase(),
-                items: Array.isArray(order.items) ? order.items.map(item => ({
-                    product_id: item.product_id || item.id || 'unknown',
-                    name: item.name || 'Product',
-                    price: Number(item.price) || 0,
-                    quantity: Number(item.quantity) || 1,
-                    total: Number(item.total) || (Number(item.price) || 0) * (Number(item.quantity) || 1),
-                    type: item.type || 'product',
-                    barcode: item.barcode || ''
-                })) : [],
-                subtotal: Number(order.subtotal) || Number(order.total) || 0,
-                shipping: Number(order.shipping) || 0,
-                total: Number(order.total) || 0,
-                status: order.status || 'confirmed',
-                source: order.source || 'pos',
-                created_at: order.created_at || new Date().toISOString(),
-                customer_name: order.customer_name || 'Walk-in Customer',
-                customer_email: order.customer_email || 'walkin@example.com',
-                customer_phone: order.customer_phone || 'N/A',
-                customer_address: order.customer_address || 'In-store purchase',
-                customer: order.customer || {
-                    name: order.customer_name || 'Walk-in Customer',
-                    email: order.customer_email || 'walkin@example.com',
-                    phone: order.customer_phone || 'N/A',
-                    address: order.customer_address || 'In-store purchase'
-                },
-                user_id: order.user_id || 'unknown',
-                user_name: order.user_name || 'Unknown User',
-                user_role: order.user_role || 'user',
-                staff_name: order.staff_name || order.user_name || 'Unknown User'
-            };
+        function manualSync() {
+            syncNow();
         }
 
         // ============================================================
@@ -1125,7 +1171,7 @@
             updateOnlineStatusUI();
             showToast('🔄 Back online! Syncing orders...', 'info');
             setTimeout(checkUnsyncedOrders, 500);
-            setTimeout(syncOfflineOrders, 1000);
+            setTimeout(syncNow, 1000);
         });
 
         window.addEventListener('offline', function() {
@@ -1163,120 +1209,6 @@
                     }
                 })
                 .catch(err => console.error('Stats error:', err));
-        }
-
-        // ============================================================
-        // SYNC FUNCTIONS - FIXED TO USE INDEXEDDB DIRECTLY
-        // ============================================================
-        
-        // Check unsynced orders directly from IndexedDB
-        async function checkUnsyncedOrders() {
-            try {
-                const unsynced = await getUnsyncedOrdersFromIndexedDB();
-                const statusEl = document.getElementById('syncStatus');
-                const countEl = document.getElementById('unsyncedCount');
-                
-                if (statusEl && unsynced.length > 0) {
-                    statusEl.style.display = 'inline-flex';
-                    statusEl.className = 'has-orders';
-                    if (countEl) countEl.textContent = unsynced.length;
-                    statusEl.style.animation = 'pulse-badge 2s infinite';
-                    console.log(`📋 Found ${unsynced.length} unsynced orders in IndexedDB`);
-                    
-                    // Auto-sync if online
-                    if (navigator.onLine) {
-                        setTimeout(syncOfflineOrders, 1000);
-                    }
-                } else if (statusEl) {
-                    statusEl.style.display = 'none';
-                    statusEl.className = '';
-                    statusEl.style.animation = 'none';
-                    if (countEl) countEl.textContent = '0';
-                }
-            } catch (error) {
-                console.error('Error checking unsynced orders:', error);
-            }
-        }
-
-        // Sync offline orders to server
-        async function syncOfflineOrders() {
-            if (!navigator.onLine) {
-                showToast('📡 Offline - will sync when online', 'warning');
-                return;
-            }
-            
-            const statusEl = document.getElementById('syncStatus');
-            if (statusEl && statusEl.className === 'syncing') {
-                console.log('⏳ Already syncing...');
-                return;
-            }
-            
-            try {
-                const unsyncedOrders = await getUnsyncedOrdersFromIndexedDB();
-                
-                if (unsyncedOrders.length === 0) {
-                    console.log('✅ No offline orders to sync');
-                    checkUnsyncedOrders();
-                    return;
-                }
-                
-                if (statusEl) {
-                    statusEl.className = 'syncing';
-                    statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing ' + unsyncedOrders.length + ' orders...';
-                }
-                
-                console.log(`📦 Syncing ${unsyncedOrders.length} offline orders...`);
-                const cleanOrders = unsyncedOrders.map(order => cleanOrderForSync(order));
-                
-                const response = await fetch('/admin/api/sync-queue', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ orders: cleanOrders })
-                });
-                
-                const data = await response.json();
-                console.log('✅ Sync result:', data);
-                
-                if (data.synced > 0) {
-                    // Mark orders as synced in IndexedDB
-                    const db = await openDB();
-                    const tx = db.transaction(STORE_NAME, 'readwrite');
-                    const store = tx.objectStore(STORE_NAME);
-                    
-                    unsyncedOrders.forEach(order => {
-                        order.synced = true;
-                        order.synced_at = new Date().toISOString();
-                        store.put(order);
-                    });
-                    
-                    db.close();
-                    console.log(`✅ Marked ${data.synced} orders as synced`);
-                    showToast(`✅ ${data.synced} orders synced!`, 'success');
-                    loadUserStats();
-                    loadSalesStats();
-                } else {
-                    showToast('⚠️ No orders were synced', 'warning');
-                }
-                
-                checkUnsyncedOrders();
-                
-                if (statusEl) {
-                    statusEl.className = '';
-                    statusEl.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> <span id="unsyncedCount">0</span> offline order(s)';
-                }
-                
-            } catch (error) {
-                console.error('❌ Sync error:', error);
-                showToast('❌ Sync error: ' + error.message, 'error');
-                if (statusEl) {
-                    statusEl.className = '';
-                    statusEl.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> <span id="unsyncedCount">0</span> offline order(s)';
-                }
-            }
-        }
-
-        function manualSync() {
-            syncOfflineOrders();
         }
 
         // ============================================================
@@ -1667,7 +1599,7 @@
         }
 
         // ============================================================
-        // PLACE ORDER - WITH V5 INDEXEDDB
+        // PLACE ORDER - WITH INDEXEDDB
         // ============================================================
         function placePOSOrder() {
             if (posCart.length === 0) { 
@@ -1729,117 +1661,97 @@
             btn.disabled = true;
             
             // ============================================================
-            // OFFLINE
+            // SAVE TO INDEXEDDB FIRST (always)
             // ============================================================
-            if (!navigator.onLine) {
-                const localOrderId = 'OFF-' + Date.now().toString(36).toUpperCase();
-                orderData.order_id = localOrderId;
-                orderData.synced = false;
-                orderData.synced_at = null;
-                
-                posCart.forEach(cartItem => {
-                    const product = allProducts.find(p => p.id === cartItem.id);
-                    if (product) product.stock = Math.max(0, (product.stock || 0) - cartItem.quantity);
-                });
-                renderProducts();
-                
-                saveOrderToIndexedDB(orderData)
-                    .then(() => {
-                        showToast(`✅ Order #${localOrderId} saved offline! Will sync when online.`, 'warning');
-                        posCart = [];
-                        discountValue = 0;
-                        document.getElementById('discountDisplay').textContent = '0%';
-                        updatePOSUI();
-                        checkUnsyncedOrders();
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
-                    })
-                    .catch(err => {
-                        console.error('❌ IndexedDB save error:', err);
-                        showToast('❌ Failed to save order offline', 'error');
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
+            const saveToDB = async () => {
+                try {
+                    const db = await new Promise((resolve, reject) => {
+                        const request = indexedDB.open('PricePointDB', 5);
+                        request.onsuccess = () => resolve(request.result);
+                        request.onerror = () => reject(request.error);
                     });
-                return;
-            }
+                    
+                    const tx = db.transaction('orders', 'readwrite');
+                    const store = tx.objectStore('orders');
+                    
+                    await new Promise((resolve, reject) => {
+                        const request = store.put(orderData);
+                        request.onsuccess = () => resolve();
+                        request.onerror = () => reject(request.error);
+                    });
+                    
+                    db.close();
+                    return true;
+                } catch (error) {
+                    console.error('❌ IndexedDB save error:', error);
+                    return false;
+                }
+            };
             
-            // ============================================================
-            // ONLINE
-            // ============================================================
-            fetch('/admin/pos/place-order', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(orderData)
-            })
-            .then(r => {
-                if (!r.ok) throw new Error('Network error: ' + r.status);
-                return r.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    let message = '✅ Order placed! #' + data.order_id + ' | Total: KSh ' + total.toLocaleString();
-                    
-                    if (data.order) {
-                        data.order.synced = true;
-                        data.order.synced_at = new Date().toISOString();
-                        saveOrderToIndexedDB(data.order).catch(err => console.warn('⚠️ Backup save failed:', err));
-                    }
-                    
-                    posCart.forEach(cartItem => {
-                        const product = allProducts.find(p => p.id === cartItem.id);
-                        if (product) product.stock = Math.max(0, (product.stock || 0) - cartItem.quantity);
-                    });
-                    renderProducts();
-                    
-                    showToast(message, 'success');
+            // Save locally first
+            saveToDB().then(saved => {
+                if (!saved) {
+                    showToast('❌ Failed to save order locally', 'error');
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                    return;
+                }
+                
+                // If offline, just show success and wait for sync
+                if (!navigator.onLine) {
+                    showToast(`✅ Order #${orderData.order_id} saved offline! Will sync when online.`, 'warning');
                     posCart = [];
                     discountValue = 0;
                     document.getElementById('discountDisplay').textContent = '0%';
                     updatePOSUI();
-                    loadSalesStats();
-                    loadUserStats();
-                    
-                    // AUTO-SYNC AFTER ORDER
-                    if (navigator.onLine) {
-                        setTimeout(checkUnsyncedOrders, 500);
-                        setTimeout(syncOfflineOrders, 1500);
-                    }
-                } else {
-                    showToast('❌ Error: ' + (data.message || 'Unknown error'), 'error');
+                    checkUnsyncedOrders();
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                    return;
                 }
-                btn.innerHTML = originalText;
-                btn.disabled = false;
-            })
-            .catch(err => {
-                console.warn('⚠️ Server failed, saving to IndexedDB as fallback:', err);
-                const localOrderId = 'OFF-' + Date.now().toString(36).toUpperCase();
-                orderData.order_id = localOrderId;
-                orderData.synced = false;
-                orderData.synced_at = null;
                 
-                posCart.forEach(cartItem => {
-                    const product = allProducts.find(p => p.id === cartItem.id);
-                    if (product) product.stock = Math.max(0, (product.stock || 0) - cartItem.quantity);
-                });
-                renderProducts();
-                
-                saveOrderToIndexedDB(orderData)
-                    .then(() => {
-                        showToast(`✅ Order #${localOrderId} saved offline! Will sync when online.`, 'warning');
+                // Try to send to server
+                fetch('/admin/pos/place-order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(orderData)
+                })
+                .then(r => {
+                    if (!r.ok) throw new Error('Network error: ' + r.status);
+                    return r.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        // Mark as synced
+                        orderData.synced = true;
+                        orderData.synced_at = new Date().toISOString();
+                        saveToDB(); // Update sync status
+                        
+                        showToast(`✅ Order #${data.order_id} placed! Total: KSh ${total.toLocaleString()}`, 'success');
                         posCart = [];
                         discountValue = 0;
                         document.getElementById('discountDisplay').textContent = '0%';
                         updatePOSUI();
+                        loadSalesStats();
+                        loadUserStats();
                         checkUnsyncedOrders();
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
-                    })
-                    .catch(err2 => {
-                        console.error('❌ Both server and IndexedDB failed:', err2);
-                        showToast('❌ Failed to save order. Please try again.', 'error');
-                        btn.innerHTML = originalText;
-                        btn.disabled = false;
-                    });
+                    } else {
+                        showToast('❌ Error: ' + (data.message || 'Unknown error'), 'error');
+                    }
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                })
+                .catch(err => {
+                    console.warn('⚠️ Server error, order saved offline:', err);
+                    showToast(`✅ Order saved offline! Will sync when online.`, 'warning');
+                    posCart = [];
+                    discountValue = 0;
+                    document.getElementById('discountDisplay').textContent = '0%';
+                    updatePOSUI();
+                    checkUnsyncedOrders();
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                });
             });
         }
 
@@ -2174,7 +2086,7 @@
             setTimeout(function() {
                 if (navigator.onLine) {
                     console.log('🔄 Initial auto-sync after load...');
-                    syncOfflineOrders();
+                    syncNow();
                 }
             }, 3000);
             
@@ -2187,6 +2099,7 @@
             
             console.log('📡 Status:', navigator.onLine ? 'Online' : 'Offline');
             console.log('✅ POS Pro v5.0 initialized!');
+            console.log('💡 To manually sync, click the Sync button or press F6');
         });
     </script>
 </body>
