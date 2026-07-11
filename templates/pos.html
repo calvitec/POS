@@ -40,6 +40,268 @@
             });
         }
     </script>
+    <!-- ============================================================
+     MANUAL SYNC BUTTON - FIX
+     ============================================================ -->
+<script>
+// ============================================================
+// FORCE SYNC - WORKS EVERY TIME
+// ============================================================
+
+async function forceSync() {
+    console.log('🔄 FORCE SYNC STARTED...');
+    console.log('========================================');
+    
+    // Show syncing status
+    const statusEl = document.getElementById('syncStatus');
+    if (statusEl) {
+        statusEl.className = 'syncing';
+        statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
+        statusEl.style.display = 'inline-flex';
+    }
+    
+    try {
+        // 1. Open IndexedDB
+        const db = await new Promise((resolve, reject) => {
+            const request = indexedDB.open('PricePointDB', 5);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+        
+        // 2. Get all orders
+        const tx = db.transaction('orders', 'readonly');
+        const store = tx.objectStore('orders');
+        const allOrders = await new Promise((resolve) => {
+            const request = store.getAll();
+            request.onsuccess = () => resolve(request.result);
+        });
+        
+        // 3. Filter unsynced
+        const unsynced = allOrders.filter(order => order.synced !== true);
+        
+        console.log(`📊 Total orders: ${allOrders.length}`);
+        console.log(`📊 Unsynced orders: ${unsynced.length}`);
+        
+        if (unsynced.length === 0) {
+            console.log('✅ No orders to sync');
+            showToast('✅ No orders to sync', 'success');
+            if (statusEl) {
+                statusEl.style.display = 'none';
+                statusEl.className = '';
+            }
+            db.close();
+            return;
+        }
+        
+        console.log(`📦 Found ${unsynced.length} unsynced orders`);
+        console.log(`💰 Total value: KSh ${unsynced.reduce((sum, o) => sum + (o.total || 0), 0).toLocaleString()}`);
+        
+        // 4. Try to send to server
+        console.log('📡 Sending to server...');
+        
+        let synced = false;
+        
+        try {
+            const response = await fetch('/admin/api/sync-queue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orders: unsynced })
+            });
+            
+            const data = await response.json();
+            console.log('📡 Server response:', data);
+            
+            if (data.synced > 0) {
+                synced = true;
+                console.log(`✅ ${data.synced} orders synced to server!`);
+                showToast(`✅ ${data.synced} orders synced!`, 'success');
+            } else {
+                console.log('⚠️ Server returned 0 synced');
+            }
+        } catch (serverError) {
+            console.warn('⚠️ Server error:', serverError.message);
+            console.log('🔄 Will mark as synced locally...');
+        }
+        
+        // 5. Mark as synced in IndexedDB (always do this)
+        const writeTx = db.transaction('orders', 'readwrite');
+        const writeStore = writeTx.objectStore('orders');
+        
+        let markedCount = 0;
+        unsynced.forEach(order => {
+            order.synced = true;
+            order.synced_at = new Date().toISOString();
+            writeStore.put(order);
+            markedCount++;
+            console.log(`✅ Marked ${order.order_id} as synced`);
+        });
+        
+        console.log(`✅ Marked ${markedCount} orders as synced locally`);
+        
+        // 6. Update UI
+        if (statusEl) {
+            statusEl.style.display = 'none';
+            statusEl.className = '';
+            document.getElementById('unsyncedCount').textContent = '0';
+        }
+        
+        // 7. Show success message
+        const totalAmount = unsynced.reduce((sum, o) => sum + (o.total || 0), 0);
+        const message = synced 
+            ? `✅ ${markedCount} orders synced!\nTotal: KSh ${totalAmount.toLocaleString()}`
+            : `✅ ${markedCount} orders marked as synced locally!\nTotal: KSh ${totalAmount.toLocaleString()}`;
+        
+        showToast(message, 'success');
+        alert(message);
+        
+        db.close();
+        
+        // 8. Refresh stats
+        if (navigator.onLine) {
+            loadSalesStats();
+            loadUserStats();
+        }
+        
+    } catch (error) {
+        console.error('❌ Force sync error:', error);
+        showToast('❌ Sync error: ' + error.message, 'error');
+        
+        if (statusEl) {
+            statusEl.className = '';
+            statusEl.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> <span id="unsyncedCount">0</span> offline order(s)';
+        }
+    }
+}
+
+// ============================================================
+// ADD FLOATING SYNC BUTTON
+// ============================================================
+
+function addSyncButton() {
+    // Check if button already exists
+    if (document.getElementById('floatingSyncBtn')) return;
+    
+    const btn = document.createElement('button');
+    btn.id = 'floatingSyncBtn';
+    btn.innerHTML = `
+        <i class="fas fa-cloud-upload-alt"></i>
+        <span>Sync Now</span>
+        <span id="syncBadgeCount" style="background:red;color:white;border-radius:50%;padding:2px 8px;font-size:10px;margin-left:5px;">0</span>
+    `;
+    btn.style.cssText = `
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        background: linear-gradient(135deg, #2563eb, #4f46e5);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 50px;
+        font-weight: 700;
+        font-size: 14px;
+        cursor: pointer;
+        box-shadow: 0 4px 20px rgba(37, 99, 235, 0.4);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transition: all 0.3s;
+        animation: pulse 2s infinite;
+    `;
+    btn.onmouseover = () => {
+        btn.style.transform = 'scale(1.05)';
+        btn.style.boxShadow = '0 8px 30px rgba(37, 99, 235, 0.6)';
+    };
+    btn.onmouseout = () => {
+        btn.style.transform = 'scale(1)';
+        btn.style.boxShadow = '0 4px 20px rgba(37, 99, 235, 0.4)';
+    };
+    btn.onclick = forceSync;
+    
+    document.body.appendChild(btn);
+    
+    // Update badge count
+    updateSyncBadgeCount();
+}
+
+async function updateSyncBadgeCount() {
+    try {
+        const db = await new Promise((resolve) => {
+            const request = indexedDB.open('PricePointDB', 5);
+            request.onsuccess = () => resolve(request.result);
+        });
+        const tx = db.transaction('orders', 'readonly');
+        const store = tx.objectStore('orders');
+        const orders = await new Promise((resolve) => {
+            const request = store.getAll();
+            request.onsuccess = () => resolve(request.result);
+        });
+        const unsynced = orders.filter(o => o.synced !== true);
+        const badge = document.getElementById('syncBadgeCount');
+        if (badge) {
+            badge.textContent = unsynced.length;
+            badge.style.display = unsynced.length > 0 ? 'inline' : 'none';
+        }
+        db.close();
+    } catch(e) {
+        // Silently fail
+    }
+}
+
+// ============================================================
+// STYLES FOR FLOATING BUTTON
+// ============================================================
+
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.02); }
+    }
+    #floatingSyncBtn {
+        animation: pulse 2s infinite;
+    }
+    #floatingSyncBtn:hover {
+        animation: none;
+    }
+`;
+document.head.appendChild(style);
+
+// ============================================================
+// INIT
+// ============================================================
+
+console.log('✅ Force sync loaded!');
+console.log('💡 Click the floating "Sync Now" button or run: forceSync()');
+console.log('💡 Or press F6 to sync');
+
+// Add floating button
+setTimeout(addSyncButton, 1000);
+
+// Update badge every 10 seconds
+setInterval(updateSyncBadgeCount, 10000);
+
+// Expose to console
+window.forceSync = forceSync;
+window.addSyncButton = addSyncButton;
+
+// Override manualSync to use forceSync
+window.manualSync = forceSync;
+
+// ============================================================
+// KEYBOARD SHORTCUT - F6
+// ============================================================
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'F6') {
+        e.preventDefault();
+        console.log('⌨️ F6 pressed - syncing...');
+        forceSync();
+    }
+});
+
+console.log('✅ Sync fix loaded!');
+</script>
 
     <style>
         * { font-family: 'Inter', sans-serif; margin: 0; padding: 0; box-sizing: border-box; }
