@@ -1138,41 +1138,94 @@
         // SYNC FUNCTIONS
         // ============================================================
 
-        function syncOfflineOrders() {
-            if (!navigator.onLine) {
-                showToast('📡 Offline - will sync when online', 'warning');
-                return;
-            }
+        // ============================================================
+        // IMPORTANT: syncNow uses version 3 to match existing database
+        // ============================================================
+        function syncNow() {
+            console.log('🔍 Checking for offline orders...');
             
-            showToast('🔄 Syncing offline orders...', 'info');
+            const r = indexedDB.open('PricePointDB', 3);  // ← FIXED: Using version 3
             
-            fetch('/admin/api/sync-queue', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    if (data.synced > 0) {
-                        showToast(`✅ Synced ${data.synced} offline orders to cloud!`, 'success');
-                        loadUserStats();
-                        loadSalesStats();
-                        checkUnsyncedOrders();
-                    } else if (data.failed > 0) {
-                        showToast(`⚠️ ${data.failed} orders failed to sync. Check connection.`, 'warning');
-                    } else {
-                        showToast('✅ All orders are synced!', 'success');
+            r.onsuccess = function(e) {
+                const db = e.target.result;
+                const tx = db.transaction(['orders'], 'readonly');
+                const store = tx.objectStore('orders');
+                
+                store.getAll().onsuccess = function(r2) {
+                    const orders = r2.target.result;
+                    const unsynced = orders.filter(o => !o.synced);
+                    
+                    if (unsynced.length === 0) {
+                        console.log('✅ No offline orders to sync');
+                        db.close();
+                        return;
                     }
-                } else {
-                    showToast('❌ Sync failed: ' + (data.message || 'Unknown error'), 'error');
-                }
-            })
-            .catch(err => {
-                console.error('Sync error:', err);
-                showToast('❌ Sync error: ' + err.message, 'error');
-            });
+                    
+                    console.log(`📦 Found ${unsynced.length} offline order(s) to sync`);
+                    
+                    fetch('/admin/api/sync-queue', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ orders: unsynced })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('✅ Sync result:', data);
+                        if (data.synced > 0) {
+                            const wtx = db.transaction(['orders'], 'readwrite');
+                            const wstore = wtx.objectStore('orders');
+                            unsynced.forEach(order => {
+                                order.synced = true;
+                                order.syncedAt = new Date().toISOString();
+                                wstore.put(order);
+                            });
+                            console.log(`✅ Marked ${data.synced} orders as synced`);
+                            showNotification(`✅ ${data.synced} orders synced!`);
+                        }
+                        db.close();
+                    })
+                    .catch(err => {
+                        console.log('❌ Sync failed:', err);
+                        db.close();
+                    });
+                };
+            };
         }
 
+        // Auto-sync when coming online
+        window.addEventListener('online', function() {
+            console.log('🌐 Back online - syncing offline orders...');
+            syncNow();
+        });
+
+        // Auto-sync when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                if (navigator.onLine) {
+                    syncNow();
+                }
+            }, 2000);
+        });
+
+        // After placing an order, check for pending sync
+        function afterOrderPlaced() {
+            if (navigator.onLine) {
+                setTimeout(syncNow, 2000);
+            }
+        }
+
+        // Notification helper
+        function showNotification(message) {
+            const toast = document.createElement('div');
+            toast.className = 'alert alert-success position-fixed top-0 end-0 m-3';
+            toast.style.zIndex = '9999';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        console.log('✅ POS sync functions loaded');
+        
         function checkUnsyncedOrders() {
             fetch('/admin/api/unsynced-count')
                 .then(r => r.json())
@@ -1226,6 +1279,41 @@
             } else {
                 syncOfflineOrders();
             }
+        }
+
+        function syncOfflineOrders() {
+            if (!navigator.onLine) {
+                showToast('📡 Offline - will sync when online', 'warning');
+                return;
+            }
+            
+            showToast('🔄 Syncing offline orders...', 'info');
+            
+            fetch('/admin/api/sync-queue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    if (data.synced > 0) {
+                        showToast(`✅ Synced ${data.synced} offline orders to cloud!`, 'success');
+                        loadUserStats();
+                        loadSalesStats();
+                        checkUnsyncedOrders();
+                    } else if (data.failed > 0) {
+                        showToast(`⚠️ ${data.failed} orders failed to sync. Check connection.`, 'warning');
+                    } else {
+                        showToast('✅ All orders are synced!', 'success');
+                    }
+                } else {
+                    showToast('❌ Sync failed: ' + (data.message || 'Unknown error'), 'error');
+                }
+            })
+            .catch(err => {
+                console.error('Sync error:', err);
+                showToast('❌ Sync error: ' + err.message, 'error');
+            });
         }
 
         // ============================================================
@@ -1614,10 +1702,10 @@
         }
 
         // ============================================================
-        // INDEXEDDB FUNCTIONS
+        // INDEXEDDB FUNCTIONS - FIXED: VERSION 3
         // ============================================================
         const DB_NAME = 'PricePointDB';
-        const DB_VERSION = 1;
+        const DB_VERSION = 3;  // ← FIXED: Changed from 1 to 3
         const STORE_NAME = 'orders';
         let db = null;
 
@@ -1642,7 +1730,7 @@
                 
                 request.onsuccess = function(event) {
                     db = event.target.result;
-                    console.log('✅ IndexedDB: Connected');
+                    console.log('✅ IndexedDB: Connected (Version ' + db.version + ')');
                     resolve(db);
                 };
                 
@@ -2400,6 +2488,7 @@
         // ============================================================
         document.addEventListener('DOMContentLoaded', function() {
             console.log('✅ POS Pro v3.0 initializing with enhanced auto-sync...');
+            console.log('📦 IndexedDB Version:', DB_VERSION);
             
             // Initialize UI
             document.getElementById('posProductGrid').innerHTML = `
