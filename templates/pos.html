@@ -1963,46 +1963,6 @@
         }
 
         // ============================================================
-        // KEYBOARD SHORTCUTS
-        // ============================================================
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') { 
-                closeCustomerModal(); 
-                closeDiscountModal(); 
-                closeReturnModal(); 
-                closeBarcodeScanner();
-                closeBarcodeInputModal();
-            }
-            if (e.ctrlKey && e.key === 'Enter') { placePOSOrder(); e.preventDefault(); }
-            if (e.key === 'F1') { document.getElementById('posSearch').focus(); e.preventDefault(); }
-            if (e.key === 'F2') { toggleCustomerModal(); e.preventDefault(); }
-            if (e.key === 'F3') { toggleDiscountModal(); e.preventDefault(); }
-            if (e.key === 'F4') { toggleReturnModal(); e.preventDefault(); }
-            if (e.key === 'F5') { holdOrder(); e.preventDefault(); }
-            if (e.key === 'F6') { manualSync(); e.preventDefault(); }
-            if (e.key === 'F7') { 
-                e.preventDefault();
-                if (document.getElementById('barcodeModal').classList.contains('hidden')) {
-                    openBarcodeScanner();
-                } else {
-                    closeBarcodeScanner();
-                }
-            }
-            if (e.key === 'F8') { 
-                e.preventDefault();
-                if (document.getElementById('barcodeInputModal').classList.contains('hidden')) {
-                    openBarcodeInputModal();
-                } else {
-                    closeBarcodeInputModal();
-                }
-            }
-            if ((e.key === 'Delete' || e.key === 'Backspace') && document.activeElement.id !== 'posSearch') {
-                voidLastItem();
-                e.preventDefault();
-            }
-        });
-
-        // ============================================================
         // BARCODE SCANNER - Complete Implementation
         // ============================================================
 
