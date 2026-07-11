@@ -951,9 +951,9 @@
 
     <script>
         // ============================================================
-        // DATA - Use LET so we can modify stock
+        // DATA - Server manages stock (like working version)
         // ============================================================
-        let allProducts = {{ products | tojson | safe }};
+        const allProducts = {{ products | tojson | safe }};
         let filteredProducts = [];
         let currentCategory = 'all';
         let posCart = [];
@@ -964,7 +964,7 @@
         let totalDiscount = 0;
 
         // ============================================================
-        // INDEXEDDB VERSION 5 - FOR OFFLINE ORDERS
+        // INDEXEDDB VERSION 5 - FOR OFFLINE ORDERS ONLY
         // ============================================================
         const DB_NAME = 'PricePointDB';
         const DB_VERSION = 5;
@@ -1771,7 +1771,8 @@
         }
 
         // ============================================================
-        // PLACE ORDER - WORKS LIKE ORIGINAL + OFFLINE SUPPORT
+        // PLACE ORDER - WORKS EXACTLY LIKE THE WORKING VERSION
+        // The server handles stock deduction, not the frontend
         // ============================================================
         function placePOSOrder() {
             if (posCart.length === 0) { 
@@ -1839,133 +1840,131 @@
             btn.disabled = true;
             
             // ============================================================
-            // STEP 1: DEDUCT LOCAL STOCK (ALWAYS DO THIS FIRST)
+            // OFFLINE: Save to IndexedDB only (will sync when online)
             // ============================================================
-            function deductLocalStock() {
-                console.log('📦 Deducting local stock...');
+            if (!navigator.onLine) {
+                console.log('📡 OFFLINE: Saving order to IndexedDB');
+                
+                const localOrderId = 'OFF-' + Date.now().toString(36).toUpperCase();
+                orderData.order_id = localOrderId;
+                orderData.synced = false;
+                orderData.synced_at = null;
+                
+                // Deduct local stock for UI feedback (will be corrected when synced)
                 posCart.forEach(cartItem => {
                     const product = allProducts.find(p => p.id === cartItem.id);
                     if (product) {
-                        const oldStock = product.stock || 0;
-                        product.stock = Math.max(0, oldStock - cartItem.quantity);
-                        console.log(`📦 ${product.name}: ${oldStock} → ${product.stock}`);
+                        product.stock = Math.max(0, (product.stock || 0) - cartItem.quantity);
                     }
                 });
+                renderProducts();
                 
-                // Re-render products with updated stock
-                const searchInput = document.getElementById('posSearch');
-                if (searchInput) {
-                    searchProducts(searchInput.value || '');
-                } else {
-                    searchProducts('');
-                }
-                console.log('✅ Local stock deducted and UI updated');
-            }
-            
-            // ============================================================
-            // STEP 2: SAVE ORDER TO INDEXEDDB (BACKUP)
-            // ============================================================
-            function saveOrderLocally(order) {
-                return saveOrderToIndexedDB(order);
-            }
-            
-            // ============================================================
-            // STEP 3: SYNC TO SERVER (if online)
-            // ============================================================
-            function syncToServer(order) {
-                return new Promise((resolve) => {
-                    if (!navigator.onLine) {
-                        console.log('📡 Offline - skipping server sync');
-                        resolve({ synced: false, offline: true });
-                        return;
-                    }
-                    
-                    console.log('🌐 Syncing to server...');
-                    
-                    fetch('/admin/pos/place-order', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(order)
-                    })
-                    .then(r => {
-                        if (!r.ok) throw new Error('HTTP error: ' + r.status);
-                        return r.json();
-                    })
-                    .then(data => {
-                        console.log('✅ Server response:', data);
-                        if (data.success) {
-                            resolve({ synced: true, data: data });
-                        } else {
-                            resolve({ synced: false, error: data.message || 'Server error' });
-                        }
+                saveOrderToIndexedDB(orderData)
+                    .then(() => {
+                        showToast(`✅ Order #${localOrderId} saved offline! Will sync when online.`, 'warning');
+                        posCart = [];
+                        discountValue = 0;
+                        document.getElementById('discountDisplay').textContent = '0%';
+                        updatePOSUI();
+                        checkUnsyncedOrders();
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
                     })
                     .catch(err => {
-                        console.log('⚠️ Server sync failed:', err.message);
-                        resolve({ synced: false, error: err.message });
+                        console.error('❌ IndexedDB save error:', err);
+                        showToast('❌ Failed to save order offline', 'error');
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
                     });
-                });
+                return;
             }
             
             // ============================================================
-            // EXECUTE ALL STEPS
+            // ONLINE: Send to server FIRST (server updates database)
+            // This is the same as the working version!
             // ============================================================
+            console.log('📡 ONLINE: Sending order to server...');
             
-            // STEP 1: Deduct local stock first (immediate visual feedback)
-            deductLocalStock();
-            
-            // STEP 2: Save to IndexedDB (always, for offline support)
-            saveOrderLocally(orderData)
-                .then(() => {
-                    console.log('✅ Order saved to IndexedDB!');
+            fetch('/admin/pos/place-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(orderData)
+            })
+            .then(r => {
+                if (!r.ok) throw new Error('Network error: ' + r.status);
+                return r.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    let message = '✅ Order placed! #' + data.order_id + ' | Total: KSh ' + total.toLocaleString();
                     
-                    // Clear cart
-                    posCart = [];
-                    discountValue = 0;
-                    const discountDisplay = document.getElementById('discountDisplay');
-                    if (discountDisplay) discountDisplay.textContent = '0%';
-                    updatePOSUI();
-                    
-                    // Reset button
-                    btn.innerHTML = originalText;
-                    btn.disabled = false;
-                    
-                    if (!navigator.onLine) {
-                        showToast(`✅ Order #${orderData.order_id} saved offline! Stock updated.`, 'warning');
-                        checkUnsyncedOrders();
-                        return;
+                    // Save to IndexedDB as backup (already synced)
+                    if (data.order) {
+                        data.order.synced = true;
+                        data.order.synced_at = new Date().toISOString();
+                        saveOrderToIndexedDB(data.order).catch(err => console.warn('⚠️ Backup save failed:', err));
                     }
                     
-                    showToast(`✅ Order #${orderData.order_id} placed! Stock updated.`, 'success');
+                    // Update local stock to match server (UI feedback)
+                    posCart.forEach(cartItem => {
+                        const product = allProducts.find(p => p.id === cartItem.id);
+                        if (product) {
+                            product.stock = Math.max(0, (product.stock || 0) - cartItem.quantity);
+                        }
+                    });
+                    renderProducts();
                     
-                    // Load stats if online
+                    showToast(message, 'success');
+                    posCart = [];
+                    discountValue = 0;
+                    document.getElementById('discountDisplay').textContent = '0%';
+                    updatePOSUI();
                     loadSalesStats();
                     loadUserStats();
-                    
-                    // STEP 3: Try to sync to server
-                    syncToServer(orderData)
-                        .then(result => {
-                            if (result.synced) {
-                                console.log('✅ Order synced to server!');
-                                showToast(`✅ Order synced to cloud!`, 'success');
-                                markOrderSyncedInIndexedDB(orderData.order_id);
-                            } else {
-                                console.log('📡 Order saved offline, will sync later');
-                                if (navigator.onLine) {
-                                    showToast('⚠️ Order saved locally. Will sync later.', 'warning');
-                                }
-                                checkUnsyncedOrders();
-                            }
-                        })
-                        .catch(err => {
-                            console.log('⚠️ Sync error:', err);
-                        });
-                })
-                .catch(err => {
-                    console.error('❌ Failed to save order:', err);
-                    showToast('❌ Failed to save order: ' + err.message, 'error');
-                    btn.innerHTML = originalText;
-                    btn.disabled = false;
+                } else {
+                    showToast('❌ Error: ' + (data.message || 'Unknown error'), 'error');
+                }
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            })
+            .catch(err => {
+                console.warn('⚠️ Server failed, saving to IndexedDB as fallback:', err);
+                
+                // ============================================================
+                // ONLINE BUT SERVER FAILED: Save to IndexedDB as fallback
+                // ============================================================
+                const localOrderId = 'OFF-' + Date.now().toString(36).toUpperCase();
+                orderData.order_id = localOrderId;
+                orderData.synced = false;
+                orderData.synced_at = null;
+                
+                // Deduct local stock for UI feedback
+                posCart.forEach(cartItem => {
+                    const product = allProducts.find(p => p.id === cartItem.id);
+                    if (product) {
+                        product.stock = Math.max(0, (product.stock || 0) - cartItem.quantity);
+                    }
                 });
+                renderProducts();
+                
+                saveOrderToIndexedDB(orderData)
+                    .then(() => {
+                        showToast(`✅ Order #${localOrderId} saved offline! Will sync when online.`, 'warning');
+                        posCart = [];
+                        discountValue = 0;
+                        document.getElementById('discountDisplay').textContent = '0%';
+                        updatePOSUI();
+                        checkUnsyncedOrders();
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    })
+                    .catch(err2 => {
+                        console.error('❌ Both server and IndexedDB failed:', err2);
+                        showToast('❌ Failed to save order. Please try again.', 'error');
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    });
+            });
         }
 
         // ============================================================
