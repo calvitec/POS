@@ -1599,7 +1599,7 @@
         // INDEXEDDB FUNCTIONS - VERSION 4
         // ============================================================
         const DB_NAME = 'PricePointDB';
-        const DB_VERSION = 4;
+        const DB_VERSION = 5;
         const STORE_NAME = 'orders';
         let db = null;
 
@@ -1740,7 +1740,7 @@
                 return new Promise((resolve, reject) => {
                     console.log('💾 Saving to IndexedDB...');
                     
-                    const request = indexedDB.open('PricePointDB', 4);
+                    const request = indexedDB.open('PricePointDB', 5);
                     
                     request.onupgradeneeded = function(event) {
                         const db = event.target.result;
