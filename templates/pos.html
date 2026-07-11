@@ -15,6 +15,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <!-- Barcode Scanner Library -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     
     <!-- ===== SERVICE WORKER REGISTRATION ===== -->
     <script>
@@ -43,96 +45,6 @@
         }
     </script>
 
-    <!-- ============================================================
-         OFFLINE ORDER SYNC - POS (UPDATED TO VERSION 3)
-    ============================================================ -->
-    <script>
-        // Sync function - UPDATED to version 3
-        async function syncNow() {
-            console.log('🔍 Checking for offline orders...');
-            
-            const r = indexedDB.open('PricePointDB', 3);  // ← CHANGED to 3
-            r.onsuccess = function(e) {
-                const db = e.target.result;
-                const tx = db.transaction(['orders'], 'readonly');
-                const store = tx.objectStore('orders');
-                
-                store.getAll().onsuccess = function(r2) {
-                    const orders = r2.target.result;
-                    const unsynced = orders.filter(o => !o.synced);
-                    
-                    if (unsynced.length === 0) {
-                        console.log('✅ No offline orders to sync');
-                        db.close();
-                        return;
-                    }
-                    
-                    console.log(`📦 Found ${unsynced.length} offline order(s) to sync`);
-                    
-                    fetch('/admin/api/sync-queue', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ orders: unsynced })
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        console.log('✅ Sync result:', data);
-                        if (data.synced > 0) {
-                            const wtx = db.transaction(['orders'], 'readwrite');
-                            const wstore = wtx.objectStore('orders');
-                            unsynced.forEach(order => {
-                                order.synced = true;
-                                order.syncedAt = new Date().toISOString();
-                                wstore.put(order);
-                            });
-                            console.log(`✅ Marked ${data.synced} orders as synced`);
-                            showNotification(`✅ ${data.synced} orders synced!`);
-                        }
-                        db.close();
-                    })
-                    .catch(err => {
-                        console.log('❌ Sync failed:', err);
-                        db.close();
-                    });
-                };
-            };
-        }
-
-        // Auto-sync when coming online
-        window.addEventListener('online', function() {
-            console.log('🌐 Back online - syncing offline orders...');
-            syncNow();
-        });
-
-        // Auto-sync when page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            setTimeout(function() {
-                if (navigator.onLine) {
-                    syncNow();
-                }
-            }, 2000);
-        });
-
-        // After placing an order, check for pending sync
-        function afterOrderPlaced() {
-            if (navigator.onLine) {
-                setTimeout(syncNow, 2000);
-            }
-        }
-
-        // Notification helper
-        function showNotification(message) {
-            const toast = document.createElement('div');
-            toast.className = 'alert alert-success position-fixed top-0 end-0 m-3';
-            toast.style.zIndex = '9999';
-            toast.textContent = message;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 3000);
-        }
-
-        console.log('✅ POS sync functions loaded');
-    </script>
-    
     <style>
         * { font-family: 'Inter', sans-serif; margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #f0f2f5; color: #0f172a; min-height: 100vh; }
@@ -188,8 +100,8 @@
             font-size: 0.5rem;
         }
         @keyframes pulse-badge {
-            0%,100% { opacity: 1; }
-            50% { opacity: 0.6; }
+            0%,100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.05); }
         }
         .pos-header .header-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
         .pos-header .header-actions .time { color: #94a3b8; font-size: 0.8rem; }
@@ -228,6 +140,8 @@
         }
         #syncStatus:hover { transform: scale(1.05); opacity: 0.9; }
         #syncStatus.synced { background: #059669; animation: none; }
+        #syncStatus.syncing { background: #2563eb !important; animation: pulse-badge 1s infinite !important; }
+        #syncStatus.has-orders { background: #dc2626 !important; animation: pulse-badge 2s infinite !important; }
 
         .stats-bar {
             display: grid;
@@ -749,6 +663,9 @@
             <div class="quick-action-btn" onclick="document.getElementById('posSearch').focus();">
                 <i class="fas fa-search"></i> Search
             </div>
+            <div class="quick-action-btn" onclick="openBarcodeScanner()">
+                <i class="fas fa-barcode"></i> Scan
+            </div>
             <div class="quick-action-btn" onclick="toggleDiscountModal()">
                 <i class="fas fa-percent"></i> Discount
             </div>
@@ -766,6 +683,56 @@
             </div>
         </div>
 
+        <!-- ===== BARCODE SCANNER MODAL ===== -->
+        <div id="barcodeModal" class="modal-overlay hidden" onclick="closeBarcodeScanner()">
+            <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 500px;">
+                <button class="close-btn" onclick="closeBarcodeScanner()">&times;</button>
+                <h3 class="text-lg font-bold text-[#0f172a] mb-4 flex items-center gap-2">
+                    <i class="fas fa-barcode text-blue-500"></i> Scan Barcode
+                </h3>
+                <p class="text-sm text-gray-500 mb-3">Position the barcode in front of your camera</p>
+                <div id="scanner-container" style="width: 100%; max-width: 400px; margin: 0 auto;">
+                    <div id="barcode-reader" style="width: 100%;"></div>
+                </div>
+                <div class="mt-3 flex flex-wrap gap-2">
+                    <button onclick="startScanner()" class="btn-primary flex-1" id="startScannerBtn" style="background: linear-gradient(135deg, #2563eb, #4f46e5);">
+                        <i class="fas fa-play"></i> Start Camera
+                    </button>
+                    <button onclick="closeBarcodeScanner()" class="btn-outline flex-1">Cancel</button>
+                </div>
+                <div id="scannerResult" class="mt-3 p-3 bg-gray-50 rounded-lg hidden">
+                    <p class="text-sm font-semibold text-green-600">✅ Scanned:</p>
+                    <p id="scannedValue" class="text-sm font-mono break-all"></p>
+                </div>
+                <div class="mt-3 text-center">
+                    <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="text-blue-500 hover:text-blue-700 text-sm">
+                        <i class="fas fa-keyboard"></i> Or enter barcode manually
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== BARCODE INPUT MODAL (Manual Entry) ===== -->
+        <div id="barcodeInputModal" class="modal-overlay hidden" onclick="closeBarcodeInputModal()">
+            <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 380px;">
+                <button class="close-btn" onclick="closeBarcodeInputModal()">&times;</button>
+                <h3 class="text-lg font-bold text-[#0f172a] mb-4 flex items-center gap-2">
+                    <i class="fas fa-keyboard text-amber-500"></i> Enter Barcode
+                </h3>
+                <p class="text-sm text-gray-500 mb-3">Type the product ID or barcode number</p>
+                <input type="text" id="manualBarcode" class="form-input" placeholder="Enter product ID or barcode..." autofocus>
+                <div class="mt-4 flex gap-3">
+                    <button onclick="submitManualBarcode()" class="btn-primary flex-1">
+                        <i class="fas fa-search"></i> Find Product
+                    </button>
+                    <button onclick="closeBarcodeInputModal()" class="btn-outline flex-1">Cancel</button>
+                </div>
+                <div class="mt-3 text-xs text-gray-400 text-center">
+                    💡 Tip: You can search by product ID, name, or barcode
+                </div>
+            </div>
+        </div>
+
         <div class="grid lg:grid-cols-3 gap-4">
             <!-- ===== LEFT: PRODUCTS ===== -->
             <div class="lg:col-span-2">
@@ -773,7 +740,7 @@
                     <div class="relative">
                         <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
                         <input type="text" id="posSearch" 
-                               placeholder="🔍 Search by name or category..." 
+                               placeholder="🔍 Search by name, category, barcode, or SKU..." 
                                class="w-full pl-9 pr-10 py-2.5 rounded-xl border-2 border-gray-200 focus:border-green-500 focus:ring-4 focus:ring-green-100 transition outline-none text-sm"
                                oninput="searchProducts(this.value)" />
                         <span id="searchClear" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 cursor-pointer hidden" onclick="clearSearch()">
@@ -1025,6 +992,7 @@
             }
         }
 
+        // Update on status change
         window.addEventListener('online', function() {
             updateOnlineStatusUI();
             showToast('🔄 Back online! Syncing orders...', 'info');
@@ -1040,6 +1008,91 @@
         updateOnlineStatusUI();
 
         // ============================================================
+        // ENHANCED AUTO-SYNC SYSTEM
+        // ============================================================
+
+        // Auto-sync on page load/refresh
+        function autoSyncOnLoad() {
+            if (navigator.onLine) {
+                console.log('🔄 Auto-syncing on page load/refresh...');
+                
+                // Check for unsynced orders
+                checkUnsyncedOrders();
+                
+                // Sync after 2 seconds
+                setTimeout(function() {
+                    syncNow();
+                }, 2000);
+                
+                // Second sync after 5 seconds for any pending orders
+                setTimeout(function() {
+                    syncNow();
+                }, 5000);
+            } else {
+                console.log('📡 Offline - will sync when online');
+            }
+        }
+
+        // Auto-sync when tab becomes visible
+        function setupVisibilitySync() {
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden && navigator.onLine) {
+                    console.log('👁️ Tab visible - auto-syncing...');
+                    
+                    // Check for unsynced orders
+                    checkUnsyncedOrders();
+                    
+                    // Sync after 1 second
+                    setTimeout(function() {
+                        syncNow();
+                    }, 1000);
+                }
+            });
+        }
+
+        // Periodic auto-sync (every 30 seconds)
+        function setupPeriodicSync() {
+            setInterval(function() {
+                if (navigator.onLine) {
+                    console.log('⏰ Periodic auto-sync check...');
+                    checkUnsyncedOrders();
+                    
+                    // Only sync if there are unsynced orders
+                    const statusEl = document.getElementById('syncStatus');
+                    if (statusEl && statusEl.style.display !== 'none') {
+                        console.log('🔄 Syncing pending orders...');
+                        syncNow();
+                    }
+                }
+            }, 30000); // 30 seconds
+        }
+
+        // Enhanced online event handler
+        function setupOnlineHandler() {
+            window.addEventListener('online', function() {
+                console.log('📡 Back online - auto-syncing...');
+                updateOnlineStatusUI();
+                showToast('🔄 Back online! Syncing orders...', 'info');
+                
+                // Check and sync
+                setTimeout(function() {
+                    checkUnsyncedOrders();
+                    setTimeout(function() {
+                        syncNow();
+                    }, 1000);
+                }, 500);
+            });
+        }
+
+        // Enhanced offline event handler
+        function setupOfflineHandler() {
+            window.addEventListener('offline', function() {
+                updateOnlineStatusUI();
+                showToast('📡 You are offline. Orders will be saved locally.', 'warning');
+            });
+        }
+
+        // ============================================================
         // LOAD USER STATS
         // ============================================================
         function loadUserStats() {
@@ -1047,8 +1100,11 @@
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {
-                        document.getElementById('userTodaySales').textContent = 'KSh ' + (data.today_revenue || 0).toLocaleString();
-                        document.getElementById('userTodayOrders').textContent = data.today_orders || 0;
+                        const todaySales = 'KSh ' + (data.today_revenue || 0).toLocaleString();
+                        const todayOrders = data.today_orders || 0;
+                        
+                        document.getElementById('userTodaySales').textContent = todaySales;
+                        document.getElementById('userTodayOrders').textContent = todayOrders;
                     }
                 })
                 .catch(err => console.error('User stats error:', err));
@@ -1062,11 +1118,17 @@
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {
-                        document.getElementById('todaySales').textContent = 'KSh ' + (data.today_revenue || 0).toLocaleString();
-                        document.getElementById('todayOrders').textContent = data.today_orders || 0;
-                        document.getElementById('todayReturns').textContent = data.today_returns || 0;
-                        document.getElementById('totalCustomers').textContent = data.total_customers || 0;
-                        document.getElementById('totalProducts').textContent = data.total_products || 0;
+                        const todaySales = 'KSh ' + (data.today_revenue || 0).toLocaleString();
+                        const todayOrders = data.today_orders || 0;
+                        const todayReturns = data.today_returns || 0;
+                        const totalCust = data.total_customers || 0;
+                        const totalProds = data.total_products || 0;
+                        
+                        document.getElementById('todaySales').textContent = todaySales;
+                        document.getElementById('todayOrders').textContent = todayOrders;
+                        document.getElementById('todayReturns').textContent = todayReturns;
+                        document.getElementById('totalCustomers').textContent = totalCust;
+                        document.getElementById('totalProducts').textContent = totalProds;
                     }
                 })
                 .catch(err => console.error('Stats error:', err));
@@ -1075,6 +1137,7 @@
         // ============================================================
         // SYNC FUNCTIONS
         // ============================================================
+
         function syncOfflineOrders() {
             if (!navigator.onLine) {
                 showToast('📡 Offline - will sync when online', 'warning');
@@ -1121,11 +1184,18 @@
                         if (statusEl) {
                             if (data.count > 0) {
                                 statusEl.style.display = 'inline-flex';
-                                statusEl.className = '';
-                                if (countEl) countEl.textContent = data.count;
-                                statusEl.title = 'Orders: ' + (data.orders || []).join(', ');
+                                statusEl.className = 'has-orders';
+                                if (countEl) {
+                                    countEl.textContent = data.count;
+                                    statusEl.style.animation = 'pulse-badge 2s infinite';
+                                }
+                                let orderIds = data.orders || [];
+                                let tooltip = orderIds.length > 0 ? 'Orders: ' + orderIds.join(', ') : '';
+                                statusEl.title = tooltip;
                             } else {
                                 statusEl.style.display = 'none';
+                                statusEl.style.animation = 'none';
+                                statusEl.className = '';
                             }
                         }
                     }
@@ -1134,11 +1204,32 @@
         }
 
         function manualSync() {
-            syncOfflineOrders();
+            if (!navigator.onLine) {
+                showToast('📡 You are offline. Please connect to sync.', 'warning');
+                return;
+            }
+            
+            const syncBtn = document.querySelector('#syncStatus');
+            if (syncBtn) {
+                const originalText = syncBtn.innerHTML;
+                syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
+                syncBtn.className = 'syncing';
+                
+                syncOfflineOrders();
+                
+                // Reset after 5 seconds
+                setTimeout(function() {
+                    syncBtn.innerHTML = originalText;
+                    syncBtn.className = '';
+                    checkUnsyncedOrders();
+                }, 5000);
+            } else {
+                syncOfflineOrders();
+            }
         }
 
         // ============================================================
-        // SEARCH & FILTER
+        // SEARCH & FILTER - UPDATED WITH BARCODE SUPPORT
         // ============================================================
         function searchProducts(query) {
             const searchTerm = query.toLowerCase().trim();
@@ -1157,8 +1248,14 @@
                     const name = (p.name || '').toLowerCase();
                     const category = (p.category || '').toLowerCase();
                     const id = (p.id || '').toLowerCase();
+                    const barcode = (p.barcode || '').toLowerCase();
+                    const sku = (p.sku || '').toLowerCase();
                     
-                    return name.includes(searchTerm) || category.includes(searchTerm) || id.includes(searchTerm);
+                    return name.includes(searchTerm) || 
+                           category.includes(searchTerm) || 
+                           id.includes(searchTerm) ||
+                           barcode.includes(searchTerm) ||
+                           sku.includes(searchTerm);
                 });
                 filteredProducts = results.slice(0, 100);
                 document.getElementById('resultCount').textContent = `${results.length} found${results.length > 100 ? ' (showing 100)' : ''}`;
@@ -1188,7 +1285,7 @@
                         <i class="fas fa-search"></i>
                         <p>No products found</p>
                         <p class="text-xs text-gray-400">Try a different search term</p>
-                        <div class="shortcuts">💡 Tip: Search by name or category</div>
+                        <div class="shortcuts">💡 Tip: Scan barcode or search by name</div>
                     </div>
                 `;
                 return;
@@ -1203,15 +1300,17 @@
                 const stockLabel = stock <= 0 ? 'Out' : stock < 10 ? 'Low' : stock < 30 ? 'Med' : 'In Stock';
                 const stockNumberClass = stock <= 0 ? 'low' : stock < 10 ? 'low' : stock < 30 ? 'medium' : 'high';
                 const isOutOfStock = stock <= 0;
+                const barcodeDisplay = product.barcode ? `<span class="text-[6px] text-gray-400 font-mono">${product.barcode}</span>` : '';
                 
                 html += `
-                    <div class="product-pos-card group" data-id="${product.id || ''}" data-name="${product.name || ''}" data-price="${price}" data-stock="${stock}" data-image="${image}" onclick="${isOutOfStock ? '' : 'addToPOSCart(this)'}">
+                    <div class="product-pos-card group" data-id="${product.id || ''}" data-name="${product.name || ''}" data-price="${price}" data-stock="${stock}" data-image="${image}" data-barcode="${product.barcode || ''}" onclick="${isOutOfStock ? '' : 'addToPOSCart(this)'}">
                         <div class="relative">
                             <div class="h-14 w-full bg-gray-50 rounded-lg overflow-hidden mb-1">
                                 ${image ? `<img src="${image}" alt="${product.name}" class="w-full h-full object-contain p-1" onerror="this.style.display='none'">` : `<div class="w-full h-full flex items-center justify-center text-gray-300"><i class="fas fa-box text-2xl"></i></div>`}
                             </div>
                             <span class="stock-badge ${stockClass}">${stockLabel}</span>
                             ${isOutOfStock ? '<span class="absolute inset-0 bg-white/60 flex items-center justify-center text-xs font-bold text-red-500">OUT OF STOCK</span>' : ''}
+                            ${barcodeDisplay ? `<span class="absolute bottom-0 left-0 right-0 text-center text-[6px] text-gray-400 bg-white/80 py-0.5 font-mono">${product.barcode}</span>` : ''}
                         </div>
                         <p class="text-[9px] font-semibold text-[#0f172a] truncate">${product.name || 'Product'}</p>
                         <p class="price-tag">KSh ${price.toLocaleString()}</p>
@@ -1247,6 +1346,7 @@
             const price = parseFloat(card.dataset.price) || 0;
             const stock = parseInt(card.dataset.stock) || 0;
             const image = String(card.dataset.image || '').trim();
+            const barcode = String(card.dataset.barcode || '').trim();
             
             if (!productId || price <= 0) { showToast('❌ Invalid product'); return; }
             if (stock <= 0) { showToast('⚠️ Out of stock!'); return; }
@@ -1256,7 +1356,7 @@
                 if (existing.quantity < stock) { existing.quantity++; } 
                 else { showToast('⚠️ Not enough stock!'); return; }
             } else {
-                posCart.push({ id: productId, name, price, image, stock, quantity: 1 });
+                posCart.push({ id: productId, name, price, image, stock, barcode, quantity: 1 });
             }
             updatePOSUI();
             showToast('✅ Added: ' + name + ' (' + stock + ' left)');
@@ -1328,6 +1428,7 @@
             posCart.forEach((item, index) => {
                 const price = Number(item.price) || 0;
                 const quantity = Number(item.quantity) || 1;
+                const barcodeDisplay = item.barcode ? `<span class="text-[6px] text-gray-400 font-mono">${item.barcode}</span>` : '';
                 
                 html += `
                     <div class="pos-cart-item flex items-center gap-2 bg-gray-50 rounded-lg p-1.5 border border-gray-100 hover:border-green-200 transition-all">
@@ -1337,6 +1438,7 @@
                         <div class="flex-1 min-w-0">
                             <p class="text-[10px] font-semibold truncate">${item.name || 'Product'}</p>
                             <p class="cart-item-price text-xs">KSh ${price.toLocaleString()}</p>
+                            ${barcodeDisplay}
                             <p class="text-[8px] text-gray-400">Stock: ${item.stock}</p>
                         </div>
                         <div class="flex items-center gap-0.5">
@@ -1438,6 +1540,7 @@
                         <div class="flex-1 min-w-0">
                             <p class="text-sm font-semibold truncate">${item.name}</p>
                             <p class="text-xs text-gray-500">Qty: ${item.quantity} × KSh ${item.price.toLocaleString()}</p>
+                            ${item.barcode ? `<p class="text-[8px] text-gray-400 font-mono">${item.barcode}</p>` : ''}
                         </div>
                         <span class="font-bold text-rose-600 text-sm">KSh ${total.toLocaleString()}</span>
                     </div>
@@ -1470,7 +1573,8 @@
                     id: item.id,
                     name: item.name,
                     price: item.price,
-                    quantity: item.quantity
+                    quantity: item.quantity,
+                    barcode: item.barcode || ''
                 })),
                 refund_total: refundTotal,
                 customer_name: customerName,
@@ -1510,10 +1614,10 @@
         }
 
         // ============================================================
-        // INDEXEDDB FUNCTIONS - UPDATED TO VERSION 3
+        // INDEXEDDB FUNCTIONS
         // ============================================================
         const DB_NAME = 'PricePointDB';
-        const DB_VERSION = 3;  // ← CHANGED from 1 to 3
+        const DB_VERSION = 1;
         const STORE_NAME = 'orders';
         let db = null;
 
@@ -1538,7 +1642,7 @@
                 
                 request.onsuccess = function(event) {
                     db = event.target.result;
-                    console.log('✅ IndexedDB: Connected (Version ' + db.version + ')');
+                    console.log('✅ IndexedDB: Connected');
                     resolve(db);
                 };
                 
@@ -1665,13 +1769,9 @@
         }
 
         // ============================================================
-        // PLACE ORDER - FIXED FOR OFFLINE (VERSION 3)
+        // PLACE ORDER - FIXED FOR OFFLINE
         // ============================================================
         function placePOSOrder() {
-            console.log('🛒 placePOSOrder() called!');
-            console.log('📦 Cart items:', posCart);
-            console.log('📡 Online status:', navigator.onLine);
-            
             if (posCart.length === 0) { 
                 showToast('⚠️ Add items first!', 'warning'); 
                 return; 
@@ -1693,7 +1793,8 @@
                 price: Number(item.price) || 0,
                 quantity: Number(item.quantity) || 1,
                 total: (Number(item.price) || 0) * (Number(item.quantity) || 1),
-                type: 'product'
+                type: 'product',
+                barcode: item.barcode || ''
             }));
             
             const orderData = {
@@ -1720,10 +1821,9 @@
                 user_role: '{{ session.user.role if session.user else "user" }}',
                 staff_name: '{{ session.user.name if session.user else "Unknown User" }}',
                 synced: false,
-                synced_at: null
+                synced_at: null,
+                barcodes: posCart.map(item => item.barcode).filter(b => b)
             };
-            
-            console.log('📦 Order data:', orderData);
             
             const btn = document.getElementById('posPlaceOrderBtn');
             const originalText = btn.innerHTML;
@@ -1746,7 +1846,6 @@
                 
                 saveOrderToIndexedDB(orderData)
                     .then(() => {
-                        console.log('✅ Order saved to IndexedDB:', localOrderId);
                         showToast(`✅ Order #${localOrderId} saved offline! Will sync when online.`, 'warning');
                         posCart = [];
                         discountValue = 0;
@@ -1758,7 +1857,7 @@
                     })
                     .catch(err => {
                         console.error('❌ IndexedDB save error:', err);
-                        showToast('❌ Failed to save order offline: ' + err.message, 'error');
+                        showToast('❌ Failed to save order offline', 'error');
                         btn.innerHTML = originalText;
                         btn.disabled = false;
                     });
@@ -1776,11 +1875,10 @@
                 body: JSON.stringify(orderData)
             })
             .then(r => {
-                if (!r.ok) throw new Error('HTTP error: ' + r.status);
+                if (!r.ok) throw new Error('Network error: ' + r.status);
                 return r.json();
             })
             .then(data => {
-                console.log('✅ Response:', data);
                 if (data.success) {
                     let message = '✅ Order placed! #' + data.order_id + ' | Total: KSh ' + total.toLocaleString();
                     
@@ -1798,38 +1896,25 @@
                     updatePOSUI();
                     loadSalesStats();
                     loadUserStats();
-                } else {
-                    // ============================================================
-                    // ONLINE BUT API FAILED: Save to IndexedDB as fallback
-                    // ============================================================
-                    console.warn('⚠️ API failed, saving to IndexedDB:', data.message);
-                    const localOrderId = 'OFF-' + Date.now().toString(36).toUpperCase();
-                    orderData.order_id = localOrderId;
-                    orderData.synced = false;
-                    orderData.synced_at = null;
                     
-                    saveOrderToIndexedDB(orderData)
-                        .then(() => {
-                            showToast(`✅ Order #${localOrderId} saved locally! Will sync when online.`, 'warning');
-                            posCart = [];
-                            discountValue = 0;
-                            document.getElementById('discountDisplay').textContent = '0%';
-                            updatePOSUI();
-                            checkUnsyncedOrders();
-                        })
-                        .catch(err2 => {
-                            console.error('❌ Both API and IndexedDB failed:', err2);
-                            showToast('❌ Failed to save order. Please try again.', 'error');
-                        });
+                    // Auto-sync after order placement
+                    setTimeout(function() {
+                        if (navigator.onLine) {
+                            console.log('🔄 Auto-syncing after order placement...');
+                            syncOfflineOrders();
+                        }
+                    }, 1500);
+                } else {
+                    showToast('❌ Error: ' + (data.message || 'Unknown error'), 'error');
                 }
                 btn.innerHTML = originalText;
                 btn.disabled = false;
             })
             .catch(err => {
                 // ============================================================
-                // NETWORK ERROR: Save to IndexedDB as fallback
+                // ONLINE BUT FAILED: Save to IndexedDB as fallback
                 // ============================================================
-                console.warn('⚠️ Network error, saving to IndexedDB:', err);
+                console.warn('⚠️ Supabase failed, saving to IndexedDB:', err);
                 
                 const localOrderId = 'OFF-' + Date.now().toString(36).toUpperCase();
                 orderData.order_id = localOrderId;
@@ -1838,7 +1923,7 @@
                 
                 saveOrderToIndexedDB(orderData)
                     .then(() => {
-                        showToast(`✅ Order #${localOrderId} saved locally! Will sync when online.`, 'warning');
+                        showToast(`✅ Order #${localOrderId} saved offline! Will sync when online.`, 'warning');
                         posCart = [];
                         discountValue = 0;
                         document.getElementById('discountDisplay').textContent = '0%';
@@ -1848,7 +1933,7 @@
                         btn.disabled = false;
                     })
                     .catch(err2 => {
-                        console.error('❌ Both network and IndexedDB failed:', err2);
+                        console.error('❌ Both Supabase and IndexedDB failed:', err2);
                         showToast('❌ Failed to save order. Please try again.', 'error');
                         btn.innerHTML = originalText;
                         btn.disabled = false;
@@ -1982,7 +2067,13 @@
         // KEYBOARD SHORTCUTS
         // ============================================================
         document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') { closeCustomerModal(); closeDiscountModal(); closeReturnModal(); }
+            if (e.key === 'Escape') { 
+                closeCustomerModal(); 
+                closeDiscountModal(); 
+                closeReturnModal(); 
+                closeBarcodeScanner();
+                closeBarcodeInputModal();
+            }
             if (e.ctrlKey && e.key === 'Enter') { placePOSOrder(); e.preventDefault(); }
             if (e.key === 'F1') { document.getElementById('posSearch').focus(); e.preventDefault(); }
             if (e.key === 'F2') { toggleCustomerModal(); e.preventDefault(); }
@@ -1990,6 +2081,22 @@
             if (e.key === 'F4') { toggleReturnModal(); e.preventDefault(); }
             if (e.key === 'F5') { holdOrder(); e.preventDefault(); }
             if (e.key === 'F6') { manualSync(); e.preventDefault(); }
+            if (e.key === 'F7') { 
+                e.preventDefault();
+                if (document.getElementById('barcodeModal').classList.contains('hidden')) {
+                    openBarcodeScanner();
+                } else {
+                    closeBarcodeScanner();
+                }
+            }
+            if (e.key === 'F8') { 
+                e.preventDefault();
+                if (document.getElementById('barcodeInputModal').classList.contains('hidden')) {
+                    openBarcodeInputModal();
+                } else {
+                    closeBarcodeInputModal();
+                }
+            }
             if ((e.key === 'Delete' || e.key === 'Backspace') && document.activeElement.id !== 'posSearch') {
                 voidLastItem();
                 e.preventDefault();
@@ -1997,15 +2104,310 @@
         });
 
         // ============================================================
-        // INIT
+        // BARCODE SCANNER - Complete Implementation
+        // ============================================================
+
+        let html5QrCode = null;
+        let isScannerRunning = false;
+        let scannerStarted = false;
+
+        // ============================================================
+        // OPEN BARCODE SCANNER
+        // ============================================================
+        function openBarcodeScanner() {
+            const modal = document.getElementById('barcodeModal');
+            modal.classList.remove('hidden');
+            
+            // Reset scanner state
+            document.getElementById('scannerResult').classList.add('hidden');
+            document.getElementById('scannedValue').textContent = '';
+            
+            // Show start button
+            const btn = document.getElementById('startScannerBtn');
+            btn.style.display = 'block';
+            btn.innerHTML = '<i class="fas fa-play"></i> Start Camera';
+            btn.disabled = false;
+            
+            // Reset scanner
+            if (html5QrCode) {
+                try {
+                    html5QrCode.stop().then(() => {
+                        html5QrCode.clear();
+                        scannerStarted = false;
+                    }).catch(() => {});
+                } catch(e) {}
+            }
+            
+            // Check if camera is available
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showToast('⚠️ Camera not available on this device', 'warning');
+                btn.style.display = 'none';
+                document.getElementById('barcode-reader').innerHTML = `
+                    <div class="text-center py-8 text-gray-400">
+                        <i class="fas fa-camera-slash text-4xl block mb-3"></i>
+                        <p>Camera not available</p>
+                        <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="btn-primary mt-3" style="display:inline-block; padding: 8px 20px; width:auto; background: linear-gradient(135deg, #f59e0b, #d97706);">
+                            <i class="fas fa-keyboard"></i> Enter Manually
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        // ============================================================
+        // CLOSE BARCODE SCANNER
+        // ============================================================
+        function closeBarcodeScanner() {
+            const modal = document.getElementById('barcodeModal');
+            modal.classList.add('hidden');
+            
+            // Stop scanner
+            if (html5QrCode && scannerStarted) {
+                try {
+                    html5QrCode.stop().then(() => {
+                        html5QrCode.clear();
+                        scannerStarted = false;
+                    }).catch(() => {});
+                } catch(e) {}
+            }
+            isScannerRunning = false;
+        }
+
+        // ============================================================
+        // START SCANNER
+        // ============================================================
+        function startScanner() {
+            if (isScannerRunning) return;
+            
+            const btn = document.getElementById('startScannerBtn');
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
+            btn.disabled = true;
+            
+            // Clear previous content
+            document.getElementById('barcode-reader').innerHTML = '';
+            
+            const config = {
+                fps: 10,
+                qrbox: { width: 250, height: 250 },
+                aspectRatio: 1.0,
+                formatsToSupport: [
+                    Html5QrcodeSupportedFormats.QR_CODE,
+                    Html5QrcodeSupportedFormats.CODE_128,
+                    Html5QrcodeSupportedFormats.CODE_39,
+                    Html5QrcodeSupportedFormats.EAN_13,
+                    Html5QrcodeSupportedFormats.EAN_8,
+                    Html5QrcodeSupportedFormats.UPC_A,
+                    Html5QrcodeSupportedFormats.UPC_E,
+                    Html5QrcodeSupportedFormats.DATA_MATRIX,
+                    Html5QrcodeSupportedFormats.AZTEC,
+                    Html5QrcodeSupportedFormats.CODE_93,
+                    Html5QrcodeSupportedFormats.CODABAR,
+                    Html5QrcodeSupportedFormats.MAXICODE,
+                    Html5QrcodeSupportedFormats.PDF417,
+                    Html5QrcodeSupportedFormats.RSS_14,
+                    Html5QrcodeSupportedFormats.RSS_EXPANDED
+                ]
+            };
+            
+            try {
+                html5QrCode = new Html5Qrcode("barcode-reader");
+                
+                html5QrCode.start(
+                    { facingMode: "environment" },
+                    config,
+                    onScanSuccess,
+                    onScanError
+                ).then(() => {
+                    console.log('✅ Scanner started successfully');
+                    scannerStarted = true;
+                    isScannerRunning = true;
+                    btn.innerHTML = '<i class="fas fa-pause"></i> Scanning...';
+                    btn.disabled = false;
+                }).catch(err => {
+                    console.error('❌ Scanner start error:', err);
+                    btn.innerHTML = '<i class="fas fa-camera"></i> Try Again';
+                    btn.disabled = false;
+                    showToast('⚠️ Could not access camera: ' + err.message, 'error');
+                    
+                    document.getElementById('barcode-reader').innerHTML = `
+                        <div class="text-center py-8 text-gray-400">
+                            <i class="fas fa-camera-slash text-4xl block mb-3"></i>
+                            <p>Camera not accessible</p>
+                            <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="btn-primary mt-3" style="display:inline-block; padding: 8px 20px; width:auto; background: linear-gradient(135deg, #f59e0b, #d97706);">
+                                <i class="fas fa-keyboard"></i> Enter Manually
+                            </button>
+                        </div>
+                    `;
+                    btn.style.display = 'none';
+                });
+            } catch(err) {
+                console.error('❌ Scanner init error:', err);
+                btn.innerHTML = '<i class="fas fa-camera"></i> Try Again';
+                btn.disabled = false;
+                showToast('⚠️ Scanner error: ' + err.message, 'error');
+            }
+        }
+
+        // ============================================================
+        // ON SCAN SUCCESS
+        // ============================================================
+        function onScanSuccess(decodedText, decodedResult) {
+            console.log('📷 Barcode scanned:', decodedText);
+            
+            // Vibrate if supported
+            try {
+                if (navigator.vibrate) navigator.vibrate(200);
+            } catch(e) {}
+            
+            // Show result
+            document.getElementById('scannerResult').classList.remove('hidden');
+            document.getElementById('scannedValue').textContent = decodedText;
+            
+            // Stop scanner
+            if (html5QrCode && scannerStarted) {
+                try {
+                    html5QrCode.pause();
+                    isScannerRunning = false;
+                    document.getElementById('startScannerBtn').innerHTML = '<i class="fas fa-play"></i> Resume';
+                } catch(e) {}
+            }
+            
+            // Search for product
+            searchProductByBarcode(decodedText);
+        }
+
+        function onScanError(error) {
+            // Ignore - called frequently
+        }
+
+        // ============================================================
+        // SEARCH PRODUCT BY BARCODE - FIXED VERSION
+        // ============================================================
+        function searchProductByBarcode(barcode) {
+            console.log('🔍 Searching for product with barcode:', barcode);
+            
+            // Convert to string for comparison
+            const searchTerm = String(barcode).trim();
+            console.log('📋 Search term:', searchTerm);
+            
+            // Log all products with barcodes for debugging
+            const productsWithBarcodes = allProducts.filter(p => p.barcode);
+            console.log('📦 Products with barcodes:', productsWithBarcodes.length);
+            
+            // FIRST: Try exact barcode match (using == for loose equality)
+            let product = allProducts.find(p => {
+                const barcodeField = String(p.barcode || '').trim();
+                return barcodeField == searchTerm;
+            });
+            
+            // SECOND: Try exact ID match
+            if (!product) {
+                product = allProducts.find(p => {
+                    const id = String(p.id || '').trim();
+                    return id == searchTerm;
+                });
+            }
+            
+            // THIRD: Try name contains match
+            if (!product) {
+                product = allProducts.find(p => {
+                    const name = String(p.name || '').toLowerCase();
+                    return name.includes(searchTerm.toLowerCase());
+                });
+            }
+            
+            // FOURTH: Try barcode contains match
+            if (!product) {
+                product = allProducts.find(p => {
+                    const barcodeField = String(p.barcode || '').toLowerCase();
+                    return barcodeField.includes(searchTerm.toLowerCase());
+                });
+            }
+            
+            if (product) {
+                console.log('✅ Found product:', product.name);
+                showToast(`✅ Found: ${product.name}`, 'success');
+                addToPOSCartByProduct(product);
+                setTimeout(closeBarcodeScanner, 1000);
+            } else {
+                console.log('❌ No product found for barcode:', barcode);
+                showToast(`❌ Product not found for: ${barcode}`, 'error');
+                // Ask if user wants to search by name
+                setTimeout(() => {
+                    if (confirm(`Product not found for "${barcode}".\n\nSearch by name instead?`)) {
+                        closeBarcodeScanner();
+                        document.getElementById('posSearch').value = barcode;
+                        searchProducts(barcode);
+                    }
+                }, 500);
+            }
+        }
+
+        // ============================================================
+        // ADD PRODUCT TO CART FROM SCANNER
+        // ============================================================
+        function addToPOSCartByProduct(product) {
+            const existing = posCart.find(item => item.id === product.id);
+            if (existing) {
+                if (existing.quantity < product.stock) {
+                    existing.quantity++;
+                    showToast(`✅ Added another ${product.name} (${existing.quantity} total)`, 'success');
+                } else {
+                    showToast(`⚠️ Not enough stock for ${product.name}`, 'warning');
+                }
+            } else {
+                posCart.push({
+                    id: product.id,
+                    name: product.name,
+                    price: product.price,
+                    image: product.image || '',
+                    stock: product.stock || 0,
+                    barcode: product.barcode || '',
+                    quantity: 1
+                });
+                showToast(`✅ Added: ${product.name}`, 'success');
+            }
+            updatePOSUI();
+        }
+
+        // ============================================================
+        // MANUAL BARCODE INPUT
+        // ============================================================
+        function openBarcodeInputModal() {
+            document.getElementById('barcodeInputModal').classList.remove('hidden');
+            setTimeout(() => {
+                document.getElementById('manualBarcode').focus();
+            }, 300);
+        }
+
+        function closeBarcodeInputModal() {
+            document.getElementById('barcodeInputModal').classList.add('hidden');
+            document.getElementById('manualBarcode').value = '';
+        }
+
+        function submitManualBarcode() {
+            const barcode = document.getElementById('manualBarcode').value.trim();
+            if (!barcode) {
+                showToast('⚠️ Please enter a barcode', 'warning');
+                return;
+            }
+            closeBarcodeInputModal();
+            searchProductByBarcode(barcode);
+        }
+
+        // ============================================================
+        // INIT WITH ENHANCED AUTO-SYNC
         // ============================================================
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('✅ POS Pro v3.0 initializing with enhanced auto-sync...');
+            
+            // Initialize UI
             document.getElementById('posProductGrid').innerHTML = `
                 <div class="col-span-full search-hint">
                     <i class="fas fa-search"></i>
                     <p>Search for products</p>
                     <p class="text-xs text-gray-400">${allProducts.length} products available</p>
-                    <div class="shortcuts">⌨️ F1: Search | F2: Customer | F3: Discount | F4: Return | F5: Hold | F6: Sync | Ctrl+Enter: Checkout</div>
+                    <div class="shortcuts">⌨️ F1: Search | F2: Customer | F3: Discount | F4: Return | F5: Hold | F6: Sync | F7: Scan | F8: Manual Barcode | Ctrl+Enter: Checkout</div>
                 </div>
             `;
             document.getElementById('resultCount').textContent = `${allProducts.length} products available`;
@@ -2013,16 +2415,55 @@
             loadSalesStats();
             loadUserStats();
             
+            // ============================================================
+            // AUTO-SYNC ON LOAD
+            // ============================================================
+            setTimeout(autoSyncOnLoad, 500);
+            
+            // ============================================================
+            // SETUP ALL AUTO-SYNC HANDLERS
+            // ============================================================
+            setupVisibilitySync();
+            setupPeriodicSync();
+            setupOnlineHandler();
+            setupOfflineHandler();
+            
+            // ============================================================
+            // CHECK FOR OFFLINE ORDERS AFTER 2 SECONDS
+            // ============================================================
             setTimeout(function() {
                 if (navigator.onLine) {
                     checkUnsyncedOrders();
-                    setTimeout(syncOfflineOrders, 3000);
                 }
             }, 2000);
             
-            console.log('✅ POS Pro v3.0 initialized with ' + allProducts.length + ' products');
+            // ============================================================
+            // AUTO-SYNC AFTER 3 SECONDS IF ONLINE
+            // ============================================================
+            setTimeout(function() {
+                if (navigator.onLine) {
+                    console.log('🔄 Initial auto-sync after load...');
+                    syncOfflineOrders();
+                }
+            }, 3000);
+            
+            // ============================================================
+            // SECOND CHECK FOR PENDING ORDERS
+            // ============================================================
+            setTimeout(function() {
+                checkUnsyncedOrders();
+            }, 5000);
+            
             console.log('📡 Status:', navigator.onLine ? 'Online' : 'Offline');
-            console.log('📦 IndexedDB Version: 3');
+            console.log('📋 Products with barcodes:', allProducts.filter(p => p.barcode).length);
+            console.log('⏰ Auto-sync enabled: On load, on tab switch, every 30s, and on online event');
+            
+            // Log barcodes for debugging
+            allProducts.forEach(p => {
+                if (p.barcode) {
+                    console.log(`📦 ${p.name}: ${p.barcode}`);
+                }
+            });
         });
     </script>
 </body>
