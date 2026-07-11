@@ -1237,6 +1237,7 @@
                     if (statusEl) {
                         statusEl.className = '';
                         statusEl.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> <span id="unsyncedCount">0</span> offline order(s)';
+                        statusEl.style.display = 'none';
                     }
                     return;
                 }
@@ -1273,6 +1274,7 @@
                     if (statusEl) {
                         statusEl.className = '';
                         statusEl.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> <span id="unsyncedCount">0</span> offline order(s)';
+                        statusEl.style.display = 'none';
                     }
                 })
                 .catch(err => {
@@ -1287,53 +1289,25 @@
         }
 
         function checkUnsyncedOrders() {
-            fetch('/admin/api/unsynced-count')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.success) {
-                        const statusEl = document.getElementById('syncStatus');
-                        const countEl = document.getElementById('unsyncedCount');
-                        if (statusEl) {
-                            if (data.count > 0) {
-                                statusEl.style.display = 'inline-flex';
-                                statusEl.className = 'has-orders';
-                                if (countEl) countEl.textContent = data.count;
-                                statusEl.style.animation = 'pulse-badge 2s infinite';
-                                if (navigator.onLine) {
-                                    setTimeout(syncOfflineOrders, 1000);
-                                }
-                            } else {
-                                getUnsyncedOrdersFromIndexedDB().then(unsynced => {
-                                    if (unsynced.length > 0) {
-                                        statusEl.style.display = 'inline-flex';
-                                        statusEl.className = 'has-orders';
-                                        if (countEl) countEl.textContent = unsynced.length;
-                                        statusEl.style.animation = 'pulse-badge 2s infinite';
-                                        if (navigator.onLine) {
-                                            setTimeout(syncOfflineOrders, 1000);
-                                        }
-                                    } else {
-                                        statusEl.style.display = 'none';
-                                        statusEl.className = '';
-                                        statusEl.style.animation = 'none';
-                                    }
-                                });
-                            }
-                        }
+            getUnsyncedOrdersFromIndexedDB().then(unsynced => {
+                const statusEl = document.getElementById('syncStatus');
+                const countEl = document.getElementById('unsyncedCount');
+                if (statusEl && unsynced.length > 0) {
+                    statusEl.style.display = 'inline-flex';
+                    statusEl.className = 'has-orders';
+                    if (countEl) countEl.textContent = unsynced.length;
+                    statusEl.style.animation = 'pulse-badge 2s infinite';
+                    if (navigator.onLine) {
+                        setTimeout(syncOfflineOrders, 1000);
                     }
-                })
-                .catch(err => {
-                    getUnsyncedOrdersFromIndexedDB().then(unsynced => {
-                        const statusEl = document.getElementById('syncStatus');
-                        const countEl = document.getElementById('unsyncedCount');
-                        if (statusEl && unsynced.length > 0) {
-                            statusEl.style.display = 'inline-flex';
-                            statusEl.className = 'has-orders';
-                            if (countEl) countEl.textContent = unsynced.length;
-                            statusEl.style.animation = 'pulse-badge 2s infinite';
-                        }
-                    });
-                });
+                } else if (statusEl) {
+                    statusEl.style.display = 'none';
+                    statusEl.className = '';
+                    statusEl.style.animation = 'none';
+                }
+            }).catch(() => {
+                // Silently handle errors
+            });
         }
 
         function manualSync() {
@@ -1728,7 +1702,7 @@
         }
 
         // ============================================================
-        // PLACE ORDER
+        // PLACE ORDER - WITH V5 INDEXEDDB
         // ============================================================
         function placePOSOrder() {
             if (posCart.length === 0) { 
