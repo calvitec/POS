@@ -652,6 +652,9 @@
                 <button class="btn-gradient rose" onclick="toggleReturnModal()">
                     <i class="fas fa-undo-alt"></i> Return
                 </button>
+                <button class="btn-gradient indigo" onclick="refreshProducts()" style="font-size:0.6rem; padding:4px 10px;">
+                    <i class="fas fa-sync-alt"></i> Refresh Stock
+                </button>
                 <button class="btn-outline" onclick="clearCart()" style="width:auto; padding: 6px 12px; font-size:0.7rem;">
                     <i class="fas fa-trash-alt"></i>
                 </button>
@@ -1198,6 +1201,51 @@
         }
 
         // ============================================================
+        // REFRESH PRODUCTS (Update Stock After Order)
+        // ============================================================
+        function refreshProducts() {
+            console.log('🔄 Refreshing products...');
+            
+            // First, try to get fresh data from server
+            fetch('/admin/api/products?page=1&per_page=1000')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success && data.products) {
+                        // Update the products array
+                        allProducts.length = 0;
+                        allProducts.push(...data.products);
+                        console.log('✅ Products refreshed from server, new stock values loaded');
+                    } else {
+                        console.log('⚠️ Could not refresh from server, using cached data');
+                    }
+                    
+                    // Re-render the product grid
+                    const searchInput = document.getElementById('posSearch');
+                    if (searchInput) {
+                        searchProducts(searchInput.value || '');
+                    } else {
+                        searchProducts('');
+                    }
+                    
+                    // Update product count
+                    const productCount = allProducts.length;
+                    document.getElementById('totalProducts').textContent = productCount;
+                    document.getElementById('productCount').textContent = productCount + ' total';
+                    document.getElementById('resultCount').textContent = filteredProducts.length + ' products';
+                })
+                .catch(err => {
+                    console.log('⚠️ Error refreshing products:', err);
+                    // Still re-render with current data
+                    const searchInput = document.getElementById('posSearch');
+                    if (searchInput) {
+                        searchProducts(searchInput.value || '');
+                    } else {
+                        searchProducts('');
+                    }
+                });
+        }
+
+        // ============================================================
         // SEARCH & FILTER
         // ============================================================
         function searchProducts(query) {
@@ -1581,10 +1629,10 @@
         }
 
         // ============================================================
-        // INDEXEDDB FUNCTIONS - VERSION 5 (FIXED)
+        // INDEXEDDB FUNCTIONS - VERSION 5
         // ============================================================
         const DB_NAME = 'PricePointDB';
-        const DB_VERSION = 5;  // ← PERMANENT VERSION 5
+        const DB_VERSION = 5;
         const STORE_NAME = 'orders';
         let db = null;
 
@@ -1652,7 +1700,7 @@
         }
 
         // ============================================================
-        // PLACE ORDER - FIXED FOR OFFLINE (VERSION 5)
+        // PLACE ORDER - WITH STOCK DEDUCTION
         // ============================================================
         function placePOSOrder() {
             if (posCart.length === 0) { 
@@ -1834,20 +1882,60 @@
             }
             
             // ============================================================
-            // EXECUTE: Save -> Sync -> Update UI
+            // UPDATE LOCAL STOCK
+            // ============================================================
+            
+            function updateLocalStock() {
+                console.log('📦 Updating local stock...');
+                
+                // Reduce stock for each item in cart
+                posCart.forEach(cartItem => {
+                    const product = allProducts.find(p => p.id === cartItem.id);
+                    if (product) {
+                        const oldStock = product.stock || 0;
+                        product.stock = Math.max(0, oldStock - cartItem.quantity);
+                        console.log(`📦 ${product.name}: ${oldStock} → ${product.stock}`);
+                    }
+                });
+                
+                // Re-render products
+                const searchInput = document.getElementById('posSearch');
+                if (searchInput) {
+                    searchProducts(searchInput.value || '');
+                } else {
+                    searchProducts('');
+                }
+                
+                // Update product count
+                const productCount = allProducts.length;
+                document.getElementById('totalProducts').textContent = productCount;
+                document.getElementById('productCount').textContent = productCount + ' total';
+                document.getElementById('resultCount').textContent = filteredProducts.length + ' products';
+                
+                console.log('✅ Local stock updated');
+            }
+            
+            // ============================================================
+            // EXECUTE: Save -> Update Stock -> Sync
             // ============================================================
             
             // First, save to IndexedDB (always works, online or offline)
             saveOrderLocally(orderData)
                 .then(() => {
                     console.log('✅ Order saved locally!');
-                    showToast(`✅ Order #${orderData.order_id} saved locally!`, 'success');
                     
-                    // Clear cart immediately
+                    // ============================================================
+                    // UPDATE STOCK IMMEDIATELY
+                    // ============================================================
+                    updateLocalStock();
+                    
+                    // Clear cart
                     posCart = [];
                     discountValue = 0;
                     document.getElementById('discountDisplay').textContent = '0%';
                     updatePOSUI();
+                    
+                    showToast(`✅ Order #${orderData.order_id} saved! Stock updated.`, 'success');
                     checkUnsyncedOrders();
                     
                     // Reset button
