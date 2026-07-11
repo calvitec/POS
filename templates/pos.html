@@ -951,7 +951,7 @@
 
     <script>
         // ============================================================
-        // DATA - Loaded from server, then updated with IndexedDB stock
+        // DATA
         // ============================================================
         let allProducts = {{ products | tojson | safe }};
         let filteredProducts = [];
@@ -964,11 +964,10 @@
         let totalDiscount = 0;
 
         // ============================================================
-        // INDEXEDDB VERSION 5 - STOCK PERSISTENCE
+        // INDEXEDDB VERSION 5 - FOR OFFLINE ORDERS ONLY
         // ============================================================
         const DB_NAME = 'PricePointDB';
         const DB_VERSION = 5;
-        const STORE_NAME = 'products';
         const ORDER_STORE = 'orders';
 
         function openDB() {
@@ -977,13 +976,6 @@
                 
                 request.onupgradeneeded = function(event) {
                     const db = event.target.result;
-                    
-                    // Products store - for stock persistence
-                    if (!db.objectStoreNames.contains(STORE_NAME)) {
-                        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-                        store.createIndex('stock', 'stock', { unique: false });
-                        console.log('✅ IndexedDB: Products store created (v5)');
-                    }
                     
                     // Orders store - for offline orders
                     if (!db.objectStoreNames.contains(ORDER_STORE)) {
@@ -1006,40 +998,30 @@
             });
         }
 
-        // ============================================================
-        // SAVE PRODUCTS STOCK TO INDEXEDDB
-        // ============================================================
-        function saveProductsToIndexedDB(products) {
+        function saveOrderToIndexedDB(order) {
             return new Promise(async (resolve, reject) => {
                 try {
                     const db = await openDB();
-                    const tx = db.transaction(STORE_NAME, 'readwrite');
-                    const store = tx.objectStore(STORE_NAME);
+                    const tx = db.transaction(ORDER_STORE, 'readwrite');
+                    const store = tx.objectStore(ORDER_STORE);
                     
-                    // Clear existing products
-                    store.clear();
+                    if (!order.synced) {
+                        order.synced = false;
+                    }
+                    if (!order.synced_at) {
+                        order.synced_at = null;
+                    }
                     
-                    // Save each product
-                    products.forEach(product => {
-                        store.put({
-                            id: product.id,
-                            name: product.name,
-                            stock: product.stock || 0,
-                            price: product.price,
-                            category: product.category,
-                            image: product.image,
-                            barcode: product.barcode
-                        });
-                    });
+                    const request = store.put(order);
                     
-                    tx.oncomplete = function() {
-                        console.log('✅ Products stock saved to IndexedDB');
+                    request.onsuccess = function() {
+                        console.log('✅ Order saved to IndexedDB:', order.order_id);
                         db.close();
-                        resolve();
+                        resolve(order);
                     };
                     
-                    tx.onerror = function(event) {
-                        console.error('❌ Error saving products:', event.target.error);
+                    request.onerror = function(event) {
+                        console.error('❌ IndexedDB save error:', event.target.error);
                         db.close();
                         reject(event.target.error);
                     };
@@ -1049,26 +1031,22 @@
             });
         }
 
-        // ============================================================
-        // LOAD PRODUCTS STOCK FROM INDEXEDDB
-        // ============================================================
-        function loadProductsFromIndexedDB() {
+        function getUnsyncedOrdersFromIndexedDB() {
             return new Promise(async (resolve, reject) => {
                 try {
                     const db = await openDB();
-                    const tx = db.transaction(STORE_NAME, 'readonly');
-                    const store = tx.objectStore(STORE_NAME);
-                    const request = store.getAll();
+                    const tx = db.transaction(ORDER_STORE, 'readonly');
+                    const store = tx.objectStore(ORDER_STORE);
+                    const index = store.index('synced');
+                    const request = index.getAll(false);
                     
                     request.onsuccess = function() {
-                        const savedProducts = request.result;
-                        console.log('📦 Loaded ' + savedProducts.length + ' products from IndexedDB');
+                        console.log('✅ IndexedDB: Found', request.result.length, 'unsynced orders');
                         db.close();
-                        resolve(savedProducts);
+                        resolve(request.result);
                     };
                     
                     request.onerror = function(event) {
-                        console.error('❌ Error loading products:', event.target.error);
                         db.close();
                         reject(event.target.error);
                     };
@@ -1078,90 +1056,35 @@
             });
         }
 
-        // ============================================================
-        // UPDATE SINGLE PRODUCT STOCK IN INDEXEDDB
-        // ============================================================
-        function updateProductStockInIndexedDB(productId, newStock) {
+        function markOrderSyncedInIndexedDB(orderId) {
             return new Promise(async (resolve, reject) => {
                 try {
                     const db = await openDB();
-                    const tx = db.transaction(STORE_NAME, 'readwrite');
-                    const store = tx.objectStore(STORE_NAME);
+                    const tx = db.transaction(ORDER_STORE, 'readwrite');
+                    const store = tx.objectStore(ORDER_STORE);
                     
-                    const getRequest = store.get(productId);
+                    const request = store.get(orderId);
                     
-                    getRequest.onsuccess = function() {
-                        const product = getRequest.result;
-                        if (product) {
-                            product.stock = newStock;
-                            const putRequest = store.put(product);
-                            
-                            putRequest.onsuccess = function() {
-                                console.log('✅ Updated stock for ' + productId + ' to ' + newStock);
-                                db.close();
-                                resolve();
-                            };
-                            
-                            putRequest.onerror = function(event) {
-                                db.close();
-                                reject(event.target.error);
-                            };
-                        } else {
-                            db.close();
-                            resolve();
+                    request.onsuccess = function() {
+                        const order = request.result;
+                        if (order) {
+                            order.synced = true;
+                            order.synced_at = new Date().toISOString();
+                            store.put(order);
+                            console.log('✅ Order marked synced in IndexedDB:', orderId);
                         }
+                        db.close();
+                        resolve();
                     };
                     
-                    getRequest.onerror = function(event) {
+                    request.onerror = function(event) {
                         db.close();
                         reject(event.target.error);
                     };
                 } catch (error) {
-                    reject(error);
+                    resolve();
                 }
             });
-        }
-
-        // ============================================================
-        // RESTORE STOCK ON PAGE LOAD
-        // ============================================================
-        async function restoreStockFromIndexedDB() {
-            try {
-                const savedProducts = await loadProductsFromIndexedDB();
-                
-                if (savedProducts && savedProducts.length > 0) {
-                    console.log('🔄 Restoring stock from IndexedDB...');
-                    
-                    // Update allProducts with saved stock
-                    savedProducts.forEach(savedProduct => {
-                        const localProduct = allProducts.find(p => p.id === savedProduct.id);
-                        if (localProduct) {
-                            localProduct.stock = savedProduct.stock;
-                            console.log(`📦 ${localProduct.name}: stock = ${localProduct.stock}`);
-                        }
-                    });
-                    
-                    console.log('✅ Stock restored from IndexedDB');
-                    
-                    // Re-render products
-                    const searchInput = document.getElementById('posSearch');
-                    if (searchInput) {
-                        searchProducts(searchInput.value || '');
-                    } else {
-                        searchProducts('');
-                    }
-                    
-                    return true;
-                } else {
-                    console.log('📭 No saved stock found in IndexedDB, saving initial stock...');
-                    // Save initial stock to IndexedDB
-                    await saveProductsToIndexedDB(allProducts);
-                    return true;
-                }
-            } catch (error) {
-                console.warn('⚠️ Could not restore stock from IndexedDB:', error);
-                return false;
-            }
         }
 
         // ============================================================
@@ -1197,7 +1120,6 @@
             }
         }
 
-        // Update on status change
         window.addEventListener('online', function() {
             updateOnlineStatusUI();
             showToast('🔄 Back online! Syncing orders...', 'info');
@@ -1216,10 +1138,7 @@
         // LOAD USER STATS
         // ============================================================
         function loadUserStats() {
-            if (!navigator.onLine) {
-                // Skip if offline
-                return;
-            }
+            if (!navigator.onLine) return;
             
             fetch('/admin/api/user-stats')
                 .then(r => r.json())
@@ -1241,10 +1160,7 @@
         // LOAD SALES STATS
         // ============================================================
         function loadSalesStats() {
-            if (!navigator.onLine) {
-                // Skip if offline
-                return;
-            }
+            if (!navigator.onLine) return;
             
             fetch('/admin/api/sales-stats')
                 .then(r => r.json())
@@ -1284,34 +1200,54 @@
             
             showToast('🔄 Syncing offline orders...', 'info');
             
-            fetch('/admin/api/sync-queue', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    if (data.synced > 0) {
-                        showToast(`✅ Synced ${data.synced} offline orders to cloud!`, 'success');
-                        loadUserStats();
-                        loadSalesStats();
-                        checkUnsyncedOrders();
-                    } else if (data.failed > 0) {
-                        showToast(`⚠️ ${data.failed} orders failed to sync. Check connection.`, 'warning');
-                    } else {
-                        showToast('✅ All orders are synced!', 'success');
-                    }
-                } else {
-                    showToast('❌ Sync failed: ' + (data.message || 'Unknown error'), 'error');
+            // Get unsynced orders from IndexedDB
+            getUnsyncedOrdersFromIndexedDB().then(unsyncedOrders => {
+                if (unsyncedOrders.length === 0) {
+                    showToast('✅ No offline orders to sync', 'success');
+                    checkUnsyncedOrders();
+                    return;
                 }
-            })
-            .catch(err => {
-                console.error('Sync error:', err);
-                showToast('❌ Sync error: ' + err.message, 'error');
+                
+                console.log(`📦 Syncing ${unsyncedOrders.length} offline orders...`);
+                
+                fetch('/admin/api/sync-queue', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ orders: unsyncedOrders })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        if (data.synced > 0) {
+                            // Mark orders as synced in IndexedDB
+                            unsyncedOrders.forEach(order => {
+                                markOrderSyncedInIndexedDB(order.order_id);
+                            });
+                            showToast(`✅ Synced ${data.synced} offline orders to cloud!`, 'success');
+                            loadUserStats();
+                            loadSalesStats();
+                        } else if (data.failed > 0) {
+                            showToast(`⚠️ ${data.failed} orders failed to sync.`, 'warning');
+                        } else {
+                            showToast('✅ All orders are synced!', 'success');
+                        }
+                        checkUnsyncedOrders();
+                    } else {
+                        showToast('❌ Sync failed: ' + (data.message || 'Unknown error'), 'error');
+                    }
+                })
+                .catch(err => {
+                    console.error('Sync error:', err);
+                    showToast('❌ Sync error: ' + err.message, 'error');
+                });
+            }).catch(err => {
+                console.error('Error getting unsynced orders:', err);
+                showToast('❌ Error checking offline orders', 'error');
             });
         }
 
         function checkUnsyncedOrders() {
+            // Check with server first
             fetch('/admin/api/unsynced-count')
                 .then(r => r.json())
                 .then(data => {
@@ -1327,15 +1263,50 @@
                                 statusEl.style.animation = 'pulse-badge 2s infinite';
                                 let orderIds = data.orders || [];
                                 statusEl.title = orderIds.length > 0 ? 'Orders: ' + orderIds.join(', ') : '';
+                                
+                                if (navigator.onLine) {
+                                    console.log(`🔄 ${data.count} offline orders found - auto-syncing...`);
+                                    setTimeout(syncOfflineOrders, 1000);
+                                }
                             } else {
-                                statusEl.style.display = 'none';
-                                statusEl.className = '';
-                                statusEl.style.animation = 'none';
+                                // Also check IndexedDB for unsynced orders
+                                getUnsyncedOrdersFromIndexedDB().then(unsynced => {
+                                    if (unsynced.length > 0) {
+                                        statusEl.style.display = 'inline-flex';
+                                        statusEl.className = 'has-orders';
+                                        if (countEl) countEl.textContent = unsynced.length;
+                                        statusEl.style.animation = 'pulse-badge 2s infinite';
+                                        statusEl.title = unsynced.length + ' offline orders waiting to sync';
+                                        
+                                        if (navigator.onLine) {
+                                            console.log(`🔄 ${unsynced.length} offline orders found - auto-syncing...`);
+                                            setTimeout(syncOfflineOrders, 1000);
+                                        }
+                                    } else {
+                                        statusEl.style.display = 'none';
+                                        statusEl.className = '';
+                                        statusEl.style.animation = 'none';
+                                    }
+                                });
                             }
                         }
                     }
                 })
-                .catch(err => console.error('Error checking sync status:', err));
+                .catch(err => {
+                    console.error('Error checking sync status:', err);
+                    // Try IndexedDB as fallback
+                    getUnsyncedOrdersFromIndexedDB().then(unsynced => {
+                        const statusEl = document.getElementById('syncStatus');
+                        const countEl = document.getElementById('unsyncedCount');
+                        if (statusEl && unsynced.length > 0) {
+                            statusEl.style.display = 'inline-flex';
+                            statusEl.className = 'has-orders';
+                            if (countEl) countEl.textContent = unsynced.length;
+                            statusEl.style.animation = 'pulse-badge 2s infinite';
+                            statusEl.title = unsynced.length + ' offline orders waiting to sync';
+                        }
+                    });
+                });
         }
 
         function manualSync() {
@@ -1746,8 +1717,6 @@
                     const product = allProducts.find(p => p.id === item.id);
                     if (product) {
                         product.stock = (product.stock || 0) + item.quantity;
-                        // Update IndexedDB
-                        updateProductStockInIndexedDB(item.id, product.stock);
                     }
                 });
                 
@@ -1775,7 +1744,6 @@
                         const product = allProducts.find(p => p.id === item.id);
                         if (product) {
                             product.stock = (product.stock || 0) + item.quantity;
-                            updateProductStockInIndexedDB(item.id, product.stock);
                         }
                     });
                     
@@ -1799,7 +1767,6 @@
                     const product = allProducts.find(p => p.id === item.id);
                     if (product) {
                         product.stock = (product.stock || 0) + item.quantity;
-                        updateProductStockInIndexedDB(item.id, product.stock);
                     }
                 });
                 
@@ -1815,7 +1782,7 @@
         }
 
         // ============================================================
-        // PLACE ORDER - WITH OFFLINE SUPPORT & STOCK PERSISTENCE
+        // PLACE ORDER - FIXED: WORKS LIKE ORIGINAL + OFFLINE SUPPORT
         // ============================================================
         function placePOSOrder() {
             if (posCart.length === 0) { 
@@ -1883,84 +1850,40 @@
             btn.disabled = true;
             
             // ============================================================
-            // STEP 1: DEDUCT LOCAL STOCK AND SAVE TO INDEXEDDB
+            // STEP 1: DEDUCT LOCAL STOCK (UI Update)
             // ============================================================
-            function deductAndSaveStock() {
-                return new Promise((resolve) => {
-                    console.log('📦 Deducting local stock...');
-                    
-                    const updates = [];
-                    posCart.forEach(cartItem => {
-                        const product = allProducts.find(p => p.id === cartItem.id);
-                        if (product) {
-                            const oldStock = product.stock || 0;
-                            product.stock = Math.max(0, oldStock - cartItem.quantity);
-                            console.log(`📦 ${product.name}: ${oldStock} → ${product.stock}`);
-                            // Update IndexedDB
-                            updates.push(updateProductStockInIndexedDB(product.id, product.stock));
-                        }
-                    });
-                    
-                    Promise.all(updates).then(() => {
-                        // Re-render products
-                        const searchInput = document.getElementById('posSearch');
-                        if (searchInput) {
-                            searchProducts(searchInput.value || '');
-                        } else {
-                            searchProducts('');
-                        }
-                        console.log('✅ Stock saved to IndexedDB');
-                        resolve();
-                    }).catch(() => {
-                        // Continue even if IndexedDB fails
-                        resolve();
-                    });
+            function deductLocalStock() {
+                console.log('📦 Deducting local stock...');
+                posCart.forEach(cartItem => {
+                    const product = allProducts.find(p => p.id === cartItem.id);
+                    if (product) {
+                        const oldStock = product.stock || 0;
+                        product.stock = Math.max(0, oldStock - cartItem.quantity);
+                        console.log(`📦 ${product.name}: ${oldStock} → ${product.stock}`);
+                    }
                 });
+                
+                // Re-render products with updated stock
+                const searchInput = document.getElementById('posSearch');
+                if (searchInput) {
+                    searchProducts(searchInput.value || '');
+                } else {
+                    searchProducts('');
+                }
+                console.log('✅ Local stock deducted and UI updated');
             }
             
             // ============================================================
-            // STEP 2: SAVE ORDER TO INDEXEDDB
+            // STEP 2: SAVE ORDER LOCALLY (IndexedDB)
             // ============================================================
-            function saveOrderToIndexedDB(order) {
-                return new Promise((resolve) => {
-                    console.log('💾 Saving order to IndexedDB...');
-                    
-                    try {
-                        const request = indexedDB.open(DB_NAME, DB_VERSION);
-                        
-                        request.onsuccess = function(event) {
-                            const db = event.target.result;
-                            const tx = db.transaction(ORDER_STORE, 'readwrite');
-                            const store = tx.objectStore(ORDER_STORE);
-                            const putRequest = store.put(order);
-                            
-                            putRequest.onsuccess = function() {
-                                console.log('✅ Order saved to IndexedDB:', order.order_id);
-                                db.close();
-                                resolve(true);
-                            };
-                            
-                            putRequest.onerror = function() {
-                                console.warn('⚠️ Could not save order to IndexedDB');
-                                db.close();
-                                resolve(false);
-                            };
-                        };
-                        
-                        request.onerror = function() {
-                            resolve(false);
-                        };
-                    } catch(err) {
-                        console.warn('⚠️ IndexedDB error:', err);
-                        resolve(false);
-                    }
-                });
+            function saveOrderLocally(order) {
+                return saveOrderToIndexedDB(order);
             }
             
             // ============================================================
             // STEP 3: SYNC TO SERVER (if online)
             // ============================================================
-            function syncOrderToServer(order) {
+            function syncToServer(order) {
                 return new Promise((resolve) => {
                     if (!navigator.onLine) {
                         console.log('📡 Offline - skipping server sync');
@@ -1998,10 +1921,14 @@
             // EXECUTE ALL STEPS
             // ============================================================
             
-            // STEP 1: Deduct stock and save to IndexedDB
-            deductAndSaveStock().then(() => {
-                // STEP 2: Save order to IndexedDB
-                saveOrderToIndexedDB(orderData).then(() => {
+            // STEP 1: Deduct local stock first (immediate visual feedback)
+            deductLocalStock();
+            
+            // STEP 2: Save to IndexedDB (always, for offline support)
+            saveOrderLocally(orderData)
+                .then(() => {
+                    console.log('✅ Order saved to IndexedDB!');
+                    
                     // Clear cart
                     posCart = [];
                     discountValue = 0;
@@ -2026,37 +1953,30 @@
                     loadUserStats();
                     
                     // STEP 3: Try to sync to server
-                    syncOrderToServer(orderData).then(result => {
-                        if (result.synced) {
-                            console.log('✅ Order synced to server!');
-                            showToast(`✅ Order synced to cloud!`, 'success');
-                            // Mark as synced in IndexedDB
-                            const request = indexedDB.open(DB_NAME, DB_VERSION);
-                            request.onsuccess = function(event) {
-                                const db = event.target.result;
-                                const tx = db.transaction(ORDER_STORE, 'readwrite');
-                                const store = tx.objectStore(ORDER_STORE);
-                                const getRequest = store.get(orderData.order_id);
-                                getRequest.onsuccess = function() {
-                                    const order = getRequest.result;
-                                    if (order) {
-                                        order.synced = true;
-                                        order.synced_at = new Date().toISOString();
-                                        store.put(order);
-                                    }
-                                    db.close();
-                                };
-                            };
-                        } else {
-                            console.log('📡 Order saved offline, will sync later');
-                            if (navigator.onLine) {
-                                showToast('⚠️ Order saved locally. Will sync later.', 'warning');
+                    syncToServer(orderData)
+                        .then(result => {
+                            if (result.synced) {
+                                console.log('✅ Order synced to server!');
+                                showToast(`✅ Order synced to cloud!`, 'success');
+                                markOrderSyncedInIndexedDB(orderData.order_id);
+                            } else {
+                                console.log('📡 Order saved offline, will sync later');
+                                if (navigator.onLine) {
+                                    showToast('⚠️ Order saved locally. Will sync later.', 'warning');
+                                }
+                                checkUnsyncedOrders();
                             }
-                            checkUnsyncedOrders();
-                        }
-                    });
+                        })
+                        .catch(err => {
+                            console.log('⚠️ Sync error:', err);
+                        });
+                })
+                .catch(err => {
+                    console.error('❌ Failed to save order:', err);
+                    showToast('❌ Failed to save order: ' + err.message, 'error');
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
                 });
-            });
         }
 
         // ============================================================
@@ -2510,19 +2430,12 @@
         // ============================================================
         // INIT
         // ============================================================
-        document.addEventListener('DOMContentLoaded', async function() {
+        document.addEventListener('DOMContentLoaded', function() {
             console.log('✅ POS Pro v5.0 initializing...');
             console.log('📦 IndexedDB Version:', DB_VERSION);
             console.log('📦 Products loaded from server:', allProducts.length);
             
-            // ============================================================
-            // RESTORE STOCK FROM INDEXEDDB
-            // ============================================================
-            await restoreStockFromIndexedDB();
-            
-            // ============================================================
-            // INITIALIZE UI
-            // ============================================================
+            // Initialize UI
             const grid = document.getElementById('posProductGrid');
             if (grid) {
                 grid.innerHTML = `
@@ -2540,7 +2453,7 @@
             
             updatePOSUI();
             
-            // Load stats only if online
+            // Load stats if online
             if (navigator.onLine) {
                 loadSalesStats();
                 loadUserStats();
@@ -2555,6 +2468,21 @@
                     setTimeout(function() {
                         syncOfflineOrders();
                     }, 2000);
+                } else {
+                    // Check IndexedDB for offline orders
+                    getUnsyncedOrdersFromIndexedDB().then(unsynced => {
+                        if (unsynced.length > 0) {
+                            const statusEl = document.getElementById('syncStatus');
+                            const countEl = document.getElementById('unsyncedCount');
+                            if (statusEl) {
+                                statusEl.style.display = 'inline-flex';
+                                statusEl.className = 'has-orders';
+                                if (countEl) countEl.textContent = unsynced.length;
+                                statusEl.style.animation = 'pulse-badge 2s infinite';
+                                statusEl.title = unsynced.length + ' offline orders waiting to sync';
+                            }
+                        }
+                    });
                 }
             }, 1000);
             
@@ -2565,13 +2493,6 @@
                 if (navigator.onLine) {
                     checkUnsyncedOrders();
                 }
-            }, 30000);
-            
-            // ============================================================
-            // AUTO-SAVE STOCK TO INDEXEDDB EVERY 30 SECONDS
-            // ============================================================
-            setInterval(function() {
-                saveProductsToIndexedDB(allProducts).catch(() => {});
             }, 30000);
             
             console.log('📡 Status:', navigator.onLine ? 'Online' : 'Offline');
