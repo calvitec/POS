@@ -641,7 +641,7 @@
             </div>
             <div class="flex gap-2 flex-wrap">
                 <button class="btn-gradient sync" onclick="manualSync()">
-                    <i class="fas fa-cloud-upload-alt"></i> Sync
+                   
                 </button>
                 <button class="btn-gradient" onclick="toggleCustomerModal()">
                     <i class="fas fa-user-plus"></i> Customer
@@ -1035,7 +1035,7 @@
         }
 
         // ============================================================
-        // SYNC FUNCTIONS
+        // SYNC FUNCTIONS - CLEANED
         // ============================================================
 
         // ============================================================
@@ -1081,6 +1081,7 @@
                             });
                             console.log(`✅ Marked ${data.synced} orders as synced`);
                             showNotification(`✅ ${data.synced} orders synced!`);
+                            // Update UI
                             checkUnsyncedOrders();
                         }
                         db.close();
@@ -1093,13 +1094,19 @@
             };
         }
 
-        // Auto-sync when coming online
+        // Auto-sync when coming online - IMMEDIATE
         window.addEventListener('online', function() {
             console.log('🌐 Back online - IMMEDIATE SYNC!');
             updateOnlineStatusUI();
             showToast('🔄 Back online! Syncing pending orders...', 'info');
+            
+            // Check and sync immediately
             checkUnsyncedOrders();
-            setTimeout(function() { syncNow(); }, 500);
+            
+            // Sync after 1 second
+            setTimeout(function() {
+                syncNow();
+            }, 500);
         });
 
         // Auto-sync when page loads
@@ -1107,7 +1114,9 @@
             setTimeout(function() {
                 if (navigator.onLine) {
                     checkUnsyncedOrders();
-                    setTimeout(function() { syncNow(); }, 2000);
+                    setTimeout(function() {
+                        syncNow();
+                    }, 2000);
                 }
             }, 1000);
         });
@@ -1136,6 +1145,7 @@
             }
         }, 30000);
 
+        // Notification helper
         function showNotification(message) {
             const toast = document.createElement('div');
             toast.className = 'alert alert-success position-fixed top-0 end-0 m-3';
@@ -1157,15 +1167,20 @@
                             if (data.count > 0) {
                                 statusEl.style.display = 'inline-flex';
                                 statusEl.className = 'has-orders';
-                                if (countEl) countEl.textContent = data.count;
-                                statusEl.style.animation = 'pulse-badge 2s infinite';
+                                if (countEl) {
+                                    countEl.textContent = data.count;
+                                    statusEl.style.animation = 'pulse-badge 2s infinite';
+                                }
                                 let orderIds = data.orders || [];
-                                statusEl.title = orderIds.length > 0 ? 'Orders: ' + orderIds.join(', ') : data.count + ' offline orders waiting to sync';
+                                let tooltip = orderIds.length > 0 ? 'Orders: ' + orderIds.join(', ') : data.count + ' offline orders waiting to sync';
+                                statusEl.title = tooltip;
                                 
                                 // Auto-sync if online
                                 if (navigator.onLine) {
                                     console.log(`🔄 ${data.count} offline orders found - auto-syncing...`);
-                                    setTimeout(function() { syncNow(); }, 1000);
+                                    setTimeout(function() {
+                                        syncNow();
+                                    }, 1000);
                                 }
                             } else {
                                 statusEl.style.display = 'none';
@@ -1189,7 +1204,9 @@
                 const originalText = syncBtn.innerHTML;
                 syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
                 syncBtn.className = 'syncing';
+                
                 syncNow();
+                
                 setTimeout(function() {
                     syncBtn.innerHTML = originalText;
                     syncBtn.className = '';
@@ -1199,6 +1216,16 @@
             } else {
                 syncNow();
             }
+        }
+
+        function syncOfflineOrders() {
+            if (!navigator.onLine) {
+                showToast('📡 Offline - will sync when online', 'warning');
+                return;
+            }
+            
+            showToast('🔄 Syncing offline orders...', 'info');
+            syncNow();
         }
 
         // ============================================================
@@ -1585,10 +1612,10 @@
         }
 
         // ============================================================
-        // INDEXEDDB FUNCTIONS - VERSION 3 (FIXED)
+        // INDEXEDDB FUNCTIONS - VERSION 3
         // ============================================================
         const DB_NAME = 'PricePointDB';
-        const DB_VERSION = 3;  // ← CRITICAL: Must be 3 to match existing DB
+        const DB_VERSION = 3;
         const STORE_NAME = 'orders';
         let db = null;
 
@@ -1656,7 +1683,7 @@
         }
 
         // ============================================================
-        // PLACE ORDER - FIXED FOR OFFLINE (Version 3)
+        // PLACE ORDER - FIXED FOR OFFLINE
         // ============================================================
         function placePOSOrder() {
             if (posCart.length === 0) { 
@@ -1721,7 +1748,7 @@
             // CHECK IF ONLINE
             // ============================================================
             if (!navigator.onLine) {
-                // OFFLINE: Save to IndexedDB only (Version 3)
+                // OFFLINE: Save to IndexedDB only
                 console.log('📡 OFFLINE: Saving order to IndexedDB');
                 
                 const localOrderId = 'OFF-' + Date.now().toString(36).toUpperCase();
@@ -1768,7 +1795,6 @@
                     if (data.order) {
                         data.order.synced = true;
                         data.order.synced_at = new Date().toISOString();
-                        // Save backup to IndexedDB (Version 3)
                         saveOrderToIndexedDB(data.order).catch(err => console.warn('⚠️ Backup save failed:', err));
                     }
                     
@@ -1786,7 +1812,7 @@
                 btn.disabled = false;
             })
             .catch(err => {
-                // ONLINE BUT FAILED: Save to IndexedDB as fallback (Version 3)
+                // ONLINE BUT FAILED: Save to IndexedDB as fallback
                 console.warn('⚠️ Supabase failed, saving to IndexedDB:', err);
                 
                 const localOrderId = 'OFF-' + Date.now().toString(36).toUpperCase();
@@ -1937,8 +1963,9 @@
         }
 
         // ============================================================
-        // BARCODE SCANNER
+        // BARCODE SCANNER - Complete Implementation
         // ============================================================
+
         let html5QrCode = null;
         let isScannerRunning = false;
         let scannerStarted = false;
