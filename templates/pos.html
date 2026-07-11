@@ -2367,6 +2367,152 @@
         function onScanError(error) {
             // Ignore - called frequently
         }
+        // ============================================================
+// AUTO-SYNC WHEN COMING ONLINE - IMMEDIATE
+// ============================================================
+
+// Enhanced online event - sync immediately when coming online
+window.addEventListener('online', function() {
+    console.log('🌐 Back online - IMMEDIATE SYNC!');
+    updateOnlineStatusUI();
+    showToast('🔄 Back online! Syncing pending orders...', 'info');
+    
+    // Check and sync immediately
+    checkUnsyncedOrders();
+    
+    // Sync after 1 second (ensures everything is ready)
+    setTimeout(function() {
+        syncNow();
+    }, 500);
+    
+    // Second sync after 3 seconds for any stragglers
+    setTimeout(function() {
+        checkUnsyncedOrders();
+        syncNow();
+    }, 3000);
+});
+
+// Also sync when page becomes visible (user returns to app)
+document.addEventListener('visibilitychange', function() {
+    if (!document.hidden && navigator.onLine) {
+        console.log('👁️ Tab visible - checking for pending sync...');
+        setTimeout(function() {
+            checkUnsyncedOrders();
+            syncNow();
+        }, 500);
+    }
+});
+
+// Periodic sync check every 15 seconds (instead of 30)
+setInterval(function() {
+    if (navigator.onLine) {
+        const statusEl = document.getElementById('syncStatus');
+        if (statusEl && statusEl.style.display !== 'none') {
+            console.log('⏰ Periodic sync...');
+            syncNow();
+        } else {
+            // Still check for unsynced orders
+            checkUnsyncedOrders();
+        }
+    }
+}, 15000); // 15 seconds
+
+// ============================================================
+// MANUAL SYNC BUTTON - Enhanced
+// ============================================================
+
+function manualSync() {
+    if (!navigator.onLine) {
+        showToast('📡 You are offline. Please connect to sync.', 'warning');
+        return;
+    }
+    
+    const syncBtn = document.querySelector('#syncStatus');
+    if (syncBtn) {
+        const originalText = syncBtn.innerHTML;
+        syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
+        syncBtn.className = 'syncing';
+        
+        // Check and sync
+        checkUnsyncedOrders();
+        
+        syncOfflineOrders();
+        
+        // Reset after 5 seconds
+        setTimeout(function() {
+            syncBtn.innerHTML = originalText;
+            syncBtn.className = '';
+            checkUnsyncedOrders();
+            showToast('✅ Sync completed!', 'success');
+        }, 5000);
+    } else {
+        syncOfflineOrders();
+    }
+}
+
+// ============================================================
+// ENHANCED CHECK UNSYNCED ORDERS
+// ============================================================
+
+function checkUnsyncedOrders() {
+    fetch('/admin/api/unsynced-count')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                const statusEl = document.getElementById('syncStatus');
+                const countEl = document.getElementById('unsyncedCount');
+                
+                if (statusEl) {
+                    if (data.count > 0) {
+                        statusEl.style.display = 'inline-flex';
+                        statusEl.className = 'has-orders';
+                        if (countEl) {
+                            countEl.textContent = data.count;
+                            statusEl.style.animation = 'pulse-badge 2s infinite';
+                        }
+                        let orderIds = data.orders || [];
+                        let tooltip = orderIds.length > 0 ? 'Orders: ' + orderIds.join(', ') : data.count + ' offline orders waiting to sync';
+                        statusEl.title = tooltip;
+                        
+                        // If online, auto-sync immediately
+                        if (navigator.onLine) {
+                            console.log(`🔄 ${data.count} offline orders found - auto-syncing...`);
+                            setTimeout(function() {
+                                syncNow();
+                            }, 1000);
+                        } else {
+                            console.log(`📡 ${data.count} offline orders - waiting for connection`);
+                        }
+                    } else {
+                        statusEl.style.display = 'none';
+                        statusEl.style.animation = 'none';
+                        statusEl.className = '';
+                    }
+                }
+            }
+        })
+        .catch(err => console.error('Error checking sync status:', err));
+}
+
+// ============================================================
+// AUTO-SYNC ON PAGE LOAD (if online)
+// ============================================================
+
+// Add to your DOMContentLoaded
+document.addEventListener('DOMContentLoaded', function() {
+    // ... your existing initialization code ...
+    
+    // Check for pending orders immediately
+    setTimeout(function() {
+        if (navigator.onLine) {
+            checkUnsyncedOrders();
+            // Sync after 2 seconds
+            setTimeout(function() {
+                syncNow();
+            }, 2000);
+        }
+    }, 1000);
+});
 
         // ============================================================
         // SEARCH PRODUCT BY BARCODE - FIXED VERSION
