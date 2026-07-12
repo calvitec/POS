@@ -1282,7 +1282,7 @@
         }
 
         // ============================================================
-        // SAVE RETURN TO INDEXEDDB - FIXED
+        // SAVE RETURN TO INDEXEDDB - FIXED (adds both id AND product_id)
         // ============================================================
         function saveReturnToIndexedDB(returnData) {
             return new Promise(async (resolve, reject) => {
@@ -1291,7 +1291,7 @@
                     const transaction = db.transaction('orders', 'readwrite');
                     const store = transaction.objectStore('orders');
                     
-                    // Fix: Ensure items have proper product_id
+                    // Fix: Ensure items have both id AND product_id
                     const items = returnData.items.map(item => {
                         // Get the correct product ID
                         let productId = item.product_id || item.id || '';
@@ -1307,7 +1307,8 @@
                         }
                         
                         return {
-                            product_id: productId,
+                            id: productId,              // <-- ADDED: matches what /admin/api/process-return reads
+                            product_id: productId,       // kept for anything that reads product_id
                             name: item.name || 'Product',
                             price: Number(item.price) || 0,
                             quantity: Number(item.quantity) || 1,
@@ -1415,6 +1416,7 @@
                 
                 // ============================================================
                 // SYNC RETURNS FIRST (using /admin/api/process-return)
+                // - FIXED: Normalize items to use "id" key (matches online path)
                 // ============================================================
                 let returnsSynced = 0;
                 let returnsFailed = 0;
@@ -1425,9 +1427,22 @@
                     console.log(`   Items: ${ret.items?.length || 0}`);
                     
                     try {
-                        // Prepare return data for API
+                        // ============================================================
+                        // FIX: Normalize items to the "id" key the backend actually reads
+                        // The backend looks for item.get('id', '') - same as online path
+                        // Without this, offline-queued returns silently fail to restock
+                        // ============================================================
+                        const normalizedItems = (ret.items || []).map(item => ({
+                            id: item.id || item.product_id || 'unknown',
+                            product_id: item.product_id || item.id || 'unknown',
+                            name: item.name,
+                            price: item.price,
+                            quantity: item.quantity,
+                            barcode: item.barcode || ''
+                        }));
+
                         const returnData = {
-                            items: ret.items || [],
+                            items: normalizedItems,
                             refund_total: Math.abs(ret.total || 0),
                             customer_name: ret.customer_name || 'Customer',
                             reason: ret.return_reason || 'Customer return',
@@ -1435,6 +1450,7 @@
                         };
                         
                         console.log('   📤 Sending to /admin/api/process-return...');
+                        console.log('   Normalized items:', normalizedItems);
                         
                         const response = await fetch('/admin/api/process-return', {
                             method: 'POST',
@@ -1824,22 +1840,50 @@
             const card = element.closest ? element.closest('.product-pos-card') : element;
             if (!card) { showToast('❌ Product not found'); return; }
             
-            const productId = String(card.dataset.id || '').trim();
+            // Get the product ID from the card - make sure it's the actual product ID
+            let productId = String(card.dataset.id || '').trim();
             const name = String(card.dataset.name || 'Product').trim();
             const price = parseFloat(card.dataset.price) || 0;
             const stock = parseInt(card.dataset.stock) || 0;
             const image = String(card.dataset.image || '').trim();
             const barcode = String(card.dataset.barcode || '').trim();
             
-            if (!productId || price <= 0) { showToast('❌ Invalid product'); return; }
-            if (stock <= 0) { showToast('⚠️ Out of stock!'); return; }
+            // If productId is empty or placeholder, try to find it from allProducts by name
+            if (!productId || productId === 'product_id_here' || productId === '') {
+                const found = allProducts.find(p => p.name === name);
+                if (found) {
+                    productId = String(found.id);
+                    console.log(`🔍 Found product ID for "${name}": ${productId}`);
+                }
+            }
+            
+            if (!productId || price <= 0) { 
+                showToast('❌ Invalid product', 'error'); 
+                return; 
+            }
+            if (stock <= 0) { 
+                showToast('⚠️ Out of stock!', 'warning'); 
+                return; 
+            }
             
             const existing = posCart.find(item => item.id === productId);
             if (existing) {
-                if (existing.quantity < stock) { existing.quantity++; } 
-                else { showToast('⚠️ Not enough stock!'); return; }
+                if (existing.quantity < stock) { 
+                    existing.quantity++; 
+                } else { 
+                    showToast('⚠️ Not enough stock!', 'warning'); 
+                    return; 
+                }
             } else {
-                posCart.push({ id: productId, name, price, image, stock, barcode, quantity: 1 });
+                posCart.push({ 
+                    id: productId, 
+                    name: name, 
+                    price: price, 
+                    image: image, 
+                    stock: stock, 
+                    barcode: barcode, 
+                    quantity: 1 
+                });
             }
             updatePOSUI();
             showToast('✅ Added: ' + name + ' (' + stock + ' left)');
