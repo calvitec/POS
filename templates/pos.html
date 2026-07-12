@@ -577,7 +577,7 @@
         </div>
         <div class="header-actions">
             <span class="time"><i class="far fa-clock"></i> <span id="clockDisplay"></span></span>
-            <!-- Sync Status - Only ONE sync button here -->
+            <!-- Sync Status -->
             <span id="syncStatus" onclick="manualSync()">
                 <i class="fas fa-cloud-upload-alt sync-icon"></i>
                 <i class="fas fa-spinner sync-spinner"></i>
@@ -1050,6 +1050,27 @@
         }
 
         // ============================================================
+        // UPDATE LOCAL PRODUCT STOCK
+        // ============================================================
+        function updateLocalProductStock(productId, quantity) {
+            // Update in allProducts array
+            const product = allProducts.find(p => p.id === productId);
+            if (product) {
+                product.stock = Math.max(0, (product.stock || 0) - quantity);
+                console.log(`📦 Updated stock for ${product.name}: ${product.stock} remaining`);
+            }
+            
+            // Update in filteredProducts as well
+            const filteredProduct = filteredProducts.find(p => p.id === productId);
+            if (filteredProduct) {
+                filteredProduct.stock = Math.max(0, (filteredProduct.stock || 0) - quantity);
+            }
+            
+            // Re-render products to reflect stock changes
+            renderProducts();
+        }
+
+        // ============================================================
         // SYNC FUNCTIONS - FULLY WORKING
         // ============================================================
         
@@ -1329,6 +1350,9 @@
                     loadUserStats();
                     loadSalesStats();
                     updateUnsyncedCount(0);
+                    
+                    // Re-render products to reflect stock updates from server
+                    renderProducts();
                 } else {
                     console.log('⚠️ No orders were synced');
                     if (data.message) {
@@ -1337,7 +1361,6 @@
                     if (data.failed > 0) {
                         console.log(`❌ ${data.failed} orders failed`);
                     }
-                    // Show toast but don't alert
                     showToast(`⚠️ ${data.failed || 0} orders failed to sync`, 'warning');
                     
                     // Check remaining unsynced
@@ -1349,14 +1372,11 @@
                 console.error('❌ Sync error:', error);
                 
                 // Don't show "Failed to fetch" error toast when offline
-                // Only show network errors when we're actually online
                 if (navigator.onLine) {
-                    // Only show error toast if online (meaning it's a real server error)
                     if (error.message && !error.message.includes('Offline')) {
                         showToast('❌ Sync failed: ' + error.message, 'error');
                     }
                 } else {
-                    // If offline, just show a quiet message in console
                     console.log('📡 Offline - sync will happen when online');
                 }
                 
@@ -1393,7 +1413,6 @@
             
             if (!statusEl || !countEl) return;
             
-            // If count is not provided, fetch it
             if (count === undefined) {
                 try {
                     const unsynced = await getUnsyncedOrders();
@@ -1410,7 +1429,6 @@
                 statusEl.style.animation = 'pulse-badge 2s infinite';
                 statusEl.title = count + ' offline orders waiting to sync';
                 
-                // Auto-sync if online and not already syncing
                 if (navigator.onLine && !isSyncing) {
                     setTimeout(performAutoSync, 2000);
                 }
@@ -1422,7 +1440,7 @@
         }
 
         // ============================================================
-        // MANUAL SYNC - Only called from the sync status button
+        // MANUAL SYNC
         // ============================================================
         function manualSync() {
             if (!navigator.onLine) {
@@ -1447,7 +1465,6 @@
                 console.log(`📊 Initial check: ${unsynced.length} unsynced orders`);
                 updateUnsyncedCount(unsynced.length);
                 
-                // If online and have unsynced, auto-sync
                 if (unsynced.length > 0 && navigator.onLine) {
                     console.log('🔄 Auto-syncing on load...');
                     setTimeout(performAutoSync, 3000);
@@ -1887,7 +1904,7 @@
         }
 
         // ============================================================
-        // PLACE ORDER - WITH AUTO SYNC
+        // PLACE ORDER - WITH STOCK UPDATE
         // ============================================================
         function placePOSOrder() {
             if (posCart.length === 0) { 
@@ -1914,6 +1931,9 @@
                 type: 'product',
                 barcode: item.barcode || ''
             }));
+            
+            // Store cart items for stock update
+            const cartItems = [...posCart];
             
             const orderData = {
                 order_id: 'POS-' + Date.now().toString(36).toUpperCase(),
@@ -1949,7 +1969,19 @@
             btn.disabled = true;
             
             // ============================================================
-            // OFFLINE: Save to IndexedDB
+            // FUNCTION TO UPDATE STOCK AFTER ORDER
+            // ============================================================
+            function updateStockAfterOrder(cartItemsToUpdate) {
+                cartItemsToUpdate.forEach(item => {
+                    updateLocalProductStock(item.id, item.quantity);
+                });
+                // Refresh stats
+                loadSalesStats();
+                loadUserStats();
+            }
+            
+            // ============================================================
+            // OFFLINE: Save to IndexedDB and update local stock
             // ============================================================
             if (!navigator.onLine) {
                 console.log('📡 OFFLINE: Saving order to IndexedDB');
@@ -1961,7 +1993,10 @@
                 
                 saveOrderToIndexedDB(orderData)
                     .then(() => {
-                        showToast(`✅ Order #${localOrderId} saved offline! Will sync when online.`, 'warning');
+                        // Update local stock immediately
+                        updateStockAfterOrder(cartItems);
+                        
+                        showToast(`✅ Order #${localOrderId} saved offline! Stock updated.`, 'warning');
                         posCart = [];
                         discountValue = 0;
                         document.getElementById('discountDisplay').textContent = '0%';
@@ -2003,13 +2038,14 @@
                         saveOrderToIndexedDB(data.order).catch(err => console.warn('⚠️ Backup save failed:', err));
                     }
                     
+                    // Update local stock
+                    updateStockAfterOrder(cartItems);
+                    
                     showToast(message, 'success');
                     posCart = [];
                     discountValue = 0;
                     document.getElementById('discountDisplay').textContent = '0%';
                     updatePOSUI();
-                    loadSalesStats();
-                    loadUserStats();
                     
                     // Check for any pending sync
                     setTimeout(updateUnsyncedCount, 1000);
@@ -2029,7 +2065,10 @@
                 
                 saveOrderToIndexedDB(orderData)
                     .then(() => {
-                        showToast(`✅ Order #${localOrderId} saved offline! Will sync when online.`, 'warning');
+                        // Update local stock even when server fails
+                        updateStockAfterOrder(cartItems);
+                        
+                        showToast(`✅ Order #${localOrderId} saved offline! Stock updated.`, 'warning');
                         posCart = [];
                         discountValue = 0;
                         document.getElementById('discountDisplay').textContent = '0%';
@@ -2167,7 +2206,6 @@
                 clearTimeout(window.toastTimeout);
                 window.toastTimeout = setTimeout(() => toast.classList.add('hidden'), 4000);
             } else { 
-                // Fallback - just log to console instead of alert
                 console.log('🔔 Toast:', message, type);
             }
         }
