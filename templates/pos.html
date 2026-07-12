@@ -1071,6 +1071,46 @@
         }
 
         // ============================================================
+        // APPLY PENDING OFFLINE STOCK DEDUCTIONS (fixes refresh bug)
+        // ------------------------------------------------------------
+        // On every page load, allProducts is re-hydrated from the
+        // server's {{ products | tojson | safe }}. If there are still
+        // unsynced offline orders sitting in IndexedDB, the server's
+        // stock numbers don't reflect them yet. This walks all
+        // unsynced orders and subtracts their quantities from the
+        // freshly-loaded allProducts BEFORE anything renders, so a
+        // refresh always shows the correct stock regardless of
+        // whether sync has happened yet.
+        // ============================================================
+        async function applyOfflineStockAdjustments() {
+            try {
+                const unsynced = await getUnsyncedOrders();
+                if (!unsynced.length) return;
+
+                const deductions = {};
+                unsynced.forEach(order => {
+                    (order.items || []).forEach(item => {
+                        const pid = item.product_id || item.id;
+                        const qty = Number(item.quantity) || 0;
+                        if (!pid) return;
+                        deductions[pid] = (deductions[pid] || 0) + qty;
+                    });
+                });
+
+                Object.keys(deductions).forEach(pid => {
+                    const product = allProducts.find(p => String(p.id) === String(pid));
+                    if (product) {
+                        product.stock = Math.max(0, (Number(product.stock) || 0) - deductions[pid]);
+                    }
+                });
+
+                console.log('📦 Applied pending offline stock deductions:', deductions);
+            } catch (e) {
+                console.error('❌ Error applying offline stock adjustments:', e);
+            }
+        }
+
+        // ============================================================
         // SYNC FUNCTIONS - FULLY WORKING
         // ============================================================
         
@@ -2493,10 +2533,15 @@
         // ============================================================
         // INIT
         // ============================================================
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', async function() {
             console.log('✅ POS Pro v9.0 initialized with ' + allProducts.length + ' products');
             console.log('📡 Status:', navigator.onLine ? 'Online' : 'Offline');
             console.log('📦 IndexedDB Version:', DB_VERSION);
+
+            // Apply any pending offline stock deductions BEFORE first render
+            // so a page refresh always shows accurate stock, even if the
+            // offline order hasn't synced to the server yet.
+            await applyOfflineStockAdjustments();
             
             document.getElementById('posProductGrid').innerHTML = `
                 <div class="col-span-full search-hint">
