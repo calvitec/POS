@@ -951,8 +951,7 @@
     <div id="toast" class="toast hidden">
         <span id="toastMessage">Added to cart!</span>
     </div>
-
-   <script>
+<script>
         // ============================================================
         // DATA
         // ============================================================
@@ -1053,34 +1052,24 @@
         // UPDATE LOCAL PRODUCT STOCK
         // ============================================================
         function updateLocalProductStock(productId, quantity) {
-            // Update in allProducts array
-            const product = allProducts.find(p => p.id === productId);
+            const product = allProducts.find(p => String(p.id) === String(productId));
             if (product) {
-                product.stock = Math.max(0, (product.stock || 0) - quantity);
-                console.log(`📦 Updated stock for ${product.name}: ${product.stock} remaining`);
+                const oldStock = product.stock || 0;
+                product.stock = Math.max(0, oldStock - quantity);
+                console.log(`📦 Updated stock for ${product.name}: ${oldStock} → ${product.stock}`);
             }
             
-            // Update in filteredProducts as well
-            const filteredProduct = filteredProducts.find(p => p.id === productId);
+            const filteredProduct = filteredProducts.find(p => String(p.id) === String(productId));
             if (filteredProduct) {
-                filteredProduct.stock = Math.max(0, (filteredProduct.stock || 0) - quantity);
+                const oldStock = filteredProduct.stock || 0;
+                filteredProduct.stock = Math.max(0, oldStock - quantity);
             }
             
-            // Re-render products to reflect stock changes
             renderProducts();
         }
 
         // ============================================================
         // APPLY PENDING OFFLINE STOCK DEDUCTIONS (fixes refresh bug)
-        // ------------------------------------------------------------
-        // On every page load, allProducts is re-hydrated from the
-        // server's {{ products | tojson | safe }}. If there are still
-        // unsynced offline orders sitting in IndexedDB, the server's
-        // stock numbers don't reflect them yet. This walks all
-        // unsynced orders and subtracts their quantities from the
-        // freshly-loaded allProducts BEFORE anything renders, so a
-        // refresh always shows the correct stock regardless of
-        // whether sync has happened yet.
         // ============================================================
         async function applyOfflineStockAdjustments() {
             try {
@@ -1100,7 +1089,9 @@
                 Object.keys(deductions).forEach(pid => {
                     const product = allProducts.find(p => String(p.id) === String(pid));
                     if (product) {
-                        product.stock = Math.max(0, (Number(product.stock) || 0) - deductions[pid]);
+                        const oldStock = product.stock || 0;
+                        product.stock = Math.max(0, oldStock - deductions[pid]);
+                        console.log(`📦 Applied offline deduction: ${product.name}: ${oldStock} → ${product.stock}`);
                     }
                 });
 
@@ -1111,7 +1102,7 @@
         }
 
         // ============================================================
-        // SYNC FUNCTIONS - FULLY WORKING
+        // SYNC FUNCTIONS
         // ============================================================
         
         function getUnsyncedOrders() {
@@ -1128,7 +1119,6 @@
                     const tx = db.transaction('orders', 'readonly');
                     const store = tx.objectStore('orders');
                     
-                    // Try using the index first
                     try {
                         const index = store.index('synced');
                         const request = index.getAll(false);
@@ -1139,7 +1129,6 @@
                         };
                         
                         request.onerror = function() {
-                            // Fallback: get all and filter
                             console.warn('⚠️ Index query failed, using fallback');
                             const allRequest = store.getAll();
                             allRequest.onsuccess = function() {
@@ -1153,7 +1142,6 @@
                             };
                         };
                     } catch (e) {
-                        // Fallback: get all and filter
                         console.warn('⚠️ Index error, using fallback:', e);
                         const allRequest = store.getAll();
                         allRequest.onsuccess = function() {
@@ -1166,35 +1154,6 @@
                             reject(allRequest.error);
                         };
                     }
-                } catch (error) {
-                    reject(error);
-                }
-            });
-        }
-
-        function getAllOrders() {
-            return new Promise(async (resolve, reject) => {
-                try {
-                    const db = await openDB();
-                    
-                    if (!db.objectStoreNames.contains('orders')) {
-                        console.log('❌ orders store not found!');
-                        resolve([]);
-                        return;
-                    }
-                    
-                    const tx = db.transaction('orders', 'readonly');
-                    const store = tx.objectStore('orders');
-                    const request = store.getAll();
-                    
-                    request.onsuccess = function() {
-                        console.log('✅ Retrieved', request.result.length, 'total orders');
-                        resolve(request.result);
-                    };
-                    
-                    request.onerror = function() {
-                        reject(request.error);
-                    };
                 } catch (error) {
                     reject(error);
                 }
@@ -1274,16 +1233,14 @@
         }
 
         // ============================================================
-        // PERFORM AUTO SYNC - MAIN SYNC FUNCTION
+        // PERFORM AUTO SYNC
         // ============================================================
         async function performAutoSync() {
-            // Don't sync if already syncing
             if (isSyncing) {
                 console.log('⏳ Sync already in progress...');
                 return;
             }
             
-            // Don't sync if offline - just update the count
             if (!navigator.onLine) {
                 console.log('📡 Offline - will sync when online');
                 try {
@@ -1302,7 +1259,6 @@
                 console.log('🔄 Starting auto-sync...');
                 showToast('🔄 Syncing offline orders...', 'info');
                 
-                // Get unsynced orders
                 const unsynced = await getUnsyncedOrders();
                 
                 if (unsynced.length === 0) {
@@ -1316,12 +1272,10 @@
                 
                 console.log(`📦 Found ${unsynced.length} offline order(s) to sync`);
                 
-                // Show orders being synced
                 unsynced.forEach((order, i) => {
                     console.log(`   ${i+1}. 📄 ${order.order_id} - ${order.customer_name || 'Customer'} - KSh ${order.total || 0}`);
                 });
                 
-                // Clean orders for sync
                 const cleanOrders = unsynced.map(order => ({
                     order_id: order.order_id,
                     items: Array.isArray(order.items) ? order.items.map(item => ({
@@ -1357,7 +1311,6 @@
                 
                 console.log('📤 Sending to sync endpoint...');
                 
-                // Only attempt fetch if online
                 if (!navigator.onLine) {
                     throw new Error('Offline - cannot sync');
                 }
@@ -1379,19 +1332,15 @@
                 console.log('✅ Sync result:', data);
                 
                 if (data.synced > 0) {
-                    // Mark as synced
                     const orderIds = unsynced.map(o => o.order_id);
                     await markOrdersSynced(orderIds);
                     
                     console.log(`✅ Marked ${data.synced} orders as synced`);
                     showToast(`✅ ${data.synced} orders synced!`, 'success');
                     
-                    // Update UI
                     loadUserStats();
                     loadSalesStats();
                     updateUnsyncedCount(0);
-                    
-                    // Re-render products to reflect stock updates from server
                     renderProducts();
                 } else {
                     console.log('⚠️ No orders were synced');
@@ -1403,7 +1352,6 @@
                     }
                     showToast(`⚠️ ${data.failed || 0} orders failed to sync`, 'warning');
                     
-                    // Check remaining unsynced
                     const remaining = await getUnsyncedOrders();
                     updateUnsyncedCount(remaining.length);
                 }
@@ -1411,7 +1359,6 @@
             } catch (error) {
                 console.error('❌ Sync error:', error);
                 
-                // Don't show "Failed to fetch" error toast when offline
                 if (navigator.onLine) {
                     if (error.message && !error.message.includes('Offline')) {
                         showToast('❌ Sync failed: ' + error.message, 'error');
@@ -1420,7 +1367,6 @@
                     console.log('📡 Offline - sync will happen when online');
                 }
                 
-                // Check remaining unsynced
                 try {
                     const remaining = await getUnsyncedOrders();
                     updateUnsyncedCount(remaining.length);
@@ -1944,7 +1890,7 @@
         }
 
         // ============================================================
-        // PLACE ORDER - WITH STOCK UPDATE
+        // PLACE ORDER - FIXED (NO FRONTEND DEDUCTION FOR OFFLINE)
         // ============================================================
         function placePOSOrder() {
             if (posCart.length === 0) { 
@@ -1972,7 +1918,6 @@
                 barcode: item.barcode || ''
             }));
             
-            // Store cart items for stock update
             const cartItems = [...posCart];
             
             const orderData = {
@@ -2009,22 +1954,10 @@
             btn.disabled = true;
             
             // ============================================================
-            // FUNCTION TO UPDATE STOCK AFTER ORDER
-            // ============================================================
-            function updateStockAfterOrder(cartItemsToUpdate) {
-                cartItemsToUpdate.forEach(item => {
-                    updateLocalProductStock(item.id, item.quantity);
-                });
-                // Refresh stats
-                loadSalesStats();
-                loadUserStats();
-            }
-            
-            // ============================================================
-            // OFFLINE: Save to IndexedDB and update local stock
+            // OFFLINE: Save to IndexedDB - NO STOCK DEDUCTION ON FRONTEND
             // ============================================================
             if (!navigator.onLine) {
-                console.log('📡 OFFLINE: Saving order to IndexedDB');
+                console.log('📡 OFFLINE: Saving order to IndexedDB (stock will be deducted on sync)');
                 
                 const localOrderId = 'OFF-' + Date.now().toString(36).toUpperCase();
                 orderData.order_id = localOrderId;
@@ -2033,10 +1966,11 @@
                 
                 saveOrderToIndexedDB(orderData)
                     .then(() => {
-                        // Update local stock immediately
-                        updateStockAfterOrder(cartItems);
+                        // ⚠️ IMPORTANT: DO NOT deduct stock on frontend for offline orders!
+                        // The backend will deduct stock when the order syncs.
+                        // The applyOfflineStockAdjustments() function will show correct stock on refresh.
                         
-                        showToast(`✅ Order #${localOrderId} saved offline! Stock updated.`, 'warning');
+                        showToast(`✅ Order #${localOrderId} saved offline! Stock will be deducted when synced.`, 'warning');
                         posCart = [];
                         discountValue = 0;
                         document.getElementById('discountDisplay').textContent = '0%';
@@ -2078,16 +2012,21 @@
                         saveOrderToIndexedDB(data.order).catch(err => console.warn('⚠️ Backup save failed:', err));
                     }
                     
-                    // Update local stock
-                    updateStockAfterOrder(cartItems);
+                    // ✅ ONLY deduct stock on frontend when online AND server confirms success
+                    if (data.stock_updated && data.stock_updated.length > 0) {
+                        data.stock_updated.forEach(item => {
+                            const cartItem = cartItems.find(c => c.name === item.name);
+                            if (cartItem) {
+                                updateLocalProductStock(cartItem.id, cartItem.quantity);
+                            }
+                        });
+                    }
                     
                     showToast(message, 'success');
                     posCart = [];
                     discountValue = 0;
                     document.getElementById('discountDisplay').textContent = '0%';
                     updatePOSUI();
-                    
-                    // Check for any pending sync
                     setTimeout(updateUnsyncedCount, 1000);
                 } else {
                     showToast('❌ Error: ' + (data.message || 'Unknown error'), 'error');
@@ -2105,10 +2044,8 @@
                 
                 saveOrderToIndexedDB(orderData)
                     .then(() => {
-                        // Update local stock even when server fails
-                        updateStockAfterOrder(cartItems);
-                        
-                        showToast(`✅ Order #${localOrderId} saved offline! Stock updated.`, 'warning');
+                        // ⚠️ IMPORTANT: DO NOT deduct stock on frontend for offline orders!
+                        showToast(`✅ Order #${localOrderId} saved offline! Stock will be deducted when synced.`, 'warning');
                         posCart = [];
                         discountValue = 0;
                         document.getElementById('discountDisplay').textContent = '0%';
@@ -2539,8 +2476,6 @@
             console.log('📦 IndexedDB Version:', DB_VERSION);
 
             // Apply any pending offline stock deductions BEFORE first render
-            // so a page refresh always shows accurate stock, even if the
-            // offline order hasn't synced to the server yet.
             await applyOfflineStockAdjustments();
             
             document.getElementById('posProductGrid').innerHTML = `
@@ -2556,7 +2491,6 @@
             loadSalesStats();
             loadUserStats();
             
-            // Check for unsynced orders after 2 seconds
             setTimeout(function() {
                 checkUnsyncedOrdersOnLoad();
             }, 2000);
@@ -2564,5 +2498,5 @@
             console.log('📋 Products with barcodes:', allProducts.filter(p => p.barcode).length);
         });
     </script>
-</body>
-</html>
+   </body>
+   </html>
