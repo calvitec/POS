@@ -1311,206 +1311,228 @@
         }
 
         // ============================================================
-        // PERFORM AUTO SYNC - WITH RETURN SUPPORT
+// PERFORM AUTO SYNC - COMPLETE FIX FOR RETURNS
+// ============================================================
+async function performAutoSync() {
+    if (isSyncing) {
+        console.log('⏳ Sync already in progress...');
+        return;
+    }
+    
+    if (!navigator.onLine) {
+        console.log('📡 Offline - will sync when online');
+        try {
+            const unsynced = await getUnsyncedOrders();
+            updateUnsyncedCount(unsynced.length);
+        } catch (e) {
+            console.error('Error checking unsynced:', e);
+        }
+        return;
+    }
+    
+    try {
+        isSyncing = true;
+        updateSyncStatusUI(true);
+        
+        console.log('🔄 Starting auto-sync...');
+        showToast('🔄 Syncing offline orders and returns...', 'info');
+        
         // ============================================================
-        async function performAutoSync() {
-            if (isSyncing) {
-                console.log('⏳ Sync already in progress...');
-                return;
-            }
-            
-            if (!navigator.onLine) {
-                console.log('📡 Offline - will sync when online');
-                try {
-                    const unsynced = await getUnsyncedOrders();
-                    updateUnsyncedCount(unsynced.length);
-                } catch (e) {
-                    console.error('Error checking unsynced:', e);
-                }
-                return;
-            }
+        // GET UNSYNCED ORDERS AND RETURNS
+        // ============================================================
+        const unsynced = await getUnsyncedOrders();
+        
+        // Separate returns from orders
+        const unsyncedReturns = unsynced.filter(o => o.is_return === true);
+        const unsyncedOrders = unsynced.filter(o => o.is_return !== true);
+        
+        const totalUnsynced = unsynced.length;
+        
+        if (totalUnsynced === 0) {
+            console.log('✅ No offline items to sync');
+            showToast('✅ No offline items to sync', 'success');
+            updateSyncStatusUI(false);
+            updateUnsyncedCount(0);
+            isSyncing = false;
+            return;
+        }
+        
+        console.log(`📦 Found ${totalUnsynced} offline item(s) to sync`);
+        console.log(`   📄 Orders: ${unsyncedOrders.length}`);
+        console.log(`   🔄 Returns: ${unsyncedReturns.length}`);
+        
+        // ============================================================
+        // SYNC RETURNS FIRST (using /admin/api/process-return)
+        // ============================================================
+        let returnsSynced = 0;
+        let returnsFailed = 0;
+        
+        for (const ret of unsyncedReturns) {
+            console.log(`\n🔄 Syncing return: ${ret.order_id}`);
+            console.log(`   Total: ${ret.total}`);
+            console.log(`   Items: ${ret.items?.length || 0}`);
             
             try {
-                isSyncing = true;
-                updateSyncStatusUI(true);
+                // Prepare return data for API
+                const returnData = {
+                    items: ret.items || [],
+                    refund_total: Math.abs(ret.total || 0),
+                    customer_name: ret.customer_name || 'Customer',
+                    reason: ret.return_reason || 'Customer return',
+                    return_order_id: ret.order_id
+                };
                 
-                console.log('🔄 Starting auto-sync...');
-                showToast('🔄 Syncing offline orders...', 'info');
+                console.log('   📤 Sending to /admin/api/process-return...');
                 
-                const unsynced = await getUnsyncedOrders();
-                const returns = unsynced.filter(o => o.is_return === true);
-                const orders = unsynced.filter(o => o.is_return !== true);
-                
-                const totalUnsynced = unsynced.length;
-                
-                if (totalUnsynced === 0) {
-                    console.log('✅ No offline items to sync');
-                    showToast('✅ No offline items to sync', 'success');
-                    updateSyncStatusUI(false);
-                    updateUnsyncedCount(0);
-                    isSyncing = false;
-                    return;
-                }
-                
-                console.log(`📦 Found ${totalUnsynced} offline item(s) to sync (${orders.length} orders, ${returns.length} returns)`);
-                
-                // Show items being synced
-                unsynced.forEach((item, i) => {
-                    const type = item.is_return ? '🔄 RETURN' : '📄 ORDER';
-                    console.log(`   ${i+1}. ${type} ${item.order_id} - ${item.customer_name || 'Customer'} - KSh ${item.total || 0}`);
+                const response = await fetch('/admin/api/process-return', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(returnData)
                 });
                 
-                // ============================================================
-                // SYNC RETURNS FIRST
-                // ============================================================
-                let returnsSynced = 0;
-                let returnsFailed = 0;
+                const data = await response.json();
+                console.log('   📡 Response:', data);
                 
-                for (const ret of returns) {
-                    try {
-                        const returnData = {
-                            items: ret.items || [],
-                            refund_total: Math.abs(ret.total || 0),
-                            customer_name: ret.customer_name || 'Customer',
-                            reason: ret.return_reason || 'Customer return',
-                            return_order_id: ret.order_id
-                        };
-                        
-                        const response = await fetch('/admin/api/process-return', {
-                            method: 'POST',
-                            headers: { 
-                                'Content-Type': 'application/json',
-                                'Accept': 'application/json'
-                            },
-                            body: JSON.stringify(returnData)
-                        });
-                        
-                        const data = await response.json();
-                        
-                        if (data.success) {
-                            // Mark return as synced
-                            const orderIds = [ret.order_id];
-                            await markOrdersSynced(orderIds);
-                            returnsSynced++;
-                            console.log(`✅ Return synced: ${ret.order_id}`);
-                        } else {
-                            returnsFailed++;
-                            console.log(`❌ Return sync failed: ${ret.order_id} - ${data.message}`);
-                        }
-                    } catch (e) {
-                        returnsFailed++;
-                        console.log(`❌ Return sync error: ${ret.order_id} - ${e.message}`);
-                    }
-                }
-                
-                // ============================================================
-                // SYNC ORDERS
-                // ============================================================
-                let ordersSynced = 0;
-                let ordersFailed = 0;
-                
-                if (orders.length > 0) {
-                    const cleanOrders = orders.map(order => ({
-                        order_id: order.order_id,
-                        items: Array.isArray(order.items) ? order.items.map(item => ({
-                            product_id: item.product_id || item.id || 'unknown',
-                            name: item.name || 'Product',
-                            price: Number(item.price) || 0,
-                            quantity: Number(item.quantity) || 1,
-                            total: Number(item.total) || (Number(item.price) || 0) * (Number(item.quantity) || 1),
-                            type: item.type || 'product',
-                            barcode: item.barcode || ''
-                        })) : [],
-                        subtotal: Number(order.subtotal) || Number(order.total) || 0,
-                        shipping: Number(order.shipping) || 0,
-                        total: Number(order.total) || 0,
-                        status: order.status || 'confirmed',
-                        source: order.source || 'pos',
-                        created_at: order.created_at || new Date().toISOString(),
-                        customer_name: order.customer_name || 'Walk-in Customer',
-                        customer_email: order.customer_email || 'walkin@example.com',
-                        customer_phone: order.customer_phone || 'N/A',
-                        customer_address: order.customer_address || 'In-store purchase',
-                        customer: order.customer || {
-                            name: order.customer_name || 'Walk-in Customer',
-                            email: order.customer_email || 'walkin@example.com',
-                            phone: order.customer_phone || 'N/A',
-                            address: order.customer_address || 'In-store purchase'
-                        },
-                        user_id: order.user_id || 'unknown',
-                        user_name: order.user_name || 'Unknown User',
-                        user_role: order.user_role || 'user',
-                        staff_name: order.staff_name || order.user_name || 'Unknown User'
-                    }));
-                    
-                    console.log('📤 Sending orders to sync endpoint...');
-                    
-                    const response = await fetch('/admin/api/sync-queue', {
-                        method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        },
-                        body: JSON.stringify({ orders: cleanOrders })
-                    });
-                    
-                    const data = await response.json();
-                    console.log('✅ Sync result:', data);
-                    
-                    if (data.synced > 0) {
-                        const orderIds = orders.map(o => o.order_id);
-                        await markOrdersSynced(orderIds);
-                        ordersSynced = data.synced;
-                        ordersFailed = data.failed || 0;
-                    } else {
-                        ordersFailed = orders.length;
-                    }
-                }
-                
-                // ============================================================
-                // SUMMARY
-                // ============================================================
-                const totalSynced = ordersSynced + returnsSynced;
-                const totalFailed = ordersFailed + returnsFailed;
-                
-                if (totalSynced > 0) {
-                    console.log(`✅ Synced ${totalSynced} items (${ordersSynced} orders, ${returnsSynced} returns)`);
-                    showToast(`✅ ${totalSynced} items synced!`, 'success');
-                    
-                    loadUserStats();
-                    loadSalesStats();
-                    updateUnsyncedCount(0);
-                    renderProducts();
+                if (data.success) {
+                    // Mark return as synced in IndexedDB
+                    await markOrdersSynced([ret.order_id]);
+                    returnsSynced++;
+                    console.log(`   ✅ Return synced: ${ret.order_id}`);
                 } else {
-                    console.log('⚠️ No items were synced');
-                    showToast(`⚠️ ${totalFailed} items failed to sync`, 'warning');
-                    
-                    const remaining = await getUnsyncedOrders();
-                    updateUnsyncedCount(remaining.length);
+                    returnsFailed++;
+                    console.log(`   ❌ Return sync failed: ${ret.order_id} - ${data.message}`);
                 }
-                
-            } catch (error) {
-                console.error('❌ Sync error:', error);
-                
-                if (navigator.onLine) {
-                    if (error.message && !error.message.includes('Offline')) {
-                        showToast('❌ Sync failed: ' + error.message, 'error');
-                    }
-                } else {
-                    console.log('📡 Offline - sync will happen when online');
-                }
-                
-                try {
-                    const remaining = await getUnsyncedOrders();
-                    updateUnsyncedCount(remaining.length);
-                } catch (e) {
-                    console.error('Error checking remaining:', e);
-                }
-            } finally {
-                isSyncing = false;
-                updateSyncStatusUI(false);
+            } catch (e) {
+                returnsFailed++;
+                console.log(`   ❌ Return sync error: ${ret.order_id} - ${e.message}`);
             }
         }
+        
+        // ============================================================
+        // SYNC ORDERS (using /admin/api/sync-queue)
+        // ============================================================
+        let ordersSynced = 0;
+        let ordersFailed = 0;
+        
+        if (unsyncedOrders.length > 0) {
+            console.log(`\n📦 Syncing ${unsyncedOrders.length} orders...`);
+            
+            const cleanOrders = unsyncedOrders.map(order => ({
+                order_id: order.order_id,
+                items: Array.isArray(order.items) ? order.items.map(item => ({
+                    product_id: item.product_id || item.id || 'unknown',
+                    name: item.name || 'Product',
+                    price: Number(item.price) || 0,
+                    quantity: Number(item.quantity) || 1,
+                    total: Number(item.total) || (Number(item.price) || 0) * (Number(item.quantity) || 1),
+                    type: item.type || 'product',
+                    barcode: item.barcode || ''
+                })) : [],
+                subtotal: Number(order.subtotal) || Number(order.total) || 0,
+                shipping: Number(order.shipping) || 0,
+                total: Number(order.total) || 0,
+                status: order.status || 'confirmed',
+                source: order.source || 'pos',
+                created_at: order.created_at || new Date().toISOString(),
+                customer_name: order.customer_name || 'Walk-in Customer',
+                customer_email: order.customer_email || 'walkin@example.com',
+                customer_phone: order.customer_phone || 'N/A',
+                customer_address: order.customer_address || 'In-store purchase',
+                customer: order.customer || {
+                    name: order.customer_name || 'Walk-in Customer',
+                    email: order.customer_email || 'walkin@example.com',
+                    phone: order.customer_phone || 'N/A',
+                    address: order.customer_address || 'In-store purchase'
+                },
+                user_id: order.user_id || 'unknown',
+                user_name: order.user_name || 'Unknown User',
+                user_role: order.user_role || 'user',
+                staff_name: order.staff_name || order.user_name || 'Unknown User'
+            }));
+            
+            console.log('   📤 Sending orders to /admin/api/sync-queue...');
+            
+            try {
+                const response = await fetch('/admin/api/sync-queue', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ orders: cleanOrders })
+                });
+                
+                const data = await response.json();
+                console.log('   📡 Response:', data);
+                
+                if (data.synced > 0) {
+                    const orderIds = unsyncedOrders.map(o => o.order_id);
+                    await markOrdersSynced(orderIds);
+                    ordersSynced = data.synced;
+                    ordersFailed = data.failed || 0;
+                    console.log(`   ✅ ${ordersSynced} orders synced`);
+                } else {
+                    ordersFailed = unsyncedOrders.length;
+                    console.log(`   ❌ No orders were synced`);
+                }
+            } catch (e) {
+                ordersFailed = unsyncedOrders.length;
+                console.log(`   ❌ Order sync error: ${e.message}`);
+            }
+        }
+        
+        // ============================================================
+        // SUMMARY
+        // ============================================================
+        const totalSynced = ordersSynced + returnsSynced;
+        const totalFailed = ordersFailed + returnsFailed;
+        
+        console.log(`\n📊 SYNC SUMMARY:`);
+        console.log(`   ✅ Synced: ${totalSynced} items (${ordersSynced} orders, ${returnsSynced} returns)`);
+        console.log(`   ❌ Failed: ${totalFailed} items`);
+        
+        if (totalSynced > 0) {
+            showToast(`✅ ${totalSynced} items synced! (${ordersSynced} orders, ${returnsSynced} returns)`, 'success');
+            
+            // Refresh data
+            loadUserStats();
+            loadSalesStats();
+            renderProducts();
+            
+            // Check if any remain
+            const remaining = await getUnsyncedOrders();
+            updateUnsyncedCount(remaining.length);
+        } else {
+            showToast(`⚠️ ${totalFailed} items failed to sync`, 'warning');
+            const remaining = await getUnsyncedOrders();
+            updateUnsyncedCount(remaining.length);
+        }
+        
+    } catch (error) {
+        console.error('❌ Sync error:', error);
+        
+        if (navigator.onLine) {
+            if (error.message && !error.message.includes('Offline')) {
+                showToast('❌ Sync failed: ' + error.message, 'error');
+            }
+        } else {
+            console.log('📡 Offline - sync will happen when online');
+        }
+        
+        try {
+            const remaining = await getUnsyncedOrders();
+            updateUnsyncedCount(remaining.length);
+        } catch (e) {
+            console.error('Error checking remaining:', e);
+        }
+    } finally {
+        isSyncing = false;
+        updateSyncStatusUI(false);
+    }
+}
 
         // ============================================================
         // SYNC UI UPDATES
