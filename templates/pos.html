@@ -12,50 +12,25 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
     
-    <!-- ============================================================
-         COMPLETE SELF-CONTAINED CSS - NO CDN, WORKS OFFLINE FOREVER
-         ============================================================ -->
+    <!-- ===== COMPLETE INLINE CSS - WORKS OFFLINE ===== -->
     <style>
         /* ============================================================
-           RESET & BASE - System Fonts (No Google Fonts needed)
+           BASE STYLES - Works Offline
            ============================================================ */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        * { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
         }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: #f1f5f9;
-            color: #0f172a;
-            min-height: 100vh;
-        }
-        :root {
-            --primary: #059669;
-            --primary-dark: #047857;
-            --primary-light: #10b981;
-            --primary-bg: #ecfdf5;
-            --danger: #ef4444;
-            --danger-bg: #fef2f2;
-            --warning: #f59e0b;
-            --warning-bg: #fffbeb;
-            --gray-50: #f8fafc;
-            --gray-100: #f1f5f9;
-            --gray-200: #e2e8f0;
-            --gray-300: #cbd5e1;
-            --gray-400: #94a3b8;
-            --gray-500: #64748b;
-            --gray-600: #475569;
-            --gray-700: #334155;
-            --gray-800: #1e293b;
-            --gray-900: #0f172a;
-            --radius: 12px;
-            --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-            --shadow-lg: 0 10px 40px rgba(0,0,0,0.08);
+        body { 
+            background: #f0f2f5; 
+            color: #0f172a; 
+            min-height: 100vh; 
         }
 
         /* ============================================================
-           UTILITY CLASSES
+           UTILITY CLASSES - Tailwind Replacement
            ============================================================ */
         .flex { display: flex; }
         .flex-wrap { flex-wrap: wrap; }
@@ -65,14 +40,16 @@
         .gap-2 { gap: 8px; }
         .gap-3 { gap: 12px; }
         .gap-4 { gap: 16px; }
+        
         .grid { display: grid; }
         .grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
         .grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
         .grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
         .grid-cols-6 { grid-template-columns: repeat(6, 1fr); }
+        
         .w-full { width: 100%; }
-        .w-5 { width: 20px; min-width: 20px; }
-        .w-8 { width: 32px; min-width: 32px; }
+        .w-5 { width: 20px; }
+        .w-8 { width: 32px; }
         .h-5 { height: 20px; }
         .h-8 { height: 32px; }
         .h-14 { height: 56px; }
@@ -87,6 +64,7 @@
         .p-3 { padding: 12px; }
         .p-4 { padding: 16px; }
         .p-8 { padding: 32px; }
+        
         .mb-1 { margin-bottom: 4px; }
         .mb-2 { margin-bottom: 8px; }
         .mb-3 { margin-bottom: 12px; }
@@ -97,7 +75,7 @@
         .ml-auto { margin-left: auto; }
         .ml-0\.5 { margin-left: 2px; }
         .ml-3 { margin-left: 12px; }
-        .mr-2 { margin-right: 8px; }
+        
         .text-xs { font-size: 0.75rem; }
         .text-sm { font-size: 0.875rem; }
         .text-lg { font-size: 1.125rem; }
@@ -108,9 +86,11 @@
         .font-semibold { font-weight: 600; }
         .font-medium { font-weight: 500; }
         .font-extrabold { font-weight: 800; }
+        
         .text-center { text-align: center; }
         .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .break-all { word-break: break-all; }
+        
         .text-gray-400 { color: #9ca3af; }
         .text-gray-500 { color: #6b7280; }
         .text-gray-600 { color: #4b5563; }
@@ -129,6 +109,7 @@
         .text-rose-600 { color: #e11d48; }
         .text-amber-500 { color: #f59e0b; }
         .text-amber-600 { color: #d97706; }
+        
         .bg-gray-50 { background-color: #f9fafb; }
         .bg-gray-100 { background-color: #f3f4f6; }
         .bg-gray-200 { background-color: #e5e7eb; }
@@ -141,6 +122,7 @@
         .bg-teal-500 { background-color: #14b8a6; }
         .bg-purple-500 { background-color: #8b5cf6; }
         .bg-rose-500 { background-color: #f43f5e; }
+        
         .border { border: 1px solid #e5e7eb; }
         .border-2 { border-width: 2px; }
         .border-gray-100 { border-color: #f3f4f6; }
@@ -150,13 +132,16 @@
         .border-rose-200 { border-color: #fecdd3; }
         .border-t { border-top: 1px solid #e5e7eb; }
         .border-t-2 { border-top-width: 2px; }
+        
         .rounded-lg { border-radius: 8px; }
         .rounded-xl { border-radius: 12px; }
         .rounded-full { border-radius: 9999px; }
+        
         .shadow-sm { box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
         .shadow { box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06); }
         .shadow-md { box-shadow: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06); }
         .shadow-lg { box-shadow: 0 10px 15px rgba(0,0,0,0.1), 0 4px 6px rgba(0,0,0,0.05); }
+        
         .relative { position: relative; }
         .absolute { position: absolute; }
         .sticky { position: sticky; }
@@ -170,11 +155,15 @@
         .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
         .top-1\/2 { top: 50%; }
         .-translate-y-1\/2 { transform: translateY(-50%); }
+        .z-50 { z-index: 50; }
+        .z-100 { z-index: 100; }
+        
         .overflow-hidden { overflow: hidden; }
         .overflow-y-auto { overflow-y: auto; }
         .max-h-40 { max-height: 160px; }
         .max-h-60 { max-height: 240px; }
         .max-h-\[420px\] { max-height: 420px; }
+        
         .hidden { display: none; }
         .inline-flex { display: inline-flex; }
         .block { display: block; }
@@ -182,8 +171,19 @@
         .flex-shrink-0 { flex-shrink: 0; }
         .min-w-0 { min-width: 0; }
         .object-contain { object-fit: contain; }
+        
         .cursor-pointer { cursor: pointer; }
+        .select-none { user-select: none; }
         .transition-all { transition: all 0.2s ease; }
+        .hover\:scale-105:hover { transform: scale(1.05); }
+        .hover\:border-green-200:hover { border-color: #a7f3d0; }
+        .hover\:border-rose-200:hover { border-color: #fecdd3; }
+        .hover\:bg-gray-300:hover { background-color: #d1d5db; }
+        .hover\:bg-gray-100:hover { background-color: #f3f4f6; }
+        .hover\:text-green-600:hover { color: #059669; }
+        .hover\:text-rose-600:hover { color: #e11d48; }
+        .hover\:text-white:hover { color: #ffffff; }
+        
         .lg\:col-span-2 { grid-column: span 2; }
         .lg\:grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
         
@@ -204,9 +204,10 @@
         }
 
         /* ============================================================
-           ICON STYLES - Emoji (Works offline, no Font Awesome needed)
+           SVG ICON STYLES (Font Awesome Replacement)
            ============================================================ */
-        .icon { display: inline-block; font-size: 1em; vertical-align: middle; }
+        .icon { display: inline-block; width: 1em; height: 1em; vertical-align: middle; }
+        .icon svg { width: 100%; height: 100%; fill: currentColor; }
         .icon-lg { font-size: 1.25rem; }
         .icon-2xl { font-size: 2rem; }
         .icon-4xl { font-size: 2.5rem; }
@@ -218,7 +219,7 @@
         .ml-3 { margin-left: 12px; }
 
         /* ============================================================
-           CUSTOM COMPONENTS - Professional Design
+           CUSTOM COMPONENTS - Works Offline
            ============================================================ */
         .pos-header {
             background: linear-gradient(135deg, #0f172a, #1e293b);
@@ -242,7 +243,7 @@
             gap: 10px;
             flex-wrap: wrap;
         }
-        .pos-header .brand .green { color: #34d399; }
+        .pos-header .brand span { color: #34d399; }
         .pos-header .brand .badge {
             background: #34d399;
             color: #0f172a;
@@ -321,7 +322,10 @@
         #syncStatus.syncing .sync-icon {
             display: none;
         }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
 
         .stats-bar {
             display: grid;
@@ -472,9 +476,12 @@
 
         .modal-overlay {
             position: fixed;
-            inset: 0;
-            background: rgba(15,23,42,0.5);
-            backdrop-filter: blur(6px);
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(8px);
             z-index: 9999;
             display: flex;
             align-items: center;
@@ -482,8 +489,8 @@
             padding: 20px;
             animation: fadeIn 0.2s ease;
         }
-        .modal-overlay.hidden { display: none; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .modal-overlay.hidden { display: none; }
         .modal-content {
             background: white;
             border-radius: 16px;
@@ -728,8 +735,10 @@
     <!-- ===== POS HEADER ===== -->
     <header class="pos-header">
         <div class="brand">
-            <span class="icon animate-float" style="color:#34d399; font-size:1.2rem;">💰</span>
-            Price<span class="green">Point</span> POS
+            <span class="icon animate-float" style="color:#34d399; font-size:1.2rem;">
+                <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+            </span>
+            Price<span>Point</span> POS
             <span class="badge" id="onlineBadge">● LIVE</span>
             {% if session.user %}
             <span class="user-tag">
@@ -739,11 +748,11 @@
             {% endif %}
         </div>
         <div class="header-actions">
-            <span class="time">🕐 <span id="clockDisplay"></span></span>
+            <span class="time"><span id="clockDisplay"></span></span>
             <!-- Sync Status -->
             <span id="syncStatus" onclick="manualSync()">
-                <span class="sync-icon">☁️</span>
-                <span class="sync-spinner">⏳</span>
+                <span class="icon sync-icon"><svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg></span>
+                <span class="icon sync-spinner"><svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg></span>
                 <span id="unsyncedCount">0</span> offline order(s)
             </span>
             <span class="stat-label">My Sales:</span>
@@ -751,50 +760,50 @@
             <span class="stat-label">My Orders:</span>
             <span class="stat-value" id="userTodayOrders">0</span>
             <a href="/admin" class="header-btn">← Dashboard</a>
-            <a href="/logout" class="header-btn logout-btn">🚪 Logout</a>
-            <a href="/" target="_blank" class="header-btn">🏪 Store</a>
+            <a href="/logout" class="header-btn logout-btn">Logout</a>
+            <a href="/" target="_blank" class="header-btn">Store</a>
         </div>
     </header>
 
     <!-- ===== STATS BAR ===== -->
     <div class="stats-bar" id="statsBar">
         <div class="stat-item">
-            <div class="icon-box green">💰</div>
+            <div class="icon-box green"><span class="icon">💰</span></div>
             <div class="info">
                 <div class="label">Today's Sales</div>
                 <div class="value" id="todaySales">KSh 0</div>
             </div>
         </div>
         <div class="stat-item">
-            <div class="icon-box blue">📄</div>
+            <div class="icon-box blue"><span class="icon">📄</span></div>
             <div class="info">
                 <div class="label">Today's Orders</div>
                 <div class="value" id="todayOrders">0</div>
             </div>
         </div>
         <div class="stat-item">
-            <div class="icon-box rose">↩️</div>
+            <div class="icon-box rose"><span class="icon">↩️</span></div>
             <div class="info">
                 <div class="label">Returns Today</div>
                 <div class="value" id="todayReturns">0</div>
             </div>
         </div>
         <div class="stat-item">
-            <div class="icon-box purple">👤</div>
+            <div class="icon-box purple"><span class="icon">👤</span></div>
             <div class="info">
                 <div class="label">Customers</div>
                 <div class="value" id="totalCustomers">0</div>
             </div>
         </div>
         <div class="stat-item">
-            <div class="icon-box amber">📦</div>
+            <div class="icon-box amber"><span class="icon">📦</span></div>
             <div class="info">
                 <div class="label">Products</div>
                 <div class="value" id="totalProducts">0</div>
             </div>
         </div>
         <div class="stat-item">
-            <div class="icon-box teal">🛒</div>
+            <div class="icon-box teal"><span class="icon">🛒</span></div>
             <div class="info">
                 <div class="label">Cart Items</div>
                 <div class="value" id="cartStats">0</div>
@@ -806,38 +815,64 @@
     <div class="max-w-7xl mx-auto px-3 py-3">
         <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
             <div>
-                <h2 class="text-xl font-extrabold" style="color:#0f172a;">💵 Point of Sale</h2>
+                <h2 class="text-xl font-extrabold" style="color:#0f172a;">
+                    <span class="icon" style="color:#059669; font-size:1.2rem; margin-right:8px;">💵</span>Point of Sale
+                </h2>
                 <p class="text-gray-400 text-xs">Search, scan, or browse to add items</p>
             </div>
             <div class="flex gap-2 flex-wrap">
-                <button class="btn-gradient" onclick="toggleCustomerModal()">👤 Customer</button>
-                <button class="btn-gradient amber" onclick="toggleDiscountModal()">% Discount</button>
-                <button class="btn-gradient rose" onclick="toggleReturnModal()">↩️ Return</button>
-                <button class="btn-outline" onclick="clearCart()" style="width:auto; padding: 6px 12px; font-size:0.7rem;">🗑️</button>
+                <button class="btn-gradient" onclick="toggleCustomerModal()">
+                    <span class="icon">👤</span> Customer
+                </button>
+                <button class="btn-gradient amber" onclick="toggleDiscountModal()">
+                    <span class="icon">%</span> Discount
+                </button>
+                <button class="btn-gradient rose" onclick="toggleReturnModal()">
+                    <span class="icon">↩️</span> Return
+                </button>
+                <button class="btn-outline" onclick="clearCart()" style="width:auto; padding: 6px 12px; font-size:0.7rem;">
+                    <span class="icon">🗑️</span>
+                </button>
             </div>
         </div>
 
         <!-- ===== QUICK ACTIONS ===== -->
         <div class="quick-actions">
-            <div class="quick-action-btn" onclick="document.getElementById('posSearch').focus();">🔍 Search</div>
-            <div class="quick-action-btn" onclick="openBarcodeScanner();">📷 Scan</div>
-            <div class="quick-action-btn" onclick="toggleDiscountModal();">% Discount</div>
-            <div class="quick-action-btn" onclick="voidLastItem();">↩️ Void Last</div>
-            <div class="quick-action-btn" onclick="toggleReturnModal();">↩️ Return</div>
-            <div class="quick-action-btn" onclick="holdOrder();">⏸️ Hold</div>
+            <div class="quick-action-btn" onclick="document.getElementById('posSearch').focus();">
+                <span class="icon" style="font-size:0.9rem; display:block; margin-bottom:2px;">🔍</span> Search
+            </div>
+            <div class="quick-action-btn" onclick="openBarcodeScanner()">
+                <span class="icon" style="font-size:0.9rem; display:block; margin-bottom:2px;">📷</span> Scan
+            </div>
+            <div class="quick-action-btn" onclick="toggleDiscountModal()">
+                <span class="icon" style="font-size:0.9rem; display:block; margin-bottom:2px;">%</span> Discount
+            </div>
+            <div class="quick-action-btn" onclick="voidLastItem()">
+                <span class="icon" style="font-size:0.9rem; display:block; margin-bottom:2px;">↩️</span> Void Last
+            </div>
+            <div class="quick-action-btn" onclick="toggleReturnModal()">
+                <span class="icon" style="font-size:0.9rem; display:block; margin-bottom:2px;">↩️</span> Return
+            </div>
+            <div class="quick-action-btn" onclick="holdOrder()">
+                <span class="icon" style="font-size:0.9rem; display:block; margin-bottom:2px;">⏸️</span> Hold
+            </div>
         </div>
 
         <!-- ===== BARCODE SCANNER MODAL ===== -->
         <div id="barcodeModal" class="modal-overlay hidden" onclick="closeBarcodeScanner()">
             <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 500px;">
-                <button class="close-btn" onclick="closeBarcodeScanner()">×</button>
-                <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">📷 Scan Barcode</h3>
+                <button class="close-btn" onclick="closeBarcodeScanner()">&times;</button>
+                <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <span class="icon" style="color:#3b82f6;">📷</span> Scan Barcode
+                </h3>
                 <p class="text-sm text-gray-500 mb-3">Position the barcode in front of your camera</p>
-                <div id="scanner-container" style="width:100%; max-width:400px; margin:0 auto;">
-                    <div id="barcode-reader" style="width:100%;"></div>
+                <div id="scanner-container" style="width: 100%; max-width: 400px; margin: 0 auto;">
+                    <div id="barcode-reader" style="width: 100%;"></div>
                 </div>
                 <div class="mt-3 flex flex-wrap gap-2">
-                    <button onclick="startScanner()" class="btn-primary flex-1" id="startScannerBtn" style="background:linear-gradient(135deg,#2563eb,#4f46e5);">▶️ Start Camera</button>
+                    <button onclick="startScanner()" class="btn-primary flex-1" id="startScannerBtn" style="background: linear-gradient(135deg, #2563eb, #4f46e5);">
+                        <span class="icon">▶️</span> Start Camera
+                    </button>
                     <button onclick="closeBarcodeScanner()" class="btn-outline flex-1">Cancel</button>
                 </div>
                 <div id="scannerResult" class="mt-3 p-3 bg-gray-50 rounded-lg hidden">
@@ -845,23 +880,31 @@
                     <p id="scannedValue" class="text-sm font-mono break-all"></p>
                 </div>
                 <div class="mt-3 text-center">
-                    <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="text-blue-500 hover:text-blue-700 text-sm">⌨️ Or enter barcode manually</button>
+                    <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="text-blue-500 hover:text-blue-700 text-sm">
+                        <span class="icon">⌨️</span> Or enter barcode manually
+                    </button>
                 </div>
             </div>
         </div>
 
-        <!-- ===== BARCODE INPUT MODAL ===== -->
+        <!-- ===== BARCODE INPUT MODAL (Manual Entry) ===== -->
         <div id="barcodeInputModal" class="modal-overlay hidden" onclick="closeBarcodeInputModal()">
-            <div class="modal-content" onclick="event.stopPropagation()" style="max-width:380px;">
-                <button class="close-btn" onclick="closeBarcodeInputModal()">×</button>
-                <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">⌨️ Enter Barcode</h3>
+            <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 380px;">
+                <button class="close-btn" onclick="closeBarcodeInputModal()">&times;</button>
+                <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <span class="icon" style="color:#f59e0b;">⌨️</span> Enter Barcode
+                </h3>
                 <p class="text-sm text-gray-500 mb-3">Type the product ID or barcode number</p>
                 <input type="text" id="manualBarcode" class="form-input" placeholder="Enter product ID or barcode..." autofocus>
                 <div class="mt-4 flex gap-3">
-                    <button onclick="submitManualBarcode()" class="btn-primary flex-1">🔍 Find Product</button>
+                    <button onclick="submitManualBarcode()" class="btn-primary flex-1">
+                        <span class="icon">🔍</span> Find Product
+                    </button>
                     <button onclick="closeBarcodeInputModal()" class="btn-outline flex-1">Cancel</button>
                 </div>
-                <div class="mt-3 text-xs text-gray-400 text-center">💡 Tip: You can search by product ID, name, or barcode</div>
+                <div class="mt-3 text-xs text-gray-400 text-center">
+                    💡 Tip: You can search by product ID, name, or barcode
+                </div>
             </div>
         </div>
 
@@ -904,27 +947,37 @@
             <div class="lg:col-span-1">
                 <div class="glass-card sticky top-4">
                     <div class="flex items-center justify-between mb-2">
-                        <h3 class="font-bold text-gray-900 text-sm flex items-center gap-2">🛒 Cart <span class="text-xs text-gray-400 ml-auto" id="itemCount">0 items</span></h3>
+                        <h3 class="font-bold text-gray-900 text-sm flex items-center gap-2">
+                            <span class="icon" style="color:#059669;">🛒</span> Cart
+                            <span class="text-xs text-gray-400 ml-auto" id="itemCount">0 items</span>
+                        </h3>
                         <span class="text-xs text-gray-400" id="cartTotalItems">0</span>
                     </div>
 
                     <div class="mb-2">
-                        <label class="form-label">👤 Customer</label>
+                        <label class="form-label"><span class="icon">👤</span> Customer</label>
                         <div class="flex gap-2">
                             <select id="posCustomer" class="form-input flex-1 text-sm" onchange="selectCustomer()">
                                 <option value="Walk-in Customer" data-email="walkin@example.com" data-phone="N/A">Walk-in</option>
                                 {% for customer in customers %}
-                                <option value="{{ customer.name }}" data-email="{{ customer.email }}" data-phone="{{ customer.phone }}">{{ customer.name }}</option>
+                                <option value="{{ customer.name }}" data-email="{{ customer.email }}" data-phone="{{ customer.phone }}">
+                                    {{ customer.name }}
+                                </option>
                                 {% endfor %}
                             </select>
-                            <button onclick="toggleCustomerModal()" class="btn-outline text-sm px-3" style="width:auto; padding: 6px 10px;">➕</button>
+                            <button onclick="toggleCustomerModal()" class="btn-outline text-sm px-3" style="width:auto; padding: 6px 10px;">
+                                <span class="icon">➕</span>
+                            </button>
                         </div>
                         <input type="hidden" id="posCustomerEmail" value="walkin@example.com" />
                         <input type="hidden" id="posCustomerPhone" value="N/A" />
                     </div>
 
                     <div class="max-h-40 overflow-y-auto space-y-1.5 mb-2" id="posCartItems">
-                        <div class="text-center text-gray-400 text-xs py-4" id="emptyCartMessage">🛍️ No items added</div>
+                        <div class="text-center text-gray-400 text-xs py-4" id="emptyCartMessage">
+                            <span style="font-size:2rem; display:block; margin-bottom:8px;">🛍️</span>
+                            No items added
+                        </div>
                         <div id="posCartItemsList"></div>
                     </div>
 
@@ -935,14 +988,27 @@
                     </div>
 
                     <div class="border-t border-gray-200 pt-2">
-                        <div class="cart-summary-row"><span class="text-gray-500">Subtotal</span><span class="font-semibold" id="posSubtotal">KSh 0</span></div>
-                        <div class="cart-summary-row" id="discountRow"><span class="text-gray-500">Discount</span><span class="font-semibold text-red-500" id="posDiscount">-KSh 0</span></div>
-                        <div class="cart-summary-row total"><span>Total</span><span class="text-green-600 text-lg" id="posTotal">KSh 0</span></div>
+                        <div class="cart-summary-row">
+                            <span class="text-gray-500">Subtotal</span>
+                            <span class="font-semibold" id="posSubtotal">KSh 0</span>
+                        </div>
+                        <div class="cart-summary-row" id="discountRow">
+                            <span class="text-gray-500">Discount</span>
+                            <span class="font-semibold text-red-500" id="posDiscount">-KSh 0</span>
+                        </div>
+                        <div class="cart-summary-row total">
+                            <span>Total</span>
+                            <span class="text-green-600 text-lg" id="posTotal">KSh 0</span>
+                        </div>
                     </div>
 
                     <div class="mt-2 space-y-1.5">
-                        <button onclick="placePOSOrder()" class="btn-primary" id="posPlaceOrderBtn">✅ Complete Order</button>
-                        <button onclick="holdOrder()" class="btn-outline text-sm" style="border-color:#f59e0b; color:#d97706;">⏸️ Hold Order</button>
+                        <button onclick="placePOSOrder()" class="btn-primary" id="posPlaceOrderBtn">
+                            <span class="icon">✅</span> Complete Order
+                        </button>
+                        <button onclick="holdOrder()" class="btn-outline text-sm" style="border-color: #f59e0b; color: #d97706;">
+                            <span class="icon">⏸️</span> Hold Order
+                        </button>
                     </div>
 
                     <div id="heldOrdersPanel" class="held-orders-panel hidden">
@@ -957,16 +1023,29 @@
     <!-- ===== MODALS ===== -->
     <div id="customerModal" class="modal-overlay hidden" onclick="closeCustomerModal(event)">
         <div class="modal-content" onclick="event.stopPropagation()">
-            <button class="close-btn" onclick="closeCustomerModal()">×</button>
-            <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">👤 Add Customer</h3>
+            <button class="close-btn" onclick="closeCustomerModal()">&times;</button>
+            <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <span class="icon" style="color:#059669;">👤</span> Add Customer
+            </h3>
             <form id="customerForm" onsubmit="addCustomer(event)">
                 <div class="space-y-3">
-                    <div><label class="form-label">👤 Full Name <span class="required">*</span></label><input type="text" id="custName" class="form-input" placeholder="John Doe" required></div>
-                    <div><label class="form-label">✉️ Email</label><input type="email" id="custEmail" class="form-input" placeholder="john@example.com"></div>
-                    <div><label class="form-label">📞 Phone</label><input type="tel" id="custPhone" class="form-input" placeholder="+254 700 000 000"></div>
+                    <div>
+                        <label class="form-label"><span class="icon">👤</span> Full Name <span class="required">*</span></label>
+                        <input type="text" id="custName" class="form-input" placeholder="John Doe" required>
+                    </div>
+                    <div>
+                        <label class="form-label"><span class="icon">✉️</span> Email</label>
+                        <input type="email" id="custEmail" class="form-input" placeholder="john@example.com">
+                    </div>
+                    <div>
+                        <label class="form-label"><span class="icon">📞</span> Phone</label>
+                        <input type="tel" id="custPhone" class="form-input" placeholder="+254 700 000 000">
+                    </div>
                 </div>
                 <div class="flex gap-3 mt-4 pt-4 border-t border-gray-100">
-                    <button type="submit" class="btn-primary flex-1">💾 Add Customer</button>
+                    <button type="submit" class="btn-primary flex-1">
+                        <span class="icon">💾</span> Add Customer
+                    </button>
                     <button type="button" onclick="closeCustomerModal()" class="btn-outline flex-1">Cancel</button>
                 </div>
             </form>
@@ -974,12 +1053,23 @@
     </div>
 
     <div id="discountModal" class="modal-overlay hidden" onclick="closeDiscountModal(event)">
-        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:380px;">
-            <button class="close-btn" onclick="closeDiscountModal()">×</button>
-            <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">% Apply Discount</h3>
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 380px;">
+            <button class="close-btn" onclick="closeDiscountModal()">&times;</button>
+            <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <span class="icon" style="color:#f59e0b;">%</span> Apply Discount
+            </h3>
             <div class="space-y-3">
-                <div><label class="form-label">Discount Type</label><select id="discountType" class="form-input" onchange="updateDiscountPreview()"><option value="percentage">Percentage (%)</option><option value="fixed">Fixed Amount (KSh)</option></select></div>
-                <div><label class="form-label">Discount Value</label><input type="number" id="discountValue" class="form-input" placeholder="Enter discount value" value="0" min="0" oninput="updateDiscountPreview()"></div>
+                <div>
+                    <label class="form-label">Discount Type</label>
+                    <select id="discountType" class="form-input" onchange="updateDiscountPreview()">
+                        <option value="percentage">Percentage (%)</option>
+                        <option value="fixed">Fixed Amount (KSh)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Discount Value</label>
+                    <input type="number" id="discountValue" class="form-input" placeholder="Enter discount value" value="0" min="0" oninput="updateDiscountPreview()">
+                </div>
                 <div class="flex gap-1 flex-wrap" id="discountPresets">
                     <span class="discount-preset" onclick="setDiscountPreset(5)">5%</span>
                     <span class="discount-preset" onclick="setDiscountPreset(10)">10%</span>
@@ -993,7 +1083,9 @@
                     <div class="flex justify-between font-bold text-green-600"><span>New Total:</span> <span id="discountNewTotal">KSh 0</span></div>
                 </div>
                 <div class="flex gap-3">
-                    <button onclick="applyDiscount()" class="btn-primary flex-1" style="background:linear-gradient(135deg,#f59e0b,#d97706);">✅ Apply</button>
+                    <button onclick="applyDiscount()" class="btn-primary flex-1" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                        <span class="icon">✅</span> Apply
+                    </button>
                     <button onclick="closeDiscountModal()" class="btn-outline flex-1">Cancel</button>
                 </div>
             </div>
@@ -1001,15 +1093,22 @@
     </div>
 
     <div id="returnModal" class="modal-overlay hidden" onclick="closeReturnModal(event)">
-        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:480px;">
-            <button class="close-btn" onclick="closeReturnModal()">×</button>
-            <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">↩️ Customer Return</h3>
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 480px;">
+            <button class="close-btn" onclick="closeReturnModal()">&times;</button>
+            <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <span class="icon" style="color:#e11d48;">↩️</span> Customer Return
+            </h3>
             <p class="text-xs text-gray-500 mb-3">Select items to return. This will refund and restock inventory.</p>
             <div class="space-y-2 max-h-60 overflow-y-auto" id="returnItemsList"></div>
             <div class="mt-4 pt-4 border-t border-gray-100">
-                <div class="flex justify-between font-bold text-lg"><span>Refund Total:</span><span class="text-rose-600" id="refundTotal">KSh 0</span></div>
+                <div class="flex justify-between font-bold text-lg">
+                    <span>Refund Total:</span>
+                    <span class="text-rose-600" id="refundTotal">KSh 0</span>
+                </div>
                 <div class="flex gap-3 mt-3">
-                    <button onclick="processReturn()" class="btn-primary flex-1" style="background:linear-gradient(135deg,#ef4444,#dc2626);">✅ Process Return</button>
+                    <button onclick="processReturn()" class="btn-primary flex-1" style="background: linear-gradient(135deg, #ef4444, #dc2626);">
+                        <span class="icon">✅</span> Process Return
+                    </button>
                     <button onclick="closeReturnModal()" class="btn-outline flex-1">Cancel</button>
                 </div>
             </div>
@@ -1021,10 +1120,7 @@
         <span id="toastMessage">Added to cart!</span>
     </div>
 
-    <!-- ============================================================
-         JAVASCRIPT - ALL INLINE
-         ============================================================ -->
-    <script>
+   <script>
         // ============================================================
         // DATA
         // ============================================================
@@ -1054,6 +1150,7 @@
         function updateOnlineStatusUI() {
             const badge = document.getElementById('onlineBadge');
             const isOnline = navigator.onLine;
+            
             if (isOnline) {
                 badge.textContent = '● LIVE';
                 badge.className = 'badge';
@@ -1081,7 +1178,7 @@
         updateOnlineStatusUI();
 
         // ============================================================
-        // INDEXEDDB - VERSION 9
+        // INDEXEDDB - VERSION 9 WITH PROPER INDEX
         // ============================================================
         const DB_NAME = 'PricePointDB';
         const DB_VERSION = 9;
@@ -1090,8 +1187,13 @@
 
         function openDB() {
             return new Promise((resolve, reject) => {
-                if (dbInstance) { resolve(dbInstance); return; }
+                if (dbInstance) {
+                    resolve(dbInstance);
+                    return;
+                }
+                
                 const request = indexedDB.open(DB_NAME, DB_VERSION);
+                
                 request.onupgradeneeded = function(event) {
                     const database = event.target.result;
                     if (!database.objectStoreNames.contains(STORE_NAME)) {
@@ -1101,11 +1203,13 @@
                         console.log('✅ IndexedDB: Orders store created (v9)');
                     }
                 };
+                
                 request.onsuccess = function(event) {
                     dbInstance = event.target.result;
                     console.log('✅ IndexedDB: Connected (Version ' + DB_VERSION + ')');
                     resolve(dbInstance);
                 };
+                
                 request.onerror = function(event) {
                     console.error('❌ IndexedDB error:', event.target.error);
                     reject(event.target.error);
@@ -1117,37 +1221,46 @@
         // UPDATE LOCAL PRODUCT STOCK
         // ============================================================
         function updateLocalProductStock(productId, quantity) {
+            // Update in allProducts array
             const product = allProducts.find(p => String(p.id) === String(productId));
             if (product) {
                 const oldStock = product.stock || 0;
                 product.stock = Math.max(0, oldStock - quantity);
                 console.log(`📦 Updated stock for ${product.name}: ${oldStock} → ${product.stock}`);
             }
+            
+            // Update in filteredProducts as well
             const filteredProduct = filteredProducts.find(p => String(p.id) === String(productId));
             if (filteredProduct) {
                 const oldStock = filteredProduct.stock || 0;
                 filteredProduct.stock = Math.max(0, oldStock - quantity);
             }
+            
+            // Re-render products to reflect stock changes
             renderProducts();
         }
 
         // ============================================================
-        // APPLY PENDING OFFLINE STOCK ADJUSTMENTS
+        // APPLY PENDING OFFLINE STOCK DEDUCTIONS (fixes refresh bug)
         // ============================================================
         async function applyOfflineStockAdjustments() {
             try {
                 const unsynced = await getUnsyncedOrders();
                 if (!unsynced.length) return;
+
                 const deductions = {};
                 unsynced.forEach(order => {
+                    // Check if it's a return (is_return = true) - RESTOCK
                     if (order.is_return === true) {
                         (order.items || []).forEach(item => {
                             const pid = item.product_id || item.id;
                             const qty = Number(item.quantity) || 0;
                             if (!pid) return;
+                            // For returns, we add back stock (negative deduction)
                             deductions[pid] = (deductions[pid] || 0) - qty;
                         });
                     } else {
+                        // Regular orders deduct stock
                         (order.items || []).forEach(item => {
                             const pid = item.product_id || item.id;
                             const qty = Number(item.quantity) || 0;
@@ -1156,6 +1269,7 @@
                         });
                     }
                 });
+
                 Object.keys(deductions).forEach(pid => {
                     const product = allProducts.find(p => String(p.id) === String(pid));
                     if (product) {
@@ -1165,6 +1279,8 @@
                         console.log(`📦 Applied offline adjustment: ${product.name}: ${oldStock} → ${product.stock} (${delta > 0 ? 'deduct' : 'restock'})`);
                     }
                 });
+
+                console.log('📦 Applied pending offline stock adjustments:', deductions);
             } catch (e) {
                 console.error('❌ Error applying offline stock adjustments:', e);
             }
@@ -1173,24 +1289,30 @@
         // ============================================================
         // SYNC FUNCTIONS
         // ============================================================
+        
         function getUnsyncedOrders() {
             return new Promise(async (resolve, reject) => {
                 try {
                     const db = await openDB();
+                    
                     if (!db.objectStoreNames.contains('orders')) {
                         console.log('❌ orders store not found!');
                         resolve([]);
                         return;
                     }
+                    
                     const tx = db.transaction('orders', 'readonly');
                     const store = tx.objectStore('orders');
+                    
                     try {
                         const index = store.index('synced');
                         const request = index.getAll(false);
+                        
                         request.onsuccess = function() {
                             console.log('✅ Found', request.result.length, 'unsynced orders via index');
                             resolve(request.result);
                         };
+                        
                         request.onerror = function() {
                             console.warn('⚠️ Index query failed, using fallback');
                             const allRequest = store.getAll();
@@ -1200,7 +1322,9 @@
                                 console.log('✅ Found', unsynced.length, 'unsynced orders via fallback');
                                 resolve(unsynced);
                             };
-                            allRequest.onerror = function() { reject(allRequest.error); };
+                            allRequest.onerror = function() {
+                                reject(allRequest.error);
+                            };
                         };
                     } catch (e) {
                         console.warn('⚠️ Index error, using fallback:', e);
@@ -1211,9 +1335,13 @@
                             console.log('✅ Found', unsynced.length, 'unsynced orders via fallback');
                             resolve(unsynced);
                         };
-                        allRequest.onerror = function() { reject(allRequest.error); };
+                        allRequest.onerror = function() {
+                            reject(allRequest.error);
+                        };
                     }
-                } catch (error) { reject(error); }
+                } catch (error) {
+                    reject(error);
+                }
             });
         }
 
@@ -1223,6 +1351,7 @@
                     const db = await openDB();
                     const tx = db.transaction('orders', 'readwrite');
                     const store = tx.objectStore('orders');
+                    
                     const promises = orderIds.map(orderId => {
                         return new Promise((res, rej) => {
                             const request = store.get(orderId);
@@ -1232,16 +1361,28 @@
                                     order.synced = true;
                                     order.synced_at = new Date().toISOString();
                                     const updateRequest = store.put(order);
-                                    updateRequest.onsuccess = function() { console.log('✅ Marked synced:', orderId); res(); };
-                                    updateRequest.onerror = function() { rej(updateRequest.error); };
-                                } else { res(); }
+                                    updateRequest.onsuccess = function() {
+                                        console.log('✅ Marked synced:', orderId);
+                                        res();
+                                    };
+                                    updateRequest.onerror = function() {
+                                        rej(updateRequest.error);
+                                    };
+                                } else {
+                                    res();
+                                }
                             };
-                            request.onerror = function() { rej(request.error); };
+                            request.onerror = function() {
+                                rej(request.error);
+                            };
                         });
                     });
+                    
                     await Promise.all(promises);
                     resolve();
-                } catch (error) { reject(error); }
+                } catch (error) {
+                    reject(error);
+                }
             });
         }
 
@@ -1251,33 +1392,60 @@
                     const db = await openDB();
                     const transaction = db.transaction('orders', 'readwrite');
                     const store = transaction.objectStore('orders');
-                    if (order.synced === undefined) { order.synced = false; }
-                    if (!order.synced_at) { order.synced_at = null; }
+                    
+                    if (order.synced === undefined) {
+                        order.synced = false;
+                    }
+                    if (!order.synced_at) {
+                        order.synced_at = null;
+                    }
+                    
                     const request = store.put(order);
+                    
                     request.onsuccess = function() {
                         console.log('✅ Order saved to IndexedDB:', order.order_id);
                         resolve(order);
                     };
+                    
                     request.onerror = function(event) {
                         console.error('❌ IndexedDB save error:', event.target.error);
                         reject(event.target.error);
                     };
-                } catch (error) { reject(error); }
+                } catch (error) {
+                    reject(error);
+                }
             });
         }
 
         // ============================================================
-        // GET CORRECT PRODUCT ID
+        // GET CORRECT PRODUCT ID - HELPER FUNCTION
         // ============================================================
         function getCorrectProductId(item) {
+            // Try multiple sources for the product ID
             let productId = item.id || item.product_id || '';
+            
+            // If the ID is a placeholder or empty, try to find it from allProducts by name
             if (!productId || productId === 'product_id_here' || productId === 'unknown' || productId === '') {
+                // First try exact name match
                 let found = allProducts.find(p => p.name === item.name);
-                if (!found) { found = allProducts.find(p => p.name.toLowerCase() === item.name.toLowerCase()); }
-                if (!found) { found = allProducts.find(p => p.name.toLowerCase().includes(item.name.toLowerCase()) || item.name.toLowerCase().includes(p.name.toLowerCase())); }
-                if (found) { productId = found.id; console.log(`🔍 Found product ID for "${item.name}": ${productId}`); } 
-                else { console.warn(`⚠️ Could not find product ID for "${item.name}"`); productId = ''; }
+                if (!found) {
+                    // Try case-insensitive match
+                    found = allProducts.find(p => p.name.toLowerCase() === item.name.toLowerCase());
+                }
+                if (!found) {
+                    // Try partial match
+                    found = allProducts.find(p => p.name.toLowerCase().includes(item.name.toLowerCase()) || 
+                                                item.name.toLowerCase().includes(p.name.toLowerCase()));
+                }
+                if (found) {
+                    productId = found.id;
+                    console.log(`🔍 Found product ID for "${item.name}": ${productId}`);
+                } else {
+                    console.warn(`⚠️ Could not find product ID for "${item.name}"`);
+                    productId = '';
+                }
             }
+            
             return productId;
         }
 
@@ -1293,14 +1461,22 @@
                     
                     // Fix: Ensure items have both id AND product_id
                     const items = returnData.items.map(item => {
+                        // Get the correct product ID
                         let productId = item.product_id || item.id || '';
+                        
+                        // If no valid ID, try to find it
                         if (!productId || productId === 'product_id_here' || productId === 'unknown' || productId === '') {
                             const found = allProducts.find(p => p.name === item.name);
-                            if (found) { productId = found.id; } else { productId = 'unknown'; }
+                            if (found) {
+                                productId = found.id;
+                            } else {
+                                productId = 'unknown';
+                            }
                         }
+                        
                         return {
-                            id: productId,              // <-- matches what /admin/api/process-return reads
-                            product_id: productId,
+                            id: productId,              // <-- ADDED: matches what /admin/api/process-return reads
+                            product_id: productId,       // kept for anything that reads product_id
                             name: item.name || 'Product',
                             price: Number(item.price) || 0,
                             quantity: Number(item.quantity) || 1,
@@ -1339,15 +1515,19 @@
                     console.log('📦 Saving return to IndexedDB:', returnOrder);
                     
                     const request = store.put(returnOrder);
+                    
                     request.onsuccess = function() {
                         console.log('✅ Return saved to IndexedDB:', returnData.return_order_id);
                         resolve(returnOrder);
                     };
+                    
                     request.onerror = function(event) {
                         console.error('❌ IndexedDB return save error:', event.target.error);
                         reject(event.target.error);
                     };
-                } catch (error) { reject(error); }
+                } catch (error) {
+                    reject(error);
+                }
             });
         }
 
@@ -1378,6 +1558,9 @@
                 console.log('🔄 Starting auto-sync...');
                 showToast('🔄 Syncing offline orders and returns...', 'info');
                 
+                // ============================================================
+                // GET UNSYNCED ORDERS AND RETURNS
+                // ============================================================
                 const unsynced = await getUnsyncedOrders();
                 
                 // Separate returns from orders
@@ -1415,6 +1598,7 @@
                         // ============================================================
                         // FIX: Normalize items to the "id" key the backend actually reads
                         // The backend looks for item.get('id', '') - same as online path
+                        // Without this, offline-queued returns silently fail to restock
                         // ============================================================
                         const normalizedItems = (ret.items || []).map(item => ({
                             id: item.id || item.product_id || 'unknown',
@@ -1592,25 +1776,39 @@
         function updateSyncStatusUI(syncing) {
             const statusEl = document.getElementById('syncStatus');
             if (!statusEl) return;
-            if (syncing) { statusEl.classList.add('syncing'); } 
-            else { statusEl.classList.remove('syncing'); }
+            
+            if (syncing) {
+                statusEl.classList.add('syncing');
+            } else {
+                statusEl.classList.remove('syncing');
+            }
         }
 
         async function updateUnsyncedCount(count) {
             const statusEl = document.getElementById('syncStatus');
             const countEl = document.getElementById('unsyncedCount');
+            
             if (!statusEl || !countEl) return;
+            
             if (count === undefined) {
-                try { const unsynced = await getUnsyncedOrders(); count = unsynced.length; } 
-                catch (e) { count = 0; }
+                try {
+                    const unsynced = await getUnsyncedOrders();
+                    count = unsynced.length;
+                } catch (e) {
+                    count = 0;
+                }
             }
+            
             if (count > 0) {
                 statusEl.style.display = 'inline-flex';
                 statusEl.className = 'has-orders';
                 countEl.textContent = count;
                 statusEl.style.animation = 'pulse-badge 2s infinite';
                 statusEl.title = count + ' offline items waiting to sync';
-                if (navigator.onLine && !isSyncing) { setTimeout(performAutoSync, 2000); }
+                
+                if (navigator.onLine && !isSyncing) {
+                    setTimeout(performAutoSync, 2000);
+                }
             } else {
                 statusEl.style.display = 'none';
                 statusEl.className = '';
@@ -1626,10 +1824,12 @@
                 showToast('📡 You are offline. Orders will sync when online.', 'warning');
                 return;
             }
+            
             if (isSyncing) {
                 showToast('⏳ Sync already in progress...', 'info');
                 return;
             }
+            
             performAutoSync();
         }
 
@@ -1641,11 +1841,14 @@
                 const unsynced = await getUnsyncedOrders();
                 console.log(`📊 Initial check: ${unsynced.length} unsynced items`);
                 updateUnsyncedCount(unsynced.length);
+                
                 if (unsynced.length > 0 && navigator.onLine) {
                     console.log('🔄 Auto-syncing on load...');
                     setTimeout(performAutoSync, 3000);
                 }
-            } catch (error) { console.error('Error checking unsynced orders:', error); }
+            } catch (error) {
+                console.error('Error checking unsynced orders:', error);
+            }
         }
 
         // ============================================================
@@ -1653,12 +1856,19 @@
         // ============================================================
         function loadUserStats() {
             if (!navigator.onLine) return;
-            fetch('/admin/api/user-stats').then(r => r.json()).then(data => {
-                if (data.success) {
-                    document.getElementById('userTodaySales').textContent = 'KSh ' + (data.today_revenue || 0).toLocaleString();
-                    document.getElementById('userTodayOrders').textContent = data.today_orders || 0;
-                }
-            }).catch(err => console.error('User stats error:', err));
+            
+            fetch('/admin/api/user-stats')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        const todaySales = 'KSh ' + (data.today_revenue || 0).toLocaleString();
+                        const todayOrders = data.today_orders || 0;
+                        
+                        document.getElementById('userTodaySales').textContent = todaySales;
+                        document.getElementById('userTodayOrders').textContent = todayOrders;
+                    }
+                })
+                .catch(err => console.error('User stats error:', err));
         }
 
         // ============================================================
@@ -1666,15 +1876,25 @@
         // ============================================================
         function loadSalesStats() {
             if (!navigator.onLine) return;
-            fetch('/admin/api/sales-stats').then(r => r.json()).then(data => {
-                if (data.success) {
-                    document.getElementById('todaySales').textContent = 'KSh ' + (data.today_revenue || 0).toLocaleString();
-                    document.getElementById('todayOrders').textContent = data.today_orders || 0;
-                    document.getElementById('todayReturns').textContent = data.today_returns || 0;
-                    document.getElementById('totalCustomers').textContent = data.total_customers || 0;
-                    document.getElementById('totalProducts').textContent = data.total_products || 0;
-                }
-            }).catch(err => console.error('Stats error:', err));
+            
+            fetch('/admin/api/sales-stats')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        const todaySales = 'KSh ' + (data.today_revenue || 0).toLocaleString();
+                        const todayOrders = data.today_orders || 0;
+                        const todayReturns = data.today_returns || 0;
+                        const totalCust = data.total_customers || 0;
+                        const totalProds = data.total_products || 0;
+                        
+                        document.getElementById('todaySales').textContent = todaySales;
+                        document.getElementById('todayOrders').textContent = todayOrders;
+                        document.getElementById('todayReturns').textContent = todayReturns;
+                        document.getElementById('totalCustomers').textContent = totalCust;
+                        document.getElementById('totalProducts').textContent = totalProds;
+                    }
+                })
+                .catch(err => console.error('Stats error:', err));
         }
 
         // ============================================================
@@ -1683,6 +1903,7 @@
         function searchProducts(query) {
             const searchTerm = query.toLowerCase().trim();
             document.getElementById('searchClear').classList.toggle('hidden', searchTerm === '');
+            
             if (searchTerm === '') {
                 if (currentCategory === 'all') {
                     filteredProducts = allProducts.slice(0, 50);
@@ -1697,7 +1918,11 @@
                     const category = (p.category || '').toLowerCase();
                     const id = (p.id || '').toLowerCase();
                     const barcode = (p.barcode || '').toLowerCase();
-                    return name.includes(searchTerm) || category.includes(searchTerm) || id.includes(searchTerm) || barcode.includes(searchTerm);
+                    
+                    return name.includes(searchTerm) || 
+                           category.includes(searchTerm) || 
+                           id.includes(searchTerm) ||
+                           barcode.includes(searchTerm);
                 });
                 filteredProducts = results.slice(0, 100);
                 document.getElementById('resultCount').textContent = `${results.length} found${results.length > 100 ? ' (showing 100)' : ''}`;
@@ -1722,9 +1947,17 @@
         function renderProducts() {
             const grid = document.getElementById('posProductGrid');
             if (filteredProducts.length === 0) {
-                grid.innerHTML = `<div class="col-span-full search-hint"><span style="font-size:2rem;display:block;margin-bottom:8px;">🔍</span><p>No products found</p><p class="text-xs text-gray-400">Try a different search term</p><div class="shortcuts">💡 Tip: Scan barcode or search by name</div></div>`;
+                grid.innerHTML = `
+                    <div class="col-span-full search-hint">
+                        <span style="font-size:2rem; display:block; margin-bottom:8px;">🔍</span>
+                        <p>No products found</p>
+                        <p class="text-xs text-gray-400">Try a different search term</p>
+                        <div class="shortcuts">💡 Tip: Scan barcode or search by name</div>
+                    </div>
+                `;
                 return;
             }
+            
             let html = '';
             filteredProducts.forEach(product => {
                 const price = Number(product.price) || 0;
@@ -1734,7 +1967,8 @@
                 const stockLabel = stock <= 0 ? 'Out' : stock < 10 ? 'Low' : stock < 30 ? 'Med' : 'In Stock';
                 const stockNumberClass = stock <= 0 ? 'low' : stock < 10 ? 'low' : stock < 30 ? 'medium' : 'high';
                 const isOutOfStock = stock <= 0;
-                const barcodeDisplay = product.barcode ? `<span style="font-size:6px;color:#9ca3af;font-family:monospace;">${product.barcode}</span>` : '';
+                const barcodeDisplay = product.barcode ? `<span style="font-size:6px; color:#9ca3af; font-family:monospace;">${product.barcode}</span>` : '';
+                
                 html += `
                     <div class="product-pos-card group" data-id="${product.id || ''}" data-name="${product.name || ''}" data-price="${price}" data-stock="${stock}" data-image="${image}" data-barcode="${product.barcode || ''}" onclick="${isOutOfStock ? '' : 'addToPOSCart(this)'}">
                         <div class="relative">
@@ -1747,8 +1981,14 @@
                         </div>
                         <p class="text-[9px] font-semibold text-gray-900 truncate">${product.name || 'Product'}</p>
                         <p class="price-tag">KSh ${price.toLocaleString()}</p>
-                        <div class="stock-count"><span>📦</span><span class="number ${stockNumberClass}">${stock}</span><span style="font-size:8px;color:#9ca3af;">in stock</span></div>
-                        <button class="add-btn" ${isOutOfStock ? 'disabled' : ''}>${isOutOfStock ? 'Out of Stock' : '➕ Add'}</button>
+                        <div class="stock-count">
+                            <span>📦</span>
+                            <span class="number ${stockNumberClass}">${stock}</span>
+                            <span style="font-size:8px; color:#9ca3af;">in stock</span>
+                        </div>
+                        <button class="add-btn" ${isOutOfStock ? 'disabled' : ''}>
+                            ${isOutOfStock ? 'Out of Stock' : '<span>➕</span> Add'}
+                        </button>
                     </div>
                 `;
             });
@@ -1767,24 +2007,51 @@
         function addToPOSCart(element) {
             const card = element.closest ? element.closest('.product-pos-card') : element;
             if (!card) { showToast('❌ Product not found'); return; }
+            
+            // Get the product ID from the card - make sure it's the actual product ID
             let productId = String(card.dataset.id || '').trim();
             const name = String(card.dataset.name || 'Product').trim();
             const price = parseFloat(card.dataset.price) || 0;
             const stock = parseInt(card.dataset.stock) || 0;
             const image = String(card.dataset.image || '').trim();
             const barcode = String(card.dataset.barcode || '').trim();
+            
+            // If productId is empty or placeholder, try to find it from allProducts by name
             if (!productId || productId === 'product_id_here' || productId === '') {
                 const found = allProducts.find(p => p.name === name);
-                if (found) { productId = String(found.id); console.log(`🔍 Found product ID for "${name}": ${productId}`); }
+                if (found) {
+                    productId = String(found.id);
+                    console.log(`🔍 Found product ID for "${name}": ${productId}`);
+                }
             }
-            if (!productId || price <= 0) { showToast('❌ Invalid product', 'error'); return; }
-            if (stock <= 0) { showToast('⚠️ Out of stock!', 'warning'); return; }
+            
+            if (!productId || price <= 0) { 
+                showToast('❌ Invalid product', 'error'); 
+                return; 
+            }
+            if (stock <= 0) { 
+                showToast('⚠️ Out of stock!', 'warning'); 
+                return; 
+            }
+            
             const existing = posCart.find(item => item.id === productId);
             if (existing) {
-                if (existing.quantity < stock) { existing.quantity++; } 
-                else { showToast('⚠️ Not enough stock!', 'warning'); return; }
+                if (existing.quantity < stock) { 
+                    existing.quantity++; 
+                } else { 
+                    showToast('⚠️ Not enough stock!', 'warning'); 
+                    return; 
+                }
             } else {
-                posCart.push({ id: productId, name, price, image, stock, barcode, quantity: 1 });
+                posCart.push({ 
+                    id: productId, 
+                    name: name, 
+                    price: price, 
+                    image: image, 
+                    stock: stock, 
+                    barcode: barcode, 
+                    quantity: 1 
+                });
             }
             updatePOSUI();
             showToast('✅ Added: ' + name + ' (' + stock + ' left)');
@@ -1856,7 +2123,8 @@
             posCart.forEach((item, index) => {
                 const price = Number(item.price) || 0;
                 const quantity = Number(item.quantity) || 1;
-                const barcodeDisplay = item.barcode ? `<span style="font-size:6px;color:#9ca3af;font-family:monospace;">${item.barcode}</span>` : '';
+                const barcodeDisplay = item.barcode ? `<span style="font-size:6px; color:#9ca3af; font-family:monospace;">${item.barcode}</span>` : '';
+                
                 html += `
                     <div class="pos-cart-item flex items-center gap-2 bg-gray-50 rounded-lg p-1.5 border border-gray-100 hover:border-green-200 transition-all">
                         <div class="w-8 h-8 rounded-lg overflow-hidden bg-white flex-shrink-0 flex items-center justify-center">
@@ -1872,7 +2140,9 @@
                             <button onclick="updatePOSQuantity(${index}, -1)" class="w-5 h-5 rounded-full bg-gray-200 hover:bg-gray-300 text-[10px] font-bold transition-all">-</button>
                             <span class="text-xs font-bold w-5 text-center">${quantity}</span>
                             <button onclick="updatePOSQuantity(${index}, 1)" class="w-5 h-5 rounded-full bg-gray-200 hover:bg-gray-300 text-[10px] font-bold transition-all">+</button>
-                            <button onclick="removePOSItem(${index})" class="text-red-400 hover:text-red-600 text-xs ml-0.5 p-1 transition-all">✕</button>
+                            <button onclick="removePOSItem(${index})" class="text-red-400 hover:text-red-600 text-xs ml-0.5 p-1 transition-all">
+                                ✕
+                            </button>
                         </div>
                     </div>
                 `;
@@ -1906,6 +2176,7 @@
             const subtotal = posCart.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 0), 0);
             const discountAmount = type === 'percentage' ? (subtotal * value / 100) : value;
             const total = Math.max(0, subtotal - discountAmount);
+            
             document.getElementById('discountSubtotal').textContent = 'KSh ' + subtotal.toLocaleString();
             document.getElementById('discountNewTotal').textContent = 'KSh ' + total.toLocaleString();
         }
@@ -1920,12 +2191,14 @@
         }
 
         // ============================================================
-        // RETURNS - FIXED FOR OFFLINE
+        // RETURNS - UPDATED WITH OFFLINE SUPPORT AND FIXED PRODUCT ID
         // ============================================================
         function toggleReturnModal() {
             const modal = document.getElementById('returnModal');
             modal.classList.toggle('hidden');
-            if (!modal.classList.contains('hidden')) { loadReturnItems(); }
+            if (!modal.classList.contains('hidden')) {
+                loadReturnItems();
+            }
         }
 
         function closeReturnModal(event) {
@@ -1941,6 +2214,7 @@
                 document.getElementById('refundTotal').textContent = 'KSh 0';
                 return;
             }
+            
             returnItems = posCart.map((item, index) => ({ ...item, index, selected: true }));
             renderReturnItems();
         }
@@ -1949,12 +2223,15 @@
             const container = document.getElementById('returnItemsList');
             let html = '';
             let refundTotal = 0;
+            
             returnItems.forEach((item, idx) => {
                 const total = item.price * item.quantity;
                 if (item.selected) refundTotal += total;
+                
                 html += `
                     <div class="flex items-center gap-3 bg-gray-50 rounded-lg p-2 border border-gray-100 hover:border-rose-200 transition-all">
-                        <input type="checkbox" ${item.selected ? 'checked' : ''} onchange="toggleReturnItem(${idx})" class="w-4 h-4 accent-rose-500" />
+                        <input type="checkbox" ${item.selected ? 'checked' : ''} 
+                               onchange="toggleReturnItem(${idx})" class="w-4 h-4 accent-rose-500" />
                         <div class="flex-1 min-w-0">
                             <p class="text-sm font-semibold truncate">${item.name}</p>
                             <p class="text-xs text-gray-500">Qty: ${item.quantity} × KSh ${item.price.toLocaleString()}</p>
@@ -1964,6 +2241,7 @@
                     </div>
                 `;
             });
+            
             container.innerHTML = html;
             document.getElementById('refundTotal').textContent = 'KSh ' + refundTotal.toLocaleString();
         }
@@ -1974,7 +2252,7 @@
         }
 
         // ============================================================
-        // PROCESS RETURN - FIXED FOR OFFLINE (NO FETCH WHEN OFFLINE)
+        // PROCESS RETURN - FIXED WITH CORRECT PRODUCT ID
         // ============================================================
         function processReturn() {
             const selectedItems = returnItems.filter(item => item.selected);
@@ -2025,14 +2303,14 @@
             btn.disabled = true;
             
             // ============================================================
-            // OFFLINE: Save return to IndexedDB ONLY - NO FETCH!
+            // OFFLINE: Save return to IndexedDB
             // ============================================================
             if (!navigator.onLine) {
                 console.log('📡 OFFLINE: Saving return to IndexedDB');
                 
                 saveReturnToIndexedDB(returnData)
                     .then(() => {
-                        // Update local stock (restock items)
+                        // Update local stock (restock items) using the corrected IDs
                         selectedItems.forEach((item, index) => {
                             const correctId = returnItemsWithCorrectIds[index].product_id;
                             if (correctId && correctId !== 'unknown' && correctId !== 'product_id_here') {
@@ -2058,7 +2336,7 @@
                         btn.innerHTML = originalText;
                         btn.disabled = false;
                     });
-                return; // <-- CRITICAL: Stops execution, NO FETCH!
+                return;
             }
             
             // ============================================================
@@ -2342,7 +2620,10 @@
         function renderHeldOrders() {
             const panel = document.getElementById('heldOrdersPanel');
             const list = document.getElementById('heldOrdersList');
-            if (heldOrders.length === 0) { panel.classList.add('hidden'); return; }
+            if (heldOrders.length === 0) {
+                panel.classList.add('hidden');
+                return;
+            }
             panel.classList.remove('hidden');
             let html = '';
             heldOrders.forEach((order, idx) => {
@@ -2394,6 +2675,7 @@
             const email = document.getElementById('custEmail')?.value.trim();
             const phone = document.getElementById('custPhone')?.value.trim();
             if (!name) { showToast('⚠️ Please enter a name', 'warning'); return; }
+            
             const select = document.getElementById('posCustomer');
             if (select) {
                 const existing = Array.from(select.options).some(opt => opt.value === name);
@@ -2435,33 +2717,44 @@
                 toast.classList.remove('hidden');
                 clearTimeout(window.toastTimeout);
                 window.toastTimeout = setTimeout(() => toast.classList.add('hidden'), 4000);
-            } else { console.log('🔔 Toast:', message, type); }
+            } else { 
+                console.log('🔔 Toast:', message, type);
+            }
         }
 
         // ============================================================
         // KEYBOARD SHORTCUTS
         // ============================================================
         document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                closeCustomerModal(); closeDiscountModal(); closeReturnModal();
-                closeBarcodeScanner(); closeBarcodeInputModal();
+            if (e.key === 'Escape') { 
+                closeCustomerModal(); 
+                closeDiscountModal(); 
+                closeReturnModal(); 
+                closeBarcodeScanner();
+                closeBarcodeInputModal();
             }
-            if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); placePOSOrder(); }
-            if (e.key === 'F1') { e.preventDefault(); document.getElementById('posSearch').focus(); }
-            if (e.key === 'F2') { e.preventDefault(); toggleCustomerModal(); }
-            if (e.key === 'F3') { e.preventDefault(); toggleDiscountModal(); }
-            if (e.key === 'F4') { e.preventDefault(); toggleReturnModal(); }
-            if (e.key === 'F5') { e.preventDefault(); holdOrder(); }
-            if (e.key === 'F6') { e.preventDefault(); manualSync(); }
-            if (e.key === 'F7') {
+            if (e.ctrlKey && e.key === 'Enter') { placePOSOrder(); e.preventDefault(); }
+            if (e.key === 'F1') { document.getElementById('posSearch').focus(); e.preventDefault(); }
+            if (e.key === 'F2') { toggleCustomerModal(); e.preventDefault(); }
+            if (e.key === 'F3') { toggleDiscountModal(); e.preventDefault(); }
+            if (e.key === 'F4') { toggleReturnModal(); e.preventDefault(); }
+            if (e.key === 'F5') { holdOrder(); e.preventDefault(); }
+            if (e.key === 'F6') { manualSync(); e.preventDefault(); }
+            if (e.key === 'F7') { 
                 e.preventDefault();
-                if (document.getElementById('barcodeModal').classList.contains('hidden')) openBarcodeScanner();
-                else closeBarcodeScanner();
+                if (document.getElementById('barcodeModal').classList.contains('hidden')) {
+                    openBarcodeScanner();
+                } else {
+                    closeBarcodeScanner();
+                }
             }
-            if (e.key === 'F8') {
+            if (e.key === 'F8') { 
                 e.preventDefault();
-                if (document.getElementById('barcodeInputModal').classList.contains('hidden')) openBarcodeInputModal();
-                else closeBarcodeInputModal();
+                if (document.getElementById('barcodeInputModal').classList.contains('hidden')) {
+                    openBarcodeInputModal();
+                } else {
+                    closeBarcodeInputModal();
+                }
             }
             if ((e.key === 'Delete' || e.key === 'Backspace') && document.activeElement.id !== 'posSearch') {
                 voidLastItem();
@@ -2479,25 +2772,32 @@
         function openBarcodeScanner() {
             const modal = document.getElementById('barcodeModal');
             modal.classList.remove('hidden');
+            
             document.getElementById('scannerResult').classList.add('hidden');
             document.getElementById('scannedValue').textContent = '';
+            
             const btn = document.getElementById('startScannerBtn');
             btn.style.display = 'block';
             btn.innerHTML = '▶️ Start Camera';
             btn.disabled = false;
+            
             if (html5QrCode) {
                 try {
-                    html5QrCode.stop().then(() => { html5QrCode.clear(); scannerStarted = false; }).catch(() => {});
+                    html5QrCode.stop().then(() => {
+                        html5QrCode.clear();
+                        scannerStarted = false;
+                    }).catch(() => {});
                 } catch(e) {}
             }
+            
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 showToast('⚠️ Camera not available on this device', 'warning');
                 btn.style.display = 'none';
                 document.getElementById('barcode-reader').innerHTML = `
                     <div class="text-center py-8 text-gray-400">
-                        <span style="font-size:2.5rem;display:block;margin-bottom:12px;">📷</span>
+                        <span style="font-size:2.5rem; display:block; margin-bottom:12px;">📷</span>
                         <p>Camera not available</p>
-                        <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="btn-primary mt-3" style="display:inline-block;padding:8px 20px;width:auto;background:linear-gradient(135deg,#f59e0b,#d97706);">
+                        <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="btn-primary mt-3" style="display:inline-block; padding: 8px 20px; width:auto; background: linear-gradient(135deg, #f59e0b, #d97706);">
                             ⌨️ Enter Manually
                         </button>
                     </div>
@@ -2508,9 +2808,13 @@
         function closeBarcodeScanner() {
             const modal = document.getElementById('barcodeModal');
             modal.classList.add('hidden');
+            
             if (html5QrCode && scannerStarted) {
                 try {
-                    html5QrCode.stop().then(() => { html5QrCode.clear(); scannerStarted = false; }).catch(() => {});
+                    html5QrCode.stop().then(() => {
+                        html5QrCode.clear();
+                        scannerStarted = false;
+                    }).catch(() => {});
                 } catch(e) {}
             }
             isScannerRunning = false;
@@ -2518,10 +2822,13 @@
 
         function startScanner() {
             if (isScannerRunning) return;
+            
             const btn = document.getElementById('startScannerBtn');
             btn.innerHTML = '⏳ Starting...';
             btn.disabled = true;
+            
             document.getElementById('barcode-reader').innerHTML = '';
+            
             const config = {
                 fps: 10,
                 qrbox: { width: 250, height: 250 },
@@ -2544,31 +2851,38 @@
                     Html5QrcodeSupportedFormats.RSS_EXPANDED
                 ]
             };
+            
             try {
                 html5QrCode = new Html5Qrcode("barcode-reader");
-                html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, onScanError)
-                    .then(() => {
-                        console.log('✅ Scanner started successfully');
-                        scannerStarted = true;
-                        isScannerRunning = true;
-                        btn.innerHTML = '⏸️ Scanning...';
-                        btn.disabled = false;
-                    }).catch(err => {
-                        console.error('❌ Scanner start error:', err);
-                        btn.innerHTML = '📷 Try Again';
-                        btn.disabled = false;
-                        showToast('⚠️ Could not access camera: ' + err.message, 'error');
-                        document.getElementById('barcode-reader').innerHTML = `
-                            <div class="text-center py-8 text-gray-400">
-                                <span style="font-size:2.5rem;display:block;margin-bottom:12px;">📷</span>
-                                <p>Camera not accessible</p>
-                                <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="btn-primary mt-3" style="display:inline-block;padding:8px 20px;width:auto;background:linear-gradient(135deg,#f59e0b,#d97706);">
-                                    ⌨️ Enter Manually
-                                </button>
-                            </div>
-                        `;
-                        btn.style.display = 'none';
-                    });
+                
+                html5QrCode.start(
+                    { facingMode: "environment" },
+                    config,
+                    onScanSuccess,
+                    onScanError
+                ).then(() => {
+                    console.log('✅ Scanner started successfully');
+                    scannerStarted = true;
+                    isScannerRunning = true;
+                    btn.innerHTML = '⏸️ Scanning...';
+                    btn.disabled = false;
+                }).catch(err => {
+                    console.error('❌ Scanner start error:', err);
+                    btn.innerHTML = '📷 Try Again';
+                    btn.disabled = false;
+                    showToast('⚠️ Could not access camera: ' + err.message, 'error');
+                    
+                    document.getElementById('barcode-reader').innerHTML = `
+                        <div class="text-center py-8 text-gray-400">
+                            <span style="font-size:2.5rem; display:block; margin-bottom:12px;">📷</span>
+                            <p>Camera not accessible</p>
+                            <button onclick="closeBarcodeScanner();openBarcodeInputModal();" class="btn-primary mt-3" style="display:inline-block; padding: 8px 20px; width:auto; background: linear-gradient(135deg, #f59e0b, #d97706);">
+                                ⌨️ Enter Manually
+                            </button>
+                        </div>
+                    `;
+                    btn.style.display = 'none';
+                });
             } catch(err) {
                 console.error('❌ Scanner init error:', err);
                 btn.innerHTML = '📷 Try Again';
@@ -2577,32 +2891,63 @@
             }
         }
 
-        function onScanSuccess(decodedText) {
-            console.log('📷 Scanned:', decodedText);
-            if (navigator.vibrate) navigator.vibrate(200);
-            document.getElementById('scannerResult').style.display = 'block';
+        function onScanSuccess(decodedText, decodedResult) {
+            console.log('📷 Barcode scanned:', decodedText);
+            
+            try {
+                if (navigator.vibrate) navigator.vibrate(200);
+            } catch(e) {}
+            
+            document.getElementById('scannerResult').classList.remove('hidden');
             document.getElementById('scannedValue').textContent = decodedText;
+            
             if (html5QrCode && scannerStarted) {
-                try { html5QrCode.pause(); isScannerRunning = false; document.getElementById('startScannerBtn').innerHTML = '▶️ Resume'; } catch(e) {}
+                try {
+                    html5QrCode.pause();
+                    isScannerRunning = false;
+                    document.getElementById('startScannerBtn').innerHTML = '▶️ Resume';
+                } catch(e) {}
             }
+            
             searchProductByBarcode(decodedText);
         }
 
-        function onScanError() {}
+        function onScanError(error) {
+            // Ignore - called frequently
+        }
 
         function searchProductByBarcode(barcode) {
-            const term = String(barcode).trim();
-            let product = allProducts.find(p => String(p.barcode || '').trim() === term);
-            if (!product) product = allProducts.find(p => String(p.id || '').trim() === term);
-            if (!product) product = allProducts.find(p => (p.name || '').toLowerCase().includes(term.toLowerCase()));
+            console.log('🔍 Searching for product with barcode:', barcode);
+            
+            const searchTerm = String(barcode).trim();
+            
+            let product = allProducts.find(p => {
+                const barcodeField = String(p.barcode || '').trim();
+                return barcodeField == searchTerm;
+            });
+            
+            if (!product) {
+                product = allProducts.find(p => {
+                    const id = String(p.id || '').trim();
+                    return id == searchTerm;
+                });
+            }
+            
+            if (!product) {
+                product = allProducts.find(p => {
+                    const name = String(p.name || '').toLowerCase();
+                    return name.includes(searchTerm.toLowerCase());
+                });
+            }
+            
             if (product) {
                 showToast(`✅ Found: ${product.name}`, 'success');
                 addToPOSCartByProduct(product);
                 setTimeout(closeBarcodeScanner, 1000);
             } else {
-                showToast(`❌ Product not found: ${barcode}`, 'error');
+                showToast(`❌ Product not found for: ${barcode}`, 'error');
                 setTimeout(() => {
-                    if (confirm(`Product not found for "${barcode}". Search by name?`)) {
+                    if (confirm(`Product not found for "${barcode}".\n\nSearch by name instead?`)) {
                         closeBarcodeScanner();
                         document.getElementById('posSearch').value = barcode;
                         searchProducts(barcode);
@@ -2614,10 +2959,22 @@
         function addToPOSCartByProduct(product) {
             const existing = posCart.find(item => item.id === product.id);
             if (existing) {
-                if (existing.quantity < product.stock) { existing.quantity++; showToast(`✅ Added another ${product.name} (${existing.quantity} total)`, 'success'); }
-                else { showToast(`⚠️ Not enough stock for ${product.name}`, 'warning'); }
+                if (existing.quantity < product.stock) {
+                    existing.quantity++;
+                    showToast(`✅ Added another ${product.name} (${existing.quantity} total)`, 'success');
+                } else {
+                    showToast(`⚠️ Not enough stock for ${product.name}`, 'warning');
+                }
             } else {
-                posCart.push({ id: product.id, name: product.name, price: product.price, image: product.image || '', stock: product.stock || 0, barcode: product.barcode || '', quantity: 1 });
+                posCart.push({
+                    id: product.id,
+                    name: product.name,
+                    price: product.price,
+                    image: product.image || '',
+                    stock: product.stock || 0,
+                    barcode: product.barcode || '',
+                    quantity: 1
+                });
                 showToast(`✅ Added: ${product.name}`, 'success');
             }
             updatePOSUI();
@@ -2625,7 +2982,9 @@
 
         function openBarcodeInputModal() {
             document.getElementById('barcodeInputModal').classList.remove('hidden');
-            setTimeout(() => document.getElementById('manualBarcode').focus(), 300);
+            setTimeout(() => {
+                document.getElementById('manualBarcode').focus();
+            }, 300);
         }
 
         function closeBarcodeInputModal() {
@@ -2635,7 +2994,10 @@
 
         function submitManualBarcode() {
             const barcode = document.getElementById('manualBarcode').value.trim();
-            if (!barcode) { showToast('⚠️ Enter a barcode', 'warning'); return; }
+            if (!barcode) {
+                showToast('⚠️ Please enter a barcode', 'warning');
+                return;
+            }
             closeBarcodeInputModal();
             searchProductByBarcode(barcode);
         }
@@ -2653,7 +3015,7 @@
             
             document.getElementById('posProductGrid').innerHTML = `
                 <div class="col-span-full search-hint">
-                    <span style="font-size:2rem;display:block;margin-bottom:8px;">🔍</span>
+                    <span style="font-size:2rem; display:block; margin-bottom:8px;">🔍</span>
                     <p>Search for products</p>
                     <p class="text-xs text-gray-400">${allProducts.length} products available</p>
                     <div class="shortcuts">⌨️ F1: Search | F2: Customer | F3: Discount | F4: Return | F5: Hold | F6: Sync | F7: Scan | F8: Manual Barcode | Ctrl+Enter: Checkout</div>
@@ -2664,7 +3026,9 @@
             loadSalesStats();
             loadUserStats();
             
-            setTimeout(function() { checkUnsyncedOrdersOnLoad(); }, 2000);
+            setTimeout(function() {
+                checkUnsyncedOrdersOnLoad();
+            }, 2000);
             
             console.log('📋 Products with barcodes:', allProducts.filter(p => p.barcode).length);
         });
