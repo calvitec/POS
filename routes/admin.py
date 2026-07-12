@@ -912,6 +912,7 @@ def api_sync_queue():
 
         synced = 0
         failed = 0
+        stock_errors = []
 
         for order in orders_to_sync:
             try:
@@ -971,6 +972,67 @@ def api_sync_queue():
                     if 'total' not in item:
                         item['total'] = float(item.get('price', 0)) * float(item.get('quantity', 1))
 
+                # ============================================================
+                # DEDUCT STOCK FOR THIS OFFLINE ORDER (was previously skipped!)
+                # ============================================================
+                print(f"📦 DEDUCTING STOCK FOR SYNCED ORDER: {order_id}")
+                
+                for item in order_data['items']:
+                    product_id = item.get('product_id')
+                    quantity = int(item.get('quantity', 1))
+
+                    if not product_id:
+                        print(f"⚠️ No product_id for item: {item.get('name')}")
+                        continue
+
+                    try:
+                        # Get current product from Supabase
+                        stock_response = requests.get(
+                            f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
+                            headers=Config.SUPABASE_HEADERS,
+                            timeout=10
+                        )
+                        
+                        if stock_response.status_code == 200:
+                            stock_products = stock_response.json()
+                            if stock_products and len(stock_products) > 0:
+                                product = stock_products[0]
+                                current_stock = product.get('stock', 0)
+                                new_stock = max(0, current_stock - quantity)
+                                
+                                print(f"📦 {product.get('name')}: {current_stock} → {new_stock}")
+                                
+                                # Update stock in Supabase
+                                update_response = requests.patch(
+                                    f"{Config.SUPABASE_URL}/rest/v1/products?id=eq.{product_id}",
+                                    headers=Config.SUPABASE_HEADERS,
+                                    json={'stock': new_stock},
+                                    timeout=10
+                                )
+                                
+                                if update_response.status_code in [200, 204]:
+                                    print(f"✅ Stock updated for sync: {product.get('name')}")
+                                else:
+                                    print(f"❌ Failed to update stock during sync: {update_response.status_code}")
+                                    stock_errors.append({
+                                        'product': product.get('name'),
+                                        'error': f'HTTP {update_response.status_code}'
+                                    })
+                            else:
+                                print(f"⚠️ Product not found for stock deduction: {product_id}")
+                        else:
+                            print(f"❌ Failed to fetch product for stock deduction: {product_id} - {stock_response.status_code}")
+                            
+                    except Exception as e:
+                        print(f"❌ Stock deduction error during sync for {product_id}: {e}")
+                        stock_errors.append({
+                            'product': item.get('name'),
+                            'error': str(e)
+                        })
+
+                # ============================================================
+                # SAVE ORDER TO SUPABASE
+                # ============================================================
                 response = requests.post(
                     f"{Config.SUPABASE_URL}/rest/v1/orders",
                     headers=Config.SUPABASE_HEADERS,
@@ -983,20 +1045,32 @@ def api_sync_queue():
                     synced += 1
                 else:
                     print(f"❌ Failed to sync: {order_id} - {response.status_code}")
+                    print(f"Response: {response.text[:200]}")
                     failed += 1
 
             except Exception as e:
                 failed += 1
                 print(f"❌ Sync error for {order.get('order_id', 'unknown')}: {e}")
+                traceback.print_exc()
 
+        # Clear caches after successful sync
         if synced > 0:
             import utils.data
             utils.data.orders_cache = []
+            utils.data.products_cache = []  # Also clear products cache to reflect stock updates
+
+        # Log summary
+        print(f"📊 Sync summary: {synced} synced, {failed} failed")
+        if stock_errors:
+            print(f"⚠️ Stock errors: {len(stock_errors)}")
+            for err in stock_errors:
+                print(f"  - {err}")
 
         return jsonify({
             'success': True,
             'synced': synced,
             'failed': failed,
+            'stock_errors': stock_errors,
             'message': f"Synced {synced} orders, {failed} failed"
         })
 
