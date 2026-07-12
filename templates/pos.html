@@ -427,7 +427,6 @@
         .btn-gradient.amber { background: linear-gradient(135deg, #f59e0b, #d97706); }
         .btn-gradient.rose { background: linear-gradient(135deg, #ef4444, #dc2626); }
         .btn-gradient.indigo { background: linear-gradient(135deg, #4f46e5, #6366f1); }
-        .btn-gradient.sync { background: linear-gradient(135deg, #2563eb, #4f46e5); }
 
         .glass-card {
             background: white;
@@ -650,7 +649,6 @@
                 <p class="text-gray-400 text-xs">Search, scan, or browse to add items</p>
             </div>
             <div class="flex gap-2 flex-wrap">
-                <!-- Removed the duplicate Sync button from here -->
                 <button class="btn-gradient" onclick="toggleCustomerModal()">
                     <i class="fas fa-user-plus"></i> Customer
                 </button>
@@ -1218,14 +1216,21 @@
         // PERFORM AUTO SYNC - MAIN SYNC FUNCTION
         // ============================================================
         async function performAutoSync() {
-            // Don't sync if already syncing or offline
+            // Don't sync if already syncing
             if (isSyncing) {
                 console.log('⏳ Sync already in progress...');
                 return;
             }
             
+            // Don't sync if offline - just update the count
             if (!navigator.onLine) {
                 console.log('📡 Offline - will sync when online');
+                try {
+                    const unsynced = await getUnsyncedOrders();
+                    updateUnsyncedCount(unsynced.length);
+                } catch (e) {
+                    console.error('Error checking unsynced:', e);
+                }
                 return;
             }
             
@@ -1291,6 +1296,11 @@
                 
                 console.log('📤 Sending to sync endpoint...');
                 
+                // Only attempt fetch if online
+                if (!navigator.onLine) {
+                    throw new Error('Offline - cannot sync');
+                }
+                
                 const response = await fetch('/admin/api/sync-queue', {
                     method: 'POST',
                     headers: { 
@@ -1299,6 +1309,10 @@
                     },
                     body: JSON.stringify({ orders: cleanOrders })
                 });
+                
+                if (!response.ok) {
+                    throw new Error('Server error: ' + response.status);
+                }
                 
                 const data = await response.json();
                 console.log('✅ Sync result:', data);
@@ -1333,8 +1347,18 @@
                 
             } catch (error) {
                 console.error('❌ Sync error:', error);
-                // Don't show alert, just show toast
-                showToast('❌ Sync failed: ' + error.message, 'error');
+                
+                // Don't show "Failed to fetch" error toast when offline
+                // Only show network errors when we're actually online
+                if (navigator.onLine) {
+                    // Only show error toast if online (meaning it's a real server error)
+                    if (error.message && !error.message.includes('Offline')) {
+                        showToast('❌ Sync failed: ' + error.message, 'error');
+                    }
+                } else {
+                    // If offline, just show a quiet message in console
+                    console.log('📡 Offline - sync will happen when online');
+                }
                 
                 // Check remaining unsynced
                 try {
@@ -1386,7 +1410,7 @@
                 statusEl.style.animation = 'pulse-badge 2s infinite';
                 statusEl.title = count + ' offline orders waiting to sync';
                 
-                // Auto-sync if online
+                // Auto-sync if online and not already syncing
                 if (navigator.onLine && !isSyncing) {
                     setTimeout(performAutoSync, 2000);
                 }
@@ -1437,6 +1461,8 @@
         // LOAD USER STATS
         // ============================================================
         function loadUserStats() {
+            if (!navigator.onLine) return;
+            
             fetch('/admin/api/user-stats')
                 .then(r => r.json())
                 .then(data => {
@@ -1455,6 +1481,8 @@
         // LOAD SALES STATS
         // ============================================================
         function loadSalesStats() {
+            if (!navigator.onLine) return;
+            
             fetch('/admin/api/sales-stats')
                 .then(r => r.json())
                 .then(data => {
