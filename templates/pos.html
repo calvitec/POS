@@ -477,7 +477,7 @@
 
         .quick-actions {
             display: grid;
-            grid-template-columns: repeat(7, 1fr);
+            grid-template-columns: repeat(6, 1fr);
             gap: 5px;
             margin-bottom: 10px;
         }
@@ -495,8 +495,6 @@
         }
         .quick-action-btn:hover { background: #ecfdf5; border-color: #059669; color: #059669; transform: translateY(-2px); }
         .quick-action-btn i { display: block; font-size: 0.9rem; margin-bottom: 2px; }
-        .quick-action-btn.sync-btn { background: #dbeafe; border-color: #2563eb; color: #2563eb; }
-        .quick-action-btn.sync-btn:hover { background: #2563eb; color: white; }
 
         .held-orders-panel {
             background: white;
@@ -545,7 +543,7 @@
             .stats-bar { grid-template-columns: repeat(2, 1fr); padding: 10px 16px; }
             .pos-header { padding: 8px 16px; }
             .pos-header .brand { font-size: 1rem; }
-            .quick-actions { grid-template-columns: repeat(4, 1fr); }
+            .quick-actions { grid-template-columns: repeat(3, 1fr); }
             .product-pos-card .stock-count { font-size: 0.5rem; }
             .pos-header .brand .user-tag { font-size: 0.5rem; margin-left: 4px; padding-left: 4px; }
             .pos-header .brand .user-tag .role { display: none; }
@@ -580,7 +578,7 @@
         </div>
         <div class="header-actions">
             <span class="time"><i class="far fa-clock"></i> <span id="clockDisplay"></span></span>
-            <!-- Sync Status -->
+            <!-- Sync Status - Only ONE sync button here -->
             <span id="syncStatus" onclick="manualSync()">
                 <i class="fas fa-cloud-upload-alt sync-icon"></i>
                 <i class="fas fa-spinner sync-spinner"></i>
@@ -652,9 +650,7 @@
                 <p class="text-gray-400 text-xs">Search, scan, or browse to add items</p>
             </div>
             <div class="flex gap-2 flex-wrap">
-                <button class="btn-gradient sync" onclick="manualSync()">
-                    <i class="fas fa-cloud-upload-alt"></i> Sync
-                </button>
+                <!-- Removed the duplicate Sync button from here -->
                 <button class="btn-gradient" onclick="toggleCustomerModal()">
                     <i class="fas fa-user-plus"></i> Customer
                 </button>
@@ -682,15 +678,13 @@
                 <i class="fas fa-percent"></i> Discount
             </div>
             <div class="quick-action-btn" onclick="voidLastItem()">
-                <i class="fas fa-undo"></i> Void Last            </div>
+                <i class="fas fa-undo"></i> Void Last
+            </div>
             <div class="quick-action-btn" onclick="toggleReturnModal()">
                 <i class="fas fa-undo-alt"></i> Return
             </div>
             <div class="quick-action-btn" onclick="holdOrder()">
                 <i class="fas fa-pause"></i> Hold
-            </div>
-            <div class="quick-action-btn sync-btn" onclick="manualSync()">
-                <i class="fas fa-cloud-upload-alt"></i> Sync
             </div>
         </div>
 
@@ -1329,6 +1323,7 @@
                     if (data.failed > 0) {
                         console.log(`❌ ${data.failed} orders failed`);
                     }
+                    // Show toast but don't alert
                     showToast(`⚠️ ${data.failed || 0} orders failed to sync`, 'warning');
                     
                     // Check remaining unsynced
@@ -1338,6 +1333,7 @@
                 
             } catch (error) {
                 console.error('❌ Sync error:', error);
+                // Don't show alert, just show toast
                 showToast('❌ Sync failed: ' + error.message, 'error');
                 
                 // Check remaining unsynced
@@ -1402,7 +1398,7 @@
         }
 
         // ============================================================
-        // MANUAL SYNC
+        // MANUAL SYNC - Only called from the sync status button
         // ============================================================
         function manualSync() {
             if (!navigator.onLine) {
@@ -2142,7 +2138,10 @@
                 toast.classList.remove('hidden');
                 clearTimeout(window.toastTimeout);
                 window.toastTimeout = setTimeout(() => toast.classList.add('hidden'), 4000);
-            } else { alert(message); }
+            } else { 
+                // Fallback - just log to console instead of alert
+                console.log('🔔 Toast:', message, type);
+            }
         }
 
         // ============================================================
