@@ -1250,7 +1250,39 @@
         }
 
         // ============================================================
-        // SAVE RETURN TO INDEXEDDB (OFFLINE SUPPORT)
+        // GET CORRECT PRODUCT ID - HELPER FUNCTION
+        // ============================================================
+        function getCorrectProductId(item) {
+            // Try multiple sources for the product ID
+            let productId = item.id || item.product_id || '';
+            
+            // If the ID is a placeholder or empty, try to find it from allProducts by name
+            if (!productId || productId === 'product_id_here' || productId === 'unknown' || productId === '') {
+                // First try exact name match
+                let found = allProducts.find(p => p.name === item.name);
+                if (!found) {
+                    // Try case-insensitive match
+                    found = allProducts.find(p => p.name.toLowerCase() === item.name.toLowerCase());
+                }
+                if (!found) {
+                    // Try partial match
+                    found = allProducts.find(p => p.name.toLowerCase().includes(item.name.toLowerCase()) || 
+                                                item.name.toLowerCase().includes(p.name.toLowerCase()));
+                }
+                if (found) {
+                    productId = found.id;
+                    console.log(`🔍 Found product ID for "${item.name}": ${productId}`);
+                } else {
+                    console.warn(`⚠️ Could not find product ID for "${item.name}"`);
+                    productId = '';
+                }
+            }
+            
+            return productId;
+        }
+
+        // ============================================================
+        // SAVE RETURN TO INDEXEDDB - FIXED
         // ============================================================
         function saveReturnToIndexedDB(returnData) {
             return new Promise(async (resolve, reject) => {
@@ -1259,39 +1291,59 @@
                     const transaction = db.transaction('orders', 'readwrite');
                     const store = transaction.objectStore('orders');
                     
+                    // Fix: Ensure items have proper product_id
+                    const items = returnData.items.map(item => {
+                        // Get the correct product ID
+                        let productId = item.product_id || item.id || '';
+                        
+                        // If no valid ID, try to find it
+                        if (!productId || productId === 'product_id_here' || productId === 'unknown' || productId === '') {
+                            const found = allProducts.find(p => p.name === item.name);
+                            if (found) {
+                                productId = found.id;
+                            } else {
+                                productId = 'unknown';
+                            }
+                        }
+                        
+                        return {
+                            product_id: productId,
+                            name: item.name || 'Product',
+                            price: Number(item.price) || 0,
+                            quantity: Number(item.quantity) || 1,
+                            total: (Number(item.price) || 0) * (Number(item.quantity) || 1),
+                            barcode: item.barcode || ''
+                        };
+                    });
+                    
                     const returnOrder = {
                         order_id: returnData.return_order_id,
-                        items: returnData.items.map(item => ({
-                            product_id: item.product_id,
-                            name: item.name,
-                            price: item.price,
-                            quantity: item.quantity,
-                            total: item.price * item.quantity,
-                            barcode: item.barcode || ''
-                        })),
-                        subtotal: returnData.refund_total,
+                        items: items,
+                        subtotal: returnData.refund_total || 0,
                         shipping: 0,
-                        total: -returnData.refund_total,
+                        total: -(returnData.refund_total || 0),
                         status: 'returned',
                         source: 'pos',
                         created_at: new Date().toISOString(),
-                        customer_name: returnData.customer_name,
+                        customer_name: returnData.customer_name || 'Customer',
                         customer_email: 'return@example.com',
                         customer_phone: 'N/A',
                         customer_address: 'Return',
                         customer: {
-                            name: returnData.customer_name,
+                            name: returnData.customer_name || 'Customer',
                             email: 'return@example.com',
                             phone: 'N/A',
                             address: 'Return'
                         },
-                        return_reason: returnData.reason,
-                        return_amount: returnData.refund_total,
+                        return_reason: returnData.reason || 'Customer return',
+                        return_amount: returnData.refund_total || 0,
                         synced: false,
                         synced_at: null,
                         is_return: true,
                         original_items: returnData.original_items || []
                     };
+                    
+                    console.log('📦 Saving return to IndexedDB:', returnOrder);
                     
                     const request = store.put(returnOrder);
                     
@@ -1311,228 +1363,228 @@
         }
 
         // ============================================================
-// PERFORM AUTO SYNC - COMPLETE FIX FOR RETURNS
-// ============================================================
-async function performAutoSync() {
-    if (isSyncing) {
-        console.log('⏳ Sync already in progress...');
-        return;
-    }
-    
-    if (!navigator.onLine) {
-        console.log('📡 Offline - will sync when online');
-        try {
-            const unsynced = await getUnsyncedOrders();
-            updateUnsyncedCount(unsynced.length);
-        } catch (e) {
-            console.error('Error checking unsynced:', e);
-        }
-        return;
-    }
-    
-    try {
-        isSyncing = true;
-        updateSyncStatusUI(true);
-        
-        console.log('🔄 Starting auto-sync...');
-        showToast('🔄 Syncing offline orders and returns...', 'info');
-        
+        // PERFORM AUTO SYNC - COMPLETE FIX FOR RETURNS
         // ============================================================
-        // GET UNSYNCED ORDERS AND RETURNS
-        // ============================================================
-        const unsynced = await getUnsyncedOrders();
-        
-        // Separate returns from orders
-        const unsyncedReturns = unsynced.filter(o => o.is_return === true);
-        const unsyncedOrders = unsynced.filter(o => o.is_return !== true);
-        
-        const totalUnsynced = unsynced.length;
-        
-        if (totalUnsynced === 0) {
-            console.log('✅ No offline items to sync');
-            showToast('✅ No offline items to sync', 'success');
-            updateSyncStatusUI(false);
-            updateUnsyncedCount(0);
-            isSyncing = false;
-            return;
-        }
-        
-        console.log(`📦 Found ${totalUnsynced} offline item(s) to sync`);
-        console.log(`   📄 Orders: ${unsyncedOrders.length}`);
-        console.log(`   🔄 Returns: ${unsyncedReturns.length}`);
-        
-        // ============================================================
-        // SYNC RETURNS FIRST (using /admin/api/process-return)
-        // ============================================================
-        let returnsSynced = 0;
-        let returnsFailed = 0;
-        
-        for (const ret of unsyncedReturns) {
-            console.log(`\n🔄 Syncing return: ${ret.order_id}`);
-            console.log(`   Total: ${ret.total}`);
-            console.log(`   Items: ${ret.items?.length || 0}`);
+        async function performAutoSync() {
+            if (isSyncing) {
+                console.log('⏳ Sync already in progress...');
+                return;
+            }
+            
+            if (!navigator.onLine) {
+                console.log('📡 Offline - will sync when online');
+                try {
+                    const unsynced = await getUnsyncedOrders();
+                    updateUnsyncedCount(unsynced.length);
+                } catch (e) {
+                    console.error('Error checking unsynced:', e);
+                }
+                return;
+            }
             
             try {
-                // Prepare return data for API
-                const returnData = {
-                    items: ret.items || [],
-                    refund_total: Math.abs(ret.total || 0),
-                    customer_name: ret.customer_name || 'Customer',
-                    reason: ret.return_reason || 'Customer return',
-                    return_order_id: ret.order_id
-                };
+                isSyncing = true;
+                updateSyncStatusUI(true);
                 
-                console.log('   📤 Sending to /admin/api/process-return...');
+                console.log('🔄 Starting auto-sync...');
+                showToast('🔄 Syncing offline orders and returns...', 'info');
                 
-                const response = await fetch('/admin/api/process-return', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify(returnData)
-                });
+                // ============================================================
+                // GET UNSYNCED ORDERS AND RETURNS
+                // ============================================================
+                const unsynced = await getUnsyncedOrders();
                 
-                const data = await response.json();
-                console.log('   📡 Response:', data);
+                // Separate returns from orders
+                const unsyncedReturns = unsynced.filter(o => o.is_return === true);
+                const unsyncedOrders = unsynced.filter(o => o.is_return !== true);
                 
-                if (data.success) {
-                    // Mark return as synced in IndexedDB
-                    await markOrdersSynced([ret.order_id]);
-                    returnsSynced++;
-                    console.log(`   ✅ Return synced: ${ret.order_id}`);
-                } else {
-                    returnsFailed++;
-                    console.log(`   ❌ Return sync failed: ${ret.order_id} - ${data.message}`);
+                const totalUnsynced = unsynced.length;
+                
+                if (totalUnsynced === 0) {
+                    console.log('✅ No offline items to sync');
+                    showToast('✅ No offline items to sync', 'success');
+                    updateSyncStatusUI(false);
+                    updateUnsyncedCount(0);
+                    isSyncing = false;
+                    return;
                 }
-            } catch (e) {
-                returnsFailed++;
-                console.log(`   ❌ Return sync error: ${ret.order_id} - ${e.message}`);
-            }
-        }
-        
-        // ============================================================
-        // SYNC ORDERS (using /admin/api/sync-queue)
-        // ============================================================
-        let ordersSynced = 0;
-        let ordersFailed = 0;
-        
-        if (unsyncedOrders.length > 0) {
-            console.log(`\n📦 Syncing ${unsyncedOrders.length} orders...`);
-            
-            const cleanOrders = unsyncedOrders.map(order => ({
-                order_id: order.order_id,
-                items: Array.isArray(order.items) ? order.items.map(item => ({
-                    product_id: item.product_id || item.id || 'unknown',
-                    name: item.name || 'Product',
-                    price: Number(item.price) || 0,
-                    quantity: Number(item.quantity) || 1,
-                    total: Number(item.total) || (Number(item.price) || 0) * (Number(item.quantity) || 1),
-                    type: item.type || 'product',
-                    barcode: item.barcode || ''
-                })) : [],
-                subtotal: Number(order.subtotal) || Number(order.total) || 0,
-                shipping: Number(order.shipping) || 0,
-                total: Number(order.total) || 0,
-                status: order.status || 'confirmed',
-                source: order.source || 'pos',
-                created_at: order.created_at || new Date().toISOString(),
-                customer_name: order.customer_name || 'Walk-in Customer',
-                customer_email: order.customer_email || 'walkin@example.com',
-                customer_phone: order.customer_phone || 'N/A',
-                customer_address: order.customer_address || 'In-store purchase',
-                customer: order.customer || {
-                    name: order.customer_name || 'Walk-in Customer',
-                    email: order.customer_email || 'walkin@example.com',
-                    phone: order.customer_phone || 'N/A',
-                    address: order.customer_address || 'In-store purchase'
-                },
-                user_id: order.user_id || 'unknown',
-                user_name: order.user_name || 'Unknown User',
-                user_role: order.user_role || 'user',
-                staff_name: order.staff_name || order.user_name || 'Unknown User'
-            }));
-            
-            console.log('   📤 Sending orders to /admin/api/sync-queue...');
-            
-            try {
-                const response = await fetch('/admin/api/sync-queue', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ orders: cleanOrders })
-                });
                 
-                const data = await response.json();
-                console.log('   📡 Response:', data);
+                console.log(`📦 Found ${totalUnsynced} offline item(s) to sync`);
+                console.log(`   📄 Orders: ${unsyncedOrders.length}`);
+                console.log(`   🔄 Returns: ${unsyncedReturns.length}`);
                 
-                if (data.synced > 0) {
-                    const orderIds = unsyncedOrders.map(o => o.order_id);
-                    await markOrdersSynced(orderIds);
-                    ordersSynced = data.synced;
-                    ordersFailed = data.failed || 0;
-                    console.log(`   ✅ ${ordersSynced} orders synced`);
-                } else {
-                    ordersFailed = unsyncedOrders.length;
-                    console.log(`   ❌ No orders were synced`);
+                // ============================================================
+                // SYNC RETURNS FIRST (using /admin/api/process-return)
+                // ============================================================
+                let returnsSynced = 0;
+                let returnsFailed = 0;
+                
+                for (const ret of unsyncedReturns) {
+                    console.log(`\n🔄 Syncing return: ${ret.order_id}`);
+                    console.log(`   Total: ${ret.total}`);
+                    console.log(`   Items: ${ret.items?.length || 0}`);
+                    
+                    try {
+                        // Prepare return data for API
+                        const returnData = {
+                            items: ret.items || [],
+                            refund_total: Math.abs(ret.total || 0),
+                            customer_name: ret.customer_name || 'Customer',
+                            reason: ret.return_reason || 'Customer return',
+                            return_order_id: ret.order_id
+                        };
+                        
+                        console.log('   📤 Sending to /admin/api/process-return...');
+                        
+                        const response = await fetch('/admin/api/process-return', {
+                            method: 'POST',
+                            headers: { 
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify(returnData)
+                        });
+                        
+                        const data = await response.json();
+                        console.log('   📡 Response:', data);
+                        
+                        if (data.success) {
+                            // Mark return as synced in IndexedDB
+                            await markOrdersSynced([ret.order_id]);
+                            returnsSynced++;
+                            console.log(`   ✅ Return synced: ${ret.order_id}`);
+                        } else {
+                            returnsFailed++;
+                            console.log(`   ❌ Return sync failed: ${ret.order_id} - ${data.message}`);
+                        }
+                    } catch (e) {
+                        returnsFailed++;
+                        console.log(`   ❌ Return sync error: ${ret.order_id} - ${e.message}`);
+                    }
                 }
-            } catch (e) {
-                ordersFailed = unsyncedOrders.length;
-                console.log(`   ❌ Order sync error: ${e.message}`);
+                
+                // ============================================================
+                // SYNC ORDERS (using /admin/api/sync-queue)
+                // ============================================================
+                let ordersSynced = 0;
+                let ordersFailed = 0;
+                
+                if (unsyncedOrders.length > 0) {
+                    console.log(`\n📦 Syncing ${unsyncedOrders.length} orders...`);
+                    
+                    const cleanOrders = unsyncedOrders.map(order => ({
+                        order_id: order.order_id,
+                        items: Array.isArray(order.items) ? order.items.map(item => ({
+                            product_id: item.product_id || item.id || 'unknown',
+                            name: item.name || 'Product',
+                            price: Number(item.price) || 0,
+                            quantity: Number(item.quantity) || 1,
+                            total: Number(item.total) || (Number(item.price) || 0) * (Number(item.quantity) || 1),
+                            type: item.type || 'product',
+                            barcode: item.barcode || ''
+                        })) : [],
+                        subtotal: Number(order.subtotal) || Number(order.total) || 0,
+                        shipping: Number(order.shipping) || 0,
+                        total: Number(order.total) || 0,
+                        status: order.status || 'confirmed',
+                        source: order.source || 'pos',
+                        created_at: order.created_at || new Date().toISOString(),
+                        customer_name: order.customer_name || 'Walk-in Customer',
+                        customer_email: order.customer_email || 'walkin@example.com',
+                        customer_phone: order.customer_phone || 'N/A',
+                        customer_address: order.customer_address || 'In-store purchase',
+                        customer: order.customer || {
+                            name: order.customer_name || 'Walk-in Customer',
+                            email: order.customer_email || 'walkin@example.com',
+                            phone: order.customer_phone || 'N/A',
+                            address: order.customer_address || 'In-store purchase'
+                        },
+                        user_id: order.user_id || 'unknown',
+                        user_name: order.user_name || 'Unknown User',
+                        user_role: order.user_role || 'user',
+                        staff_name: order.staff_name || order.user_name || 'Unknown User'
+                    }));
+                    
+                    console.log('   📤 Sending orders to /admin/api/sync-queue...');
+                    
+                    try {
+                        const response = await fetch('/admin/api/sync-queue', {
+                            method: 'POST',
+                            headers: { 
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify({ orders: cleanOrders })
+                        });
+                        
+                        const data = await response.json();
+                        console.log('   📡 Response:', data);
+                        
+                        if (data.synced > 0) {
+                            const orderIds = unsyncedOrders.map(o => o.order_id);
+                            await markOrdersSynced(orderIds);
+                            ordersSynced = data.synced;
+                            ordersFailed = data.failed || 0;
+                            console.log(`   ✅ ${ordersSynced} orders synced`);
+                        } else {
+                            ordersFailed = unsyncedOrders.length;
+                            console.log(`   ❌ No orders were synced`);
+                        }
+                    } catch (e) {
+                        ordersFailed = unsyncedOrders.length;
+                        console.log(`   ❌ Order sync error: ${e.message}`);
+                    }
+                }
+                
+                // ============================================================
+                // SUMMARY
+                // ============================================================
+                const totalSynced = ordersSynced + returnsSynced;
+                const totalFailed = ordersFailed + returnsFailed;
+                
+                console.log(`\n📊 SYNC SUMMARY:`);
+                console.log(`   ✅ Synced: ${totalSynced} items (${ordersSynced} orders, ${returnsSynced} returns)`);
+                console.log(`   ❌ Failed: ${totalFailed} items`);
+                
+                if (totalSynced > 0) {
+                    showToast(`✅ ${totalSynced} items synced! (${ordersSynced} orders, ${returnsSynced} returns)`, 'success');
+                    
+                    // Refresh data
+                    loadUserStats();
+                    loadSalesStats();
+                    renderProducts();
+                    
+                    // Check if any remain
+                    const remaining = await getUnsyncedOrders();
+                    updateUnsyncedCount(remaining.length);
+                } else {
+                    showToast(`⚠️ ${totalFailed} items failed to sync`, 'warning');
+                    const remaining = await getUnsyncedOrders();
+                    updateUnsyncedCount(remaining.length);
+                }
+                
+            } catch (error) {
+                console.error('❌ Sync error:', error);
+                
+                if (navigator.onLine) {
+                    if (error.message && !error.message.includes('Offline')) {
+                        showToast('❌ Sync failed: ' + error.message, 'error');
+                    }
+                } else {
+                    console.log('📡 Offline - sync will happen when online');
+                }
+                
+                try {
+                    const remaining = await getUnsyncedOrders();
+                    updateUnsyncedCount(remaining.length);
+                } catch (e) {
+                    console.error('Error checking remaining:', e);
+                }
+            } finally {
+                isSyncing = false;
+                updateSyncStatusUI(false);
             }
         }
-        
-        // ============================================================
-        // SUMMARY
-        // ============================================================
-        const totalSynced = ordersSynced + returnsSynced;
-        const totalFailed = ordersFailed + returnsFailed;
-        
-        console.log(`\n📊 SYNC SUMMARY:`);
-        console.log(`   ✅ Synced: ${totalSynced} items (${ordersSynced} orders, ${returnsSynced} returns)`);
-        console.log(`   ❌ Failed: ${totalFailed} items`);
-        
-        if (totalSynced > 0) {
-            showToast(`✅ ${totalSynced} items synced! (${ordersSynced} orders, ${returnsSynced} returns)`, 'success');
-            
-            // Refresh data
-            loadUserStats();
-            loadSalesStats();
-            renderProducts();
-            
-            // Check if any remain
-            const remaining = await getUnsyncedOrders();
-            updateUnsyncedCount(remaining.length);
-        } else {
-            showToast(`⚠️ ${totalFailed} items failed to sync`, 'warning');
-            const remaining = await getUnsyncedOrders();
-            updateUnsyncedCount(remaining.length);
-        }
-        
-    } catch (error) {
-        console.error('❌ Sync error:', error);
-        
-        if (navigator.onLine) {
-            if (error.message && !error.message.includes('Offline')) {
-                showToast('❌ Sync failed: ' + error.message, 'error');
-            }
-        } else {
-            console.log('📡 Offline - sync will happen when online');
-        }
-        
-        try {
-            const remaining = await getUnsyncedOrders();
-            updateUnsyncedCount(remaining.length);
-        } catch (e) {
-            console.error('Error checking remaining:', e);
-        }
-    } finally {
-        isSyncing = false;
-        updateSyncStatusUI(false);
-    }
-}
 
         // ============================================================
         // SYNC UI UPDATES
@@ -1927,7 +1979,7 @@ async function performAutoSync() {
         }
 
         // ============================================================
-        // RETURNS - UPDATED WITH OFFLINE SUPPORT
+        // RETURNS - UPDATED WITH OFFLINE SUPPORT AND FIXED PRODUCT ID
         // ============================================================
         function toggleReturnModal() {
             const modal = document.getElementById('returnModal');
@@ -1987,6 +2039,9 @@ async function performAutoSync() {
             renderReturnItems();
         }
 
+        // ============================================================
+        // PROCESS RETURN - FIXED WITH CORRECT PRODUCT ID
+        // ============================================================
         function processReturn() {
             const selectedItems = returnItems.filter(item => item.selected);
             if (selectedItems.length === 0) {
@@ -1999,26 +2054,36 @@ async function performAutoSync() {
             
             if (!confirm(`Process return for ${selectedItems.length} item(s) totaling KSh ${refundTotal.toLocaleString()}?`)) return;
             
-            const returnData = {
-                items: selectedItems.map(item => ({
-                    product_id: item.id,
+            // ============================================================
+            // FIX: Build return data with correct product IDs
+            // ============================================================
+            const returnItemsWithCorrectIds = selectedItems.map(item => {
+                const productId = getCorrectProductId(item);
+                return {
+                    product_id: productId || 'unknown',
                     name: item.name,
                     price: item.price,
                     quantity: item.quantity,
                     barcode: item.barcode || ''
-                })),
+                };
+            });
+            
+            const returnData = {
+                items: returnItemsWithCorrectIds,
                 refund_total: refundTotal,
                 customer_name: customerName,
                 reason: 'Customer return',
                 return_order_id: 'RET-' + Date.now().toString(36).toUpperCase(),
                 original_items: selectedItems.map(item => ({
-                    id: item.id,
+                    id: item.id || item.product_id || '',
                     name: item.name,
                     price: item.price,
                     quantity: item.quantity,
                     stock: item.stock || 0
                 }))
             };
+            
+            console.log('📋 Return data with corrected IDs:', returnData);
             
             const btn = document.querySelector('#returnModal .btn-primary');
             const originalText = btn.innerHTML;
@@ -2033,14 +2098,17 @@ async function performAutoSync() {
                 
                 saveReturnToIndexedDB(returnData)
                     .then(() => {
-                        // Update local stock (restock items)
-                        selectedItems.forEach(item => {
-                            updateLocalProductStock(item.id, -item.quantity);
+                        // Update local stock (restock items) using the corrected IDs
+                        selectedItems.forEach((item, index) => {
+                            const correctId = returnItemsWithCorrectIds[index].product_id;
+                            if (correctId && correctId !== 'unknown' && correctId !== 'product_id_here') {
+                                updateLocalProductStock(correctId, -item.quantity);
+                            }
                         });
                         
                         // Remove returned items from cart
-                        const idsToRemove = selectedItems.map(item => item.id);
-                        posCart = posCart.filter(item => !idsToRemove.includes(item.id));
+                        const idsToRemove = selectedItems.map(item => item.id || item.product_id);
+                        posCart = posCart.filter(cartItem => !idsToRemove.includes(cartItem.id) && !idsToRemove.includes(cartItem.product_id));
                         closeReturnModal();
                         updatePOSUI();
                         loadSalesStats();
@@ -2064,17 +2132,23 @@ async function performAutoSync() {
             // ============================================================
             console.log('📡 ONLINE: Processing return');
             
+            // Use the corrected product IDs for the API
+            const apiItems = selectedItems.map((item, index) => {
+                const productId = returnItemsWithCorrectIds[index].product_id;
+                return {
+                    id: productId || 'unknown',
+                    name: item.name,
+                    price: item.price,
+                    quantity: item.quantity,
+                    barcode: item.barcode || ''
+                };
+            });
+            
             fetch('/admin/api/process-return', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
                 body: JSON.stringify({
-                    items: selectedItems.map(item => ({
-                        id: item.id,
-                        name: item.name,
-                        price: item.price,
-                        quantity: item.quantity,
-                        barcode: item.barcode || ''
-                    })),
+                    items: apiItems,
                     refund_total: refundTotal,
                     customer_name: customerName,
                     reason: 'Customer return',
@@ -2088,12 +2162,15 @@ async function performAutoSync() {
             .then(data => {
                 if (data.success) {
                     // Update local stock (restock items)
-                    selectedItems.forEach(item => {
-                        updateLocalProductStock(item.id, -item.quantity);
+                    selectedItems.forEach((item, index) => {
+                        const correctId = returnItemsWithCorrectIds[index].product_id;
+                        if (correctId && correctId !== 'unknown' && correctId !== 'product_id_here') {
+                            updateLocalProductStock(correctId, -item.quantity);
+                        }
                     });
                     
-                    const idsToRemove = selectedItems.map(item => item.id);
-                    posCart = posCart.filter(item => !idsToRemove.includes(item.id));
+                    const idsToRemove = selectedItems.map(item => item.id || item.product_id);
+                    posCart = posCart.filter(cartItem => !idsToRemove.includes(cartItem.id) && !idsToRemove.includes(cartItem.product_id));
                     closeReturnModal();
                     updatePOSUI();
                     loadSalesStats();
@@ -2111,12 +2188,15 @@ async function performAutoSync() {
                 saveReturnToIndexedDB(returnData)
                     .then(() => {
                         // Update local stock (restock items)
-                        selectedItems.forEach(item => {
-                            updateLocalProductStock(item.id, -item.quantity);
+                        selectedItems.forEach((item, index) => {
+                            const correctId = returnItemsWithCorrectIds[index].product_id;
+                            if (correctId && correctId !== 'unknown' && correctId !== 'product_id_here') {
+                                updateLocalProductStock(correctId, -item.quantity);
+                            }
                         });
                         
-                        const idsToRemove = selectedItems.map(item => item.id);
-                        posCart = posCart.filter(item => !idsToRemove.includes(item.id));
+                        const idsToRemove = selectedItems.map(item => item.id || item.product_id);
+                        posCart = posCart.filter(cartItem => !idsToRemove.includes(cartItem.id) && !idsToRemove.includes(cartItem.product_id));
                         closeReturnModal();
                         updatePOSUI();
                         loadSalesStats();
