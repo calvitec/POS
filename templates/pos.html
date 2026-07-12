@@ -951,7 +951,8 @@
     <div id="toast" class="toast hidden">
         <span id="toastMessage">Added to cart!</span>
     </div>
-<script>
+
+   <script>
         // ============================================================
         // DATA
         // ============================================================
@@ -1052,6 +1053,7 @@
         // UPDATE LOCAL PRODUCT STOCK
         // ============================================================
         function updateLocalProductStock(productId, quantity) {
+            // Update in allProducts array
             const product = allProducts.find(p => String(p.id) === String(productId));
             if (product) {
                 const oldStock = product.stock || 0;
@@ -1059,12 +1061,14 @@
                 console.log(`📦 Updated stock for ${product.name}: ${oldStock} → ${product.stock}`);
             }
             
+            // Update in filteredProducts as well
             const filteredProduct = filteredProducts.find(p => String(p.id) === String(productId));
             if (filteredProduct) {
                 const oldStock = filteredProduct.stock || 0;
                 filteredProduct.stock = Math.max(0, oldStock - quantity);
             }
             
+            // Re-render products to reflect stock changes
             renderProducts();
         }
 
@@ -1078,24 +1082,37 @@
 
                 const deductions = {};
                 unsynced.forEach(order => {
-                    (order.items || []).forEach(item => {
-                        const pid = item.product_id || item.id;
-                        const qty = Number(item.quantity) || 0;
-                        if (!pid) return;
-                        deductions[pid] = (deductions[pid] || 0) + qty;
-                    });
+                    // Check if it's a return (is_return = true) - RESTOCK
+                    if (order.is_return === true) {
+                        (order.items || []).forEach(item => {
+                            const pid = item.product_id || item.id;
+                            const qty = Number(item.quantity) || 0;
+                            if (!pid) return;
+                            // For returns, we add back stock (negative deduction)
+                            deductions[pid] = (deductions[pid] || 0) - qty;
+                        });
+                    } else {
+                        // Regular orders deduct stock
+                        (order.items || []).forEach(item => {
+                            const pid = item.product_id || item.id;
+                            const qty = Number(item.quantity) || 0;
+                            if (!pid) return;
+                            deductions[pid] = (deductions[pid] || 0) + qty;
+                        });
+                    }
                 });
 
                 Object.keys(deductions).forEach(pid => {
                     const product = allProducts.find(p => String(p.id) === String(pid));
                     if (product) {
                         const oldStock = product.stock || 0;
-                        product.stock = Math.max(0, oldStock - deductions[pid]);
-                        console.log(`📦 Applied offline deduction: ${product.name}: ${oldStock} → ${product.stock}`);
+                        const delta = deductions[pid];
+                        product.stock = Math.max(0, oldStock - delta);
+                        console.log(`📦 Applied offline adjustment: ${product.name}: ${oldStock} → ${product.stock} (${delta > 0 ? 'deduct' : 'restock'})`);
                     }
                 });
 
-                console.log('📦 Applied pending offline stock deductions:', deductions);
+                console.log('📦 Applied pending offline stock adjustments:', deductions);
             } catch (e) {
                 console.error('❌ Error applying offline stock adjustments:', e);
             }
@@ -1233,7 +1250,68 @@
         }
 
         // ============================================================
-        // PERFORM AUTO SYNC
+        // SAVE RETURN TO INDEXEDDB (OFFLINE SUPPORT)
+        // ============================================================
+        function saveReturnToIndexedDB(returnData) {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    const db = await openDB();
+                    const transaction = db.transaction('orders', 'readwrite');
+                    const store = transaction.objectStore('orders');
+                    
+                    const returnOrder = {
+                        order_id: returnData.return_order_id,
+                        items: returnData.items.map(item => ({
+                            product_id: item.product_id,
+                            name: item.name,
+                            price: item.price,
+                            quantity: item.quantity,
+                            total: item.price * item.quantity,
+                            barcode: item.barcode || ''
+                        })),
+                        subtotal: returnData.refund_total,
+                        shipping: 0,
+                        total: -returnData.refund_total,
+                        status: 'returned',
+                        source: 'pos',
+                        created_at: new Date().toISOString(),
+                        customer_name: returnData.customer_name,
+                        customer_email: 'return@example.com',
+                        customer_phone: 'N/A',
+                        customer_address: 'Return',
+                        customer: {
+                            name: returnData.customer_name,
+                            email: 'return@example.com',
+                            phone: 'N/A',
+                            address: 'Return'
+                        },
+                        return_reason: returnData.reason,
+                        return_amount: returnData.refund_total,
+                        synced: false,
+                        synced_at: null,
+                        is_return: true,
+                        original_items: returnData.original_items || []
+                    };
+                    
+                    const request = store.put(returnOrder);
+                    
+                    request.onsuccess = function() {
+                        console.log('✅ Return saved to IndexedDB:', returnData.return_order_id);
+                        resolve(returnOrder);
+                    };
+                    
+                    request.onerror = function(event) {
+                        console.error('❌ IndexedDB return save error:', event.target.error);
+                        reject(event.target.error);
+                    };
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        // ============================================================
+        // PERFORM AUTO SYNC - WITH RETURN SUPPORT
         // ============================================================
         async function performAutoSync() {
             if (isSyncing) {
@@ -1260,97 +1338,152 @@
                 showToast('🔄 Syncing offline orders...', 'info');
                 
                 const unsynced = await getUnsyncedOrders();
+                const returns = unsynced.filter(o => o.is_return === true);
+                const orders = unsynced.filter(o => o.is_return !== true);
                 
-                if (unsynced.length === 0) {
-                    console.log('✅ No offline orders to sync');
-                    showToast('✅ No offline orders to sync', 'success');
+                const totalUnsynced = unsynced.length;
+                
+                if (totalUnsynced === 0) {
+                    console.log('✅ No offline items to sync');
+                    showToast('✅ No offline items to sync', 'success');
                     updateSyncStatusUI(false);
                     updateUnsyncedCount(0);
                     isSyncing = false;
                     return;
                 }
                 
-                console.log(`📦 Found ${unsynced.length} offline order(s) to sync`);
+                console.log(`📦 Found ${totalUnsynced} offline item(s) to sync (${orders.length} orders, ${returns.length} returns)`);
                 
-                unsynced.forEach((order, i) => {
-                    console.log(`   ${i+1}. 📄 ${order.order_id} - ${order.customer_name || 'Customer'} - KSh ${order.total || 0}`);
+                // Show items being synced
+                unsynced.forEach((item, i) => {
+                    const type = item.is_return ? '🔄 RETURN' : '📄 ORDER';
+                    console.log(`   ${i+1}. ${type} ${item.order_id} - ${item.customer_name || 'Customer'} - KSh ${item.total || 0}`);
                 });
                 
-                const cleanOrders = unsynced.map(order => ({
-                    order_id: order.order_id,
-                    items: Array.isArray(order.items) ? order.items.map(item => ({
-                        product_id: item.product_id || item.id || 'unknown',
-                        name: item.name || 'Product',
-                        price: Number(item.price) || 0,
-                        quantity: Number(item.quantity) || 1,
-                        total: Number(item.total) || (Number(item.price) || 0) * (Number(item.quantity) || 1),
-                        type: item.type || 'product',
-                        barcode: item.barcode || ''
-                    })) : [],
-                    subtotal: Number(order.subtotal) || Number(order.total) || 0,
-                    shipping: Number(order.shipping) || 0,
-                    total: Number(order.total) || 0,
-                    status: order.status || 'confirmed',
-                    source: order.source || 'pos',
-                    created_at: order.created_at || new Date().toISOString(),
-                    customer_name: order.customer_name || 'Walk-in Customer',
-                    customer_email: order.customer_email || 'walkin@example.com',
-                    customer_phone: order.customer_phone || 'N/A',
-                    customer_address: order.customer_address || 'In-store purchase',
-                    customer: order.customer || {
-                        name: order.customer_name || 'Walk-in Customer',
-                        email: order.customer_email || 'walkin@example.com',
-                        phone: order.customer_phone || 'N/A',
-                        address: order.customer_address || 'In-store purchase'
-                    },
-                    user_id: order.user_id || 'unknown',
-                    user_name: order.user_name || 'Unknown User',
-                    user_role: order.user_role || 'user',
-                    staff_name: order.staff_name || order.user_name || 'Unknown User'
-                }));
+                // ============================================================
+                // SYNC RETURNS FIRST
+                // ============================================================
+                let returnsSynced = 0;
+                let returnsFailed = 0;
                 
-                console.log('📤 Sending to sync endpoint...');
-                
-                if (!navigator.onLine) {
-                    throw new Error('Offline - cannot sync');
+                for (const ret of returns) {
+                    try {
+                        const returnData = {
+                            items: ret.items || [],
+                            refund_total: Math.abs(ret.total || 0),
+                            customer_name: ret.customer_name || 'Customer',
+                            reason: ret.return_reason || 'Customer return',
+                            return_order_id: ret.order_id
+                        };
+                        
+                        const response = await fetch('/admin/api/process-return', {
+                            method: 'POST',
+                            headers: { 
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify(returnData)
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            // Mark return as synced
+                            const orderIds = [ret.order_id];
+                            await markOrdersSynced(orderIds);
+                            returnsSynced++;
+                            console.log(`✅ Return synced: ${ret.order_id}`);
+                        } else {
+                            returnsFailed++;
+                            console.log(`❌ Return sync failed: ${ret.order_id} - ${data.message}`);
+                        }
+                    } catch (e) {
+                        returnsFailed++;
+                        console.log(`❌ Return sync error: ${ret.order_id} - ${e.message}`);
+                    }
                 }
                 
-                const response = await fetch('/admin/api/sync-queue', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ orders: cleanOrders })
-                });
+                // ============================================================
+                // SYNC ORDERS
+                // ============================================================
+                let ordersSynced = 0;
+                let ordersFailed = 0;
                 
-                if (!response.ok) {
-                    throw new Error('Server error: ' + response.status);
-                }
-                
-                const data = await response.json();
-                console.log('✅ Sync result:', data);
-                
-                if (data.synced > 0) {
-                    const orderIds = unsynced.map(o => o.order_id);
-                    await markOrdersSynced(orderIds);
+                if (orders.length > 0) {
+                    const cleanOrders = orders.map(order => ({
+                        order_id: order.order_id,
+                        items: Array.isArray(order.items) ? order.items.map(item => ({
+                            product_id: item.product_id || item.id || 'unknown',
+                            name: item.name || 'Product',
+                            price: Number(item.price) || 0,
+                            quantity: Number(item.quantity) || 1,
+                            total: Number(item.total) || (Number(item.price) || 0) * (Number(item.quantity) || 1),
+                            type: item.type || 'product',
+                            barcode: item.barcode || ''
+                        })) : [],
+                        subtotal: Number(order.subtotal) || Number(order.total) || 0,
+                        shipping: Number(order.shipping) || 0,
+                        total: Number(order.total) || 0,
+                        status: order.status || 'confirmed',
+                        source: order.source || 'pos',
+                        created_at: order.created_at || new Date().toISOString(),
+                        customer_name: order.customer_name || 'Walk-in Customer',
+                        customer_email: order.customer_email || 'walkin@example.com',
+                        customer_phone: order.customer_phone || 'N/A',
+                        customer_address: order.customer_address || 'In-store purchase',
+                        customer: order.customer || {
+                            name: order.customer_name || 'Walk-in Customer',
+                            email: order.customer_email || 'walkin@example.com',
+                            phone: order.customer_phone || 'N/A',
+                            address: order.customer_address || 'In-store purchase'
+                        },
+                        user_id: order.user_id || 'unknown',
+                        user_name: order.user_name || 'Unknown User',
+                        user_role: order.user_role || 'user',
+                        staff_name: order.staff_name || order.user_name || 'Unknown User'
+                    }));
                     
-                    console.log(`✅ Marked ${data.synced} orders as synced`);
-                    showToast(`✅ ${data.synced} orders synced!`, 'success');
+                    console.log('📤 Sending orders to sync endpoint...');
+                    
+                    const response = await fetch('/admin/api/sync-queue', {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ orders: cleanOrders })
+                    });
+                    
+                    const data = await response.json();
+                    console.log('✅ Sync result:', data);
+                    
+                    if (data.synced > 0) {
+                        const orderIds = orders.map(o => o.order_id);
+                        await markOrdersSynced(orderIds);
+                        ordersSynced = data.synced;
+                        ordersFailed = data.failed || 0;
+                    } else {
+                        ordersFailed = orders.length;
+                    }
+                }
+                
+                // ============================================================
+                // SUMMARY
+                // ============================================================
+                const totalSynced = ordersSynced + returnsSynced;
+                const totalFailed = ordersFailed + returnsFailed;
+                
+                if (totalSynced > 0) {
+                    console.log(`✅ Synced ${totalSynced} items (${ordersSynced} orders, ${returnsSynced} returns)`);
+                    showToast(`✅ ${totalSynced} items synced!`, 'success');
                     
                     loadUserStats();
                     loadSalesStats();
                     updateUnsyncedCount(0);
                     renderProducts();
                 } else {
-                    console.log('⚠️ No orders were synced');
-                    if (data.message) {
-                        console.log('📝 Message:', data.message);
-                    }
-                    if (data.failed > 0) {
-                        console.log(`❌ ${data.failed} orders failed`);
-                    }
-                    showToast(`⚠️ ${data.failed || 0} orders failed to sync`, 'warning');
+                    console.log('⚠️ No items were synced');
+                    showToast(`⚠️ ${totalFailed} items failed to sync`, 'warning');
                     
                     const remaining = await getUnsyncedOrders();
                     updateUnsyncedCount(remaining.length);
@@ -1413,7 +1546,7 @@
                 statusEl.className = 'has-orders';
                 countEl.textContent = count;
                 statusEl.style.animation = 'pulse-badge 2s infinite';
-                statusEl.title = count + ' offline orders waiting to sync';
+                statusEl.title = count + ' offline items waiting to sync';
                 
                 if (navigator.onLine && !isSyncing) {
                     setTimeout(performAutoSync, 2000);
@@ -1448,7 +1581,7 @@
         async function checkUnsyncedOrdersOnLoad() {
             try {
                 const unsynced = await getUnsyncedOrders();
-                console.log(`📊 Initial check: ${unsynced.length} unsynced orders`);
+                console.log(`📊 Initial check: ${unsynced.length} unsynced items`);
                 updateUnsyncedCount(unsynced.length);
                 
                 if (unsynced.length > 0 && navigator.onLine) {
@@ -1772,7 +1905,7 @@
         }
 
         // ============================================================
-        // RETURNS
+        // RETURNS - UPDATED WITH OFFLINE SUPPORT
         // ============================================================
         function toggleReturnModal() {
             const modal = document.getElementById('returnModal');
@@ -1846,7 +1979,7 @@
             
             const returnData = {
                 items: selectedItems.map(item => ({
-                    id: item.id,
+                    product_id: item.id,
                     name: item.name,
                     price: item.price,
                     quantity: item.quantity,
@@ -1854,7 +1987,15 @@
                 })),
                 refund_total: refundTotal,
                 customer_name: customerName,
-                reason: 'Customer return'
+                reason: 'Customer return',
+                return_order_id: 'RET-' + Date.now().toString(36).toUpperCase(),
+                original_items: selectedItems.map(item => ({
+                    id: item.id,
+                    name: item.name,
+                    price: item.price,
+                    quantity: item.quantity,
+                    stock: item.stock || 0
+                }))
             };
             
             const btn = document.querySelector('#returnModal .btn-primary');
@@ -1862,14 +2003,73 @@
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
             btn.disabled = true;
             
+            // ============================================================
+            // OFFLINE: Save return to IndexedDB
+            // ============================================================
+            if (!navigator.onLine) {
+                console.log('📡 OFFLINE: Saving return to IndexedDB');
+                
+                saveReturnToIndexedDB(returnData)
+                    .then(() => {
+                        // Update local stock (restock items)
+                        selectedItems.forEach(item => {
+                            updateLocalProductStock(item.id, -item.quantity);
+                        });
+                        
+                        // Remove returned items from cart
+                        const idsToRemove = selectedItems.map(item => item.id);
+                        posCart = posCart.filter(item => !idsToRemove.includes(item.id));
+                        closeReturnModal();
+                        updatePOSUI();
+                        loadSalesStats();
+                        
+                        showToast(`✅ Return saved offline! Refund: KSh ${refundTotal.toLocaleString()}`, 'warning');
+                        updateUnsyncedCount();
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    })
+                    .catch(err => {
+                        console.error('❌ Offline return error:', err);
+                        showToast('❌ Failed to save return offline', 'error');
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    });
+                return;
+            }
+            
+            // ============================================================
+            // ONLINE: Process return via API
+            // ============================================================
+            console.log('📡 ONLINE: Processing return');
+            
             fetch('/admin/api/process-return', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                body: JSON.stringify(returnData)
+                body: JSON.stringify({
+                    items: selectedItems.map(item => ({
+                        id: item.id,
+                        name: item.name,
+                        price: item.price,
+                        quantity: item.quantity,
+                        barcode: item.barcode || ''
+                    })),
+                    refund_total: refundTotal,
+                    customer_name: customerName,
+                    reason: 'Customer return',
+                    return_order_id: returnData.return_order_id
+                })
             })
-            .then(r => { if (!r.ok) throw new Error('Network error: ' + r.status); return r.json(); })
+            .then(r => { 
+                if (!r.ok) throw new Error('Network error: ' + r.status); 
+                return r.json(); 
+            })
             .then(data => {
                 if (data.success) {
+                    // Update local stock (restock items)
+                    selectedItems.forEach(item => {
+                        updateLocalProductStock(item.id, -item.quantity);
+                    });
+                    
                     const idsToRemove = selectedItems.map(item => item.id);
                     posCart = posCart.filter(item => !idsToRemove.includes(item.id));
                     closeReturnModal();
@@ -1883,9 +2083,33 @@
                 btn.disabled = false;
             })
             .catch(err => {
-                showToast('❌ Error: ' + err.message, 'error');
-                btn.innerHTML = originalText;
-                btn.disabled = false;
+                console.warn('⚠️ Server failed, saving return to IndexedDB:', err);
+                
+                // Fallback: Save return to IndexedDB
+                saveReturnToIndexedDB(returnData)
+                    .then(() => {
+                        // Update local stock (restock items)
+                        selectedItems.forEach(item => {
+                            updateLocalProductStock(item.id, -item.quantity);
+                        });
+                        
+                        const idsToRemove = selectedItems.map(item => item.id);
+                        posCart = posCart.filter(item => !idsToRemove.includes(item.id));
+                        closeReturnModal();
+                        updatePOSUI();
+                        loadSalesStats();
+                        
+                        showToast(`✅ Return saved offline! Refund: KSh ${refundTotal.toLocaleString()}`, 'warning');
+                        updateUnsyncedCount();
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    })
+                    .catch(err2 => {
+                        console.error('❌ Both server and IndexedDB failed:', err2);
+                        showToast('❌ Failed to process return. Please try again.', 'error');
+                        btn.innerHTML = originalText;
+                        btn.disabled = false;
+                    });
             });
         }
 
@@ -1966,10 +2190,7 @@
                 
                 saveOrderToIndexedDB(orderData)
                     .then(() => {
-                        // ⚠️ IMPORTANT: DO NOT deduct stock on frontend for offline orders!
-                        // The backend will deduct stock when the order syncs.
-                        // The applyOfflineStockAdjustments() function will show correct stock on refresh.
-                        
+                        // DO NOT deduct stock on frontend for offline orders!
                         showToast(`✅ Order #${localOrderId} saved offline! Stock will be deducted when synced.`, 'warning');
                         posCart = [];
                         discountValue = 0;
@@ -2012,7 +2233,7 @@
                         saveOrderToIndexedDB(data.order).catch(err => console.warn('⚠️ Backup save failed:', err));
                     }
                     
-                    // ✅ ONLY deduct stock on frontend when online AND server confirms success
+                    // ONLY deduct stock on frontend when online AND server confirms success
                     if (data.stock_updated && data.stock_updated.length > 0) {
                         data.stock_updated.forEach(item => {
                             const cartItem = cartItems.find(c => c.name === item.name);
@@ -2044,7 +2265,7 @@
                 
                 saveOrderToIndexedDB(orderData)
                     .then(() => {
-                        // ⚠️ IMPORTANT: DO NOT deduct stock on frontend for offline orders!
+                        // DO NOT deduct stock on frontend for offline orders!
                         showToast(`✅ Order #${localOrderId} saved offline! Stock will be deducted when synced.`, 'warning');
                         posCart = [];
                         discountValue = 0;
@@ -2498,5 +2719,5 @@
             console.log('📋 Products with barcodes:', allProducts.filter(p => p.barcode).length);
         });
     </script>
-   </body>
-   </html>
+</body>
+</html>
